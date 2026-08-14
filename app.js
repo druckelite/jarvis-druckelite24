@@ -34,7 +34,6 @@ function safeSend(payload) {
 async function runTool(event) {
   if (!event.call_id) return;
 
-  // Verhindert, dass derselbe Tool-Aufruf doppelt verarbeitet wird.
   if (handledToolCalls.has(event.call_id)) {
     return;
   }
@@ -52,16 +51,30 @@ async function runTool(event) {
     payload = {};
   }
 
-  if (event.name === "get_shopify_summary") {
-    endpoint = "/api/shopify-summary";
-  }
+  switch (event.name) {
+    case "get_shopify_summary":
+      endpoint = "/api/shopify-summary";
+      break;
 
-  if (event.name === "get_important_emails") {
-    endpoint = "/api/important-emails";
-  }
+    case "get_important_emails":
+      endpoint = "/api/important-emails";
+      break;
 
-  if (event.name === "get_calendar_today") {
-    endpoint = "/api/calendar-today";
+    case "get_calendar_today":
+      endpoint = "/api/calendar-today";
+      break;
+
+    case "get_weather":
+      endpoint = "/api/weather";
+      break;
+
+    case "remember_fact":
+      endpoint = "/api/memory/remember";
+      break;
+
+    case "recall_memory":
+      endpoint = "/api/memory/recall";
+      break;
   }
 
   log(`Live-Daten: ${event.name}`);
@@ -82,22 +95,27 @@ async function runTool(event) {
         body: JSON.stringify(payload)
       });
 
-      let data;
+      const text = await response.text();
 
       try {
-        data = await response.json();
+        result = JSON.parse(text);
       } catch {
-        data = {
-          error: await response.text()
+        result = {
+          ok: response.ok,
+          message: text
         };
       }
 
-      result = data;
+      if (!response.ok) {
+        result.http_status = response.status;
+      }
+
     } catch (error) {
-      console.error("Tool error:", error);
+      console.error("Tool request error:", error);
 
       result = {
-        error: "Live-Daten konnten nicht geladen werden."
+        error:
+          "Die Live-Daten konnten nicht geladen werden."
       };
     }
   }
@@ -111,7 +129,6 @@ async function runTool(event) {
     }
   });
 
-  // Genau EINE neue Antwort nach dem Tool-Ergebnis.
   safeSend({
     type: "response.create"
   });
@@ -120,12 +137,10 @@ async function runTool(event) {
 function interruptAssistant() {
   if (!assistantSpeaking) return;
 
-  // Laufende Modellantwort stoppen.
   safeSend({
     type: "response.cancel"
   });
 
-  // Bereits gepuffertes WebRTC-Audio ebenfalls leeren.
   safeSend({
     type: "output_audio_buffer.clear"
   });
@@ -150,31 +165,40 @@ async function startJarvis() {
     pc = new RTCPeerConnection();
 
     pc.onconnectionstatechange = () => {
+      const state = pc?.connectionState;
+
       console.log(
         "Peer connection:",
-        pc?.connectionState
+        state
       );
 
       if (
-        pc?.connectionState === "failed" ||
-        pc?.connectionState === "disconnected"
+        state === "failed" ||
+        state === "disconnected"
       ) {
-        log("Voice-Verbindung wurde unterbrochen.");
+        log(
+          "Voice-Verbindung wurde unterbrochen."
+        );
       }
     };
 
-    pc.ontrack = (event) => {
-      // Wichtig: nur EIN Remote-Audiostream.
-      if (event.streams && event.streams[0]) {
-        if (remoteAudio.srcObject !== event.streams[0]) {
-          remoteAudio.srcObject = event.streams[0];
+    pc.ontrack = event => {
+      if (
+        event.streams &&
+        event.streams[0]
+      ) {
+        if (
+          remoteAudio.srcObject !==
+          event.streams[0]
+        ) {
+          remoteAudio.srcObject =
+            event.streams[0];
         }
       } else {
-        const stream = new MediaStream([
-          event.track
-        ]);
-
-        remoteAudio.srcObject = stream;
+        remoteAudio.srcObject =
+          new MediaStream([
+            event.track
+          ]);
       }
 
       remoteAudio
@@ -182,15 +206,16 @@ async function startJarvis() {
         .catch(() => {});
     };
 
-    dc = pc.createDataChannel(
-      "oai-events"
-    );
+    dc =
+      pc.createDataChannel(
+        "oai-events"
+      );
 
     dc.onopen = () => {
       active = true;
       connecting = false;
-      button.disabled = false;
 
+      button.disabled = false;
       button.classList.add("active");
 
       setStatus("Online");
@@ -203,7 +228,7 @@ async function startJarvis() {
       }
     };
 
-    dc.onerror = (error) => {
+    dc.onerror = error => {
       console.error(
         "DataChannel error:",
         error
@@ -214,132 +239,114 @@ async function startJarvis() {
       );
     };
 
-    dc.onmessage = async (message) => {
-      let event;
+    dc.onmessage =
+      async message => {
+        let event;
 
-      try {
-        event =
-          JSON.parse(message.data);
-      } catch {
-        return;
-      }
-
-      console.log(
-        "Realtime event:",
-        event.type
-      );
-
-      /*
-       * Wenn du zu sprechen beginnst,
-       * laufende JARVIS-Ausgabe abbrechen.
-       */
-      if (
-        event.type ===
-        "input_audio_buffer.speech_started"
-      ) {
-        interruptAssistant();
-        log("Ich höre zu …");
-      }
-
-      if (
-        event.type ===
-        "input_audio_buffer.speech_stopped"
-      ) {
-        log("Denke nach …");
-      }
-
-      /*
-       * JARVIS beginnt Audio auszugeben.
-       */
-      if (
-        event.type ===
-        "output_audio_buffer.started"
-      ) {
-        assistantSpeaking = true;
-        log("JARVIS spricht.");
-      }
-
-      /*
-       * Audio vollständig beendet.
-       */
-      if (
-        event.type ===
-          "output_audio_buffer.stopped" ||
-        event.type ===
-          "output_audio_buffer.cleared"
-      ) {
-        assistantSpeaking = false;
-
-        if (active) {
-          log("JARVIS hört zu.");
+        try {
+          event =
+            JSON.parse(
+              message.data
+            );
+        } catch {
+          return;
         }
-      }
 
-      /*
-       * Tool-Aufruf.
-       * Nur das DONE-Event verarbeiten.
-       */
-      if (
-        event.type ===
-        "response.function_call_arguments.done"
-      ) {
-        await runTool(event);
-      }
-
-      /*
-       * Response beendet.
-       */
-      if (
-        event.type ===
-        "response.done"
-      ) {
-        const status =
-          event.response?.status;
-
-        if (
-          status === "failed"
-        ) {
-          console.error(
-            "Response failed:",
-            event.response
-          );
-
-          log(
-            "JARVIS konnte die Antwort nicht erzeugen."
-          );
-        }
-      }
-
-      /*
-       * Serverfehler.
-       */
-      if (
-        event.type === "error"
-      ) {
-        console.error(
-          "Realtime error:",
-          event
+        console.log(
+          "Realtime event:",
+          event.type
         );
 
-        // Fehler durch absichtliches response.cancel
-        // nicht unnötig groß anzeigen.
-        const code =
-          event.error?.code || "";
+        if (
+          event.type ===
+          "input_audio_buffer.speech_started"
+        ) {
+          interruptAssistant();
+          log("Ich höre zu …");
+        }
 
         if (
-          code !==
-          "response_cancel_not_active"
+          event.type ===
+          "input_audio_buffer.speech_stopped"
         ) {
-          log(
-            event.error?.message ||
-              "JARVIS-Fehler."
-          );
+          log("Denke nach …");
         }
-      }
-    };
+
+        if (
+          event.type ===
+          "output_audio_buffer.started"
+        ) {
+          assistantSpeaking = true;
+          log("JARVIS spricht.");
+        }
+
+        if (
+          event.type ===
+            "output_audio_buffer.stopped" ||
+          event.type ===
+            "output_audio_buffer.cleared"
+        ) {
+          assistantSpeaking = false;
+
+          if (active) {
+            log("JARVIS hört zu.");
+          }
+        }
+
+        if (
+          event.type ===
+          "response.function_call_arguments.done"
+        ) {
+          await runTool(event);
+        }
+
+        if (
+          event.type ===
+          "response.done"
+        ) {
+          const status =
+            event.response?.status;
+
+          if (
+            status === "failed"
+          ) {
+            console.error(
+              "Response failed:",
+              event.response
+            );
+
+            log(
+              "JARVIS konnte die Antwort nicht erzeugen."
+            );
+          }
+        }
+
+        if (
+          event.type === "error"
+        ) {
+          console.error(
+            "Realtime error:",
+            event
+          );
+
+          const code =
+            event.error?.code || "";
+
+          if (
+            code !==
+            "response_cancel_not_active"
+          ) {
+            log(
+              event.error?.message ||
+                "JARVIS-Fehler."
+            );
+          }
+        }
+      };
 
     localStream =
-      await navigator.mediaDevices
+      await navigator
+        .mediaDevices
         .getUserMedia({
           audio: {
             echoCancellation: true,
@@ -366,21 +373,21 @@ async function startJarvis() {
     );
 
     const response =
-      await fetch("/session", {
-        method: "POST",
-        headers: {
-          "Content-Type":
-            "application/sdp"
-        },
-        body: offer.sdp
-      });
+      await fetch(
+        "/session",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type":
+              "application/sdp"
+          },
+          body: offer.sdp
+        }
+      );
 
     if (!response.ok) {
-      const errorText =
-        await response.text();
-
       throw new Error(
-        errorText
+        await response.text()
       );
     }
 
@@ -422,7 +429,9 @@ function stopJarvis() {
   try {
     if (pc) {
       pc.ontrack = null;
-      pc.onconnectionstatechange = null;
+      pc.onconnectionstatechange =
+        null;
+
       pc.close();
     }
   } catch {}
@@ -463,9 +472,7 @@ function stopJarvis() {
 button.addEventListener(
   "click",
   async () => {
-    if (
-      connecting
-    ) {
+    if (connecting) {
       return;
     }
 
@@ -478,10 +485,6 @@ button.addEventListener(
   }
 );
 
-/*
- * Wenn Safari die Seite verlässt,
- * Session sauber beenden.
- */
 window.addEventListener(
   "pagehide",
   () => {
