@@ -296,6 +296,7 @@ app.post("/api/calendar-today", async (req, res) => {
   }
 });
 
+app.get("/", (req, res) => res.sendFile("index.html", { root: "." }));
 app.get("/health", (req, res) => res.json({ ok: true, service: "jarvis-druckelite24" }));
 
 app.listen(PORT, "0.0.0.0", () => {
