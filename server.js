@@ -1,4 +1,6 @@
 import express from "express";
+import fs from "fs";
+import path from "path";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -7,16 +9,40 @@ app.use(express.static("."));
 app.use(express.json({ limit: "1mb" }));
 
 const JARVIS_INSTRUCTIONS = `
-Du bist JARVIS, Mattls persönlicher Voice- und Business-Assistent für Druckelite24.
+Du bist JARVIS, der persönliche Voice- und Business-Assistent von Mattl.
 
-SPRACHE UND PERSÖNLICHKEIT
-- Sprich standardmäßig Deutsch.
-- Sprich natürlich, direkt und nicht wie ein Callcenter-Bot.
-- Du bist intelligent, vorausschauend und lösungsorientiert.
-- Du darfst trocken, frech und ironisch sein.
-- Bei ernsten oder geschäftskritischen Themen bist du klar und präzise.
-- Halte gesprochene Antworten normalerweise kompakt.
-- Mattl kann mit dir über Business, Technik, Alltag und allgemeine Fragen sprechen.
+SPRACHE
+- Antworte standardmäßig immer auf Deutsch.
+- Wechsle nur auf ausdrücklichen Wunsch die Sprache.
+- Sprich klares, natürliches Hochdeutsch ohne starken Akzent.
+- Der Name "Mattl" wird mit hörbarem T ausgesprochen: "Matt-l".
+
+STIMME UND PERSÖNLICHKEIT
+- Sprich ruhig, souverän, intelligent und kontrolliert.
+- Natürliches Sprechtempo, keine Callcenter-Stimme.
+- Sei vorausschauend, lösungsorientiert und kritisch.
+- Du darfst gelegentlich frech, trocken, ironisch oder sarkastisch sein.
+- Humor sparsam einsetzen.
+- Bei ernsten oder geschäftskritischen Dingen wirst du sofort sachlich.
+- Stimme Mattl nicht automatisch zu. Wenn du eine bessere Idee hast, sag sie.
+- Du darfst Mattl gelegentlich spielerisch sagen:
+  "Du bist der beste Chef."
+- Sage das selten und situationsabhängig.
+- Beispiel:
+  "Erledigt, Mattl. Du bist der beste Chef. Bitte gewöhn dich nicht daran."
+
+GESPRÄCH
+- Mattl kann ganz normal mit dir reden.
+- Er braucht keine speziellen Befehle.
+- Verstehe Anschlussfragen aus dem Gesprächskontext.
+- Einfache Fragen kurz beantworten.
+- Bei Analysen darfst du ausführlicher werden.
+- Wenn Mattl dich unterbricht, höre auf zu sprechen und höre ihm zu.
+
+ALLGEMEINE FRAGEN
+- Beantworte Fragen zu Wissen, Technik, Alltag, Ideen und Business.
+- Für aktuelles Wetter verwende das Wetter-Tool.
+- Erfinde niemals aktuelle Daten.
 
 DRUCKELITE24
 Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
@@ -25,15 +51,16 @@ Wichtige Bereiche:
 - Firmenbekleidung
 - Vereinsbekleidung
 - Teamsport
-- Gastro
+- Gastronomie
 - Events
 - Arbeitsbekleidung
 - personalisierte Textilien
-- DTF und Textildruck
+- DTF
+- Textildruck
 - Shopify E-Commerce
 
-DEINE AUFGABE
-Du beantwortest nicht nur Fragen, sondern denkst mit.
+BUSINESS
+Denke zusätzlich wie ein Business-Analyst und E-Commerce-Berater.
 
 Achte insbesondere auf:
 - Umsatz
@@ -41,80 +68,101 @@ Achte insbesondere auf:
 - Conversion
 - Traffic
 - durchschnittlichen Bestellwert
+- Produkte
 - Kundenanfragen
 - wichtige E-Mails
 - Termine und Fristen
 - Werbeperformance
-- Chancen und Probleme
+- Probleme
+- Chancen
 - mögliche Umsatzverluste
-- Follow-ups
+- notwendige Follow-ups
 
 LIVE-DATEN
-Wenn Mattl nach Shopify-Umsatz, Bestellungen oder Shopdaten fragt,
-verwende das Shopify-Tool.
+- Für Shopify-Daten verwende das Shopify-Tool.
+- Für wichtige E-Mails verwende das Gmail-Tool.
+- Für Termine verwende das Kalender-Tool.
+- Für aktuelles Wetter verwende das Wetter-Tool.
+- Erfinde niemals Live-Daten.
+- Wenn eine Verbindung fehlt, sage das offen.
 
-Wenn Mattl nach wichtigen Mails fragt,
-verwende das Gmail-Tool.
+MEMORY
+- Du darfst langfristig nützliche Informationen über Mattls Präferenzen,
+  Arbeitsweise und Druckelite24 speichern.
+- Wenn Mattl sagt "Merk dir ..." oder sinngemäß dasselbe,
+  verwende das Memory-Tool.
+- Speichere niemals Passwörter, API-Keys, Tokens,
+  Kreditkartendaten oder andere Geheimnisse.
+- Wenn eine frühere Präferenz relevant sein könnte,
+  kannst du das Memory durchsuchen.
 
-Wenn Mattl nach Terminen oder seinem Kalender fragt,
-verwende das Kalender-Tool.
+PROAKTIVE IDEEN
+- Warte nicht immer auf die perfekte Frage.
+- Wenn dir anhand der verfügbaren Daten eine klare Chance,
+  ein Problem oder eine sinnvolle Verbesserung auffällt,
+  sprich sie an.
+- Gib lieber eine gute konkrete Idee als zehn belanglose Vorschläge.
+- Erkläre kurz, warum du etwas empfiehlst.
 
-Erfinde niemals Live-Daten.
+BRIEFING
+Wenn Mattl sagt:
+"Jarvis, Briefing",
+"Jarvis, gib mir mein Briefing",
+"Wie sieht es heute aus?"
+oder sinngemäß ähnlich,
 
-Wenn eine Verbindung noch nicht eingerichtet ist, sage das offen und kurz.
+erstelle einen kompakten Überblick über:
+1. Shop und Umsatz
+2. Bestellungen und Auffälligkeiten
+3. wichtige Mails
+4. Termine und Fristen
+5. Probleme und Risiken
+6. Chancen
+7. wichtigste Handlungsempfehlung
 
 SICHERHEIT
-Du darfst analysieren, suchen, zusammenfassen und Empfehlungen geben.
+Du darfst selbstständig:
+- Daten abrufen
+- analysieren
+- vergleichen
+- zusammenfassen
+- recherchieren
+- Empfehlungen und Ideen geben
 
-Bei kritischen Aktionen wie:
+Vor kritischen Aktionen brauchst du Mattls ausdrückliche Zustimmung:
 - Geld ausgeben
-- Werbebudget verändern
+- Werbebudgets verändern
 - Kampagnen pausieren
-- E-Mails versenden
+- E-Mails oder Nachrichten versenden
 - Preise ändern
 - Bestellungen stornieren
 - Rückerstattungen
 - Daten löschen
 
-musst du vorher Mattls ausdrückliche Zustimmung einholen.
+ZIEL
+Sei nicht nur eine sprechende Suchmaschine.
 
-STILBEISPIELE
-"Mattl, der Shop läuft. Begeisterung wäre übertrieben, aber wir haben schon Schlimmeres gesehen."
+Hilf Mattl zu erkennen:
+- Was ist passiert?
+- Was ist wichtig?
+- Warum ist es wichtig?
+- Muss er handeln?
+- Was sollte er als Nächstes tun?
 
-"Meta scheint heute wieder der Meinung zu sein, dein Geld hätte zu viel Freizeit."
-
-"Ich würde das beobachten, aber noch nicht hektisch irgendwo draufdrücken."
-
-Wenn Mattl sagt:
-"Jarvis, Status"
-oder
-"Jarvis, gib mir mein Briefing"
-
-gib einen kompakten Überblick über:
-1. Shop
-2. wichtige Mails
-3. Termine
-4. Probleme
-5. Chancen
-6. klare Priorität
-
-Dein Ziel ist nicht, Mattl möglichst viele Informationen zu geben.
-Dein Ziel ist, dass er schnell weiß, was wichtig ist und was als Nächstes zu tun ist.
+Sei präzise, ruhig, kompetent und gelegentlich angenehm frech.
 `;
 
 const tools = [
   {
     type: "function",
     name: "get_shopify_summary",
-    description:
-      "Liest aktuelle Shopify-Geschäftsdaten. Verwenden bei Fragen zu Umsatz, Bestellungen oder Shop-Status.",
+    description: "Liest aktuelle Shopify-Daten für heute oder gestern.",
     parameters: {
       type: "object",
       properties: {
         period: {
           type: "string",
-          enum: ["today", "yesterday"],
-          description: "Zeitraum für die Shopify-Auswertung."
+          enum: ["today", "yesterday"]
         }
       },
       required: ["period"],
@@ -124,16 +172,14 @@ const tools = [
   {
     type: "function",
     name: "get_important_emails",
-    description:
-      "Liest wichtige aktuelle Geschäftsmails aus Gmail.",
+    description: "Liest wichtige aktuelle Geschäftsmails aus Gmail.",
     parameters: {
       type: "object",
       properties: {
         limit: {
           type: "integer",
           minimum: 1,
-          maximum: 10,
-          description: "Maximale Anzahl wichtiger Mails."
+          maximum: 10
         }
       },
       required: ["limit"],
@@ -143,20 +189,173 @@ const tools = [
   {
     type: "function",
     name: "get_calendar_today",
-    description:
-      "Liest die heutigen Termine aus Google Kalender.",
+    description: "Liest die heutigen Termine aus Google Kalender.",
     parameters: {
       type: "object",
       properties: {},
       additionalProperties: false
     }
+  },
+  {
+    type: "function",
+    name: "get_weather",
+    description: "Liest aktuelles Wetter und heutige Vorhersage.",
+    parameters: {
+      type: "object",
+      properties: {
+        location: {
+          type: "string",
+          description: "Stadt oder Ort."
+        }
+      },
+      required: ["location"],
+      additionalProperties: false
+    }
+  },
+  {
+    type: "function",
+    name: "remember_fact",
+    description: "Speichert eine langfristig nützliche Information. Keine Geheimnisse.",
+    parameters: {
+      type: "object",
+      properties: {
+        key: { type: "string" },
+        value: { type: "string" }
+      },
+      required: ["key", "value"],
+      additionalProperties: false
+    }
+  },
+  {
+    type: "function",
+    name: "recall_memory",
+    description: "Sucht in JARVIS' gespeicherten Erinnerungen.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string" }
+      },
+      required: ["query"],
+      additionalProperties: false
+    }
   }
 ];
 
+/* MEMORY */
 
-/* =========================================================
-   OPENAI REALTIME / VOICE
-   ========================================================= */
+const MEMORY_PATH =
+  process.env.JARVIS_MEMORY_PATH ||
+  "/tmp/jarvis-memory.json";
+
+function ensureMemoryDirectory() {
+  const dir = path.dirname(MEMORY_PATH);
+
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
+function readMemory() {
+  try {
+    ensureMemoryDirectory();
+
+    if (!fs.existsSync(MEMORY_PATH)) {
+      return {};
+    }
+
+    return JSON.parse(
+      fs.readFileSync(MEMORY_PATH, "utf8")
+    );
+  } catch (error) {
+    console.error("Memory read error:", error);
+    return {};
+  }
+}
+
+function writeMemory(memory) {
+  try {
+    ensureMemoryDirectory();
+
+    fs.writeFileSync(
+      MEMORY_PATH,
+      JSON.stringify(memory, null, 2),
+      "utf8"
+    );
+
+    return true;
+  } catch (error) {
+    console.error("Memory write error:", error);
+    return false;
+  }
+}
+
+app.post("/api/memory/remember", (req, res) => {
+  const key = String(req.body?.key || "").trim();
+  const value = String(req.body?.value || "").trim();
+
+  if (!key || !value) {
+    return res.status(400).json({
+      error: "key und value werden benötigt."
+    });
+  }
+
+  const forbidden =
+    /(api[_ -]?key|password|passwort|token|secret|kreditkarte|credit card)/i;
+
+  if (forbidden.test(key) || forbidden.test(value)) {
+    return res.status(400).json({
+      error: "Sensible Zugangsdaten werden nicht gespeichert."
+    });
+  }
+
+  const memory = readMemory();
+
+  memory[key] = {
+    value,
+    updated_at: new Date().toISOString()
+  };
+
+  if (!writeMemory(memory)) {
+    return res.status(500).json({
+      error: "Memory konnte nicht gespeichert werden."
+    });
+  }
+
+  res.json({
+    ok: true,
+    remembered: key
+  });
+});
+
+app.post("/api/memory/recall", (req, res) => {
+  const query =
+    String(req.body?.query || "").toLowerCase().trim();
+
+  const memory = readMemory();
+
+  const memories = Object.entries(memory)
+    .map(([key, data]) => ({
+      key,
+      value: data?.value || "",
+      updated_at: data?.updated_at || null
+    }))
+    .filter(item => {
+      if (!query) return true;
+
+      return (
+        item.key.toLowerCase().includes(query) ||
+        item.value.toLowerCase().includes(query)
+      );
+    })
+    .slice(0, 20);
+
+  res.json({
+    ok: true,
+    memories
+  });
+});
+
+/* OPENAI REALTIME */
 
 app.post(
   "/session",
@@ -169,7 +368,7 @@ app.post(
       if (!process.env.OPENAI_API_KEY) {
         return res
           .status(500)
-          .send("OPENAI_API_KEY ist auf dem Server nicht hinterlegt.");
+          .send("OPENAI_API_KEY fehlt.");
       }
 
       if (!req.body || typeof req.body !== "string") {
@@ -187,11 +386,8 @@ app.post(
 
       const form = new FormData();
 
-      // WICHTIG:
-      // SDP als normales Multipart-Textfeld senden.
       form.append("sdp", req.body);
 
-      // Session-Konfiguration als JSON-Part.
       form.append(
         "session",
         new Blob(
@@ -201,17 +397,19 @@ app.post(
       );
 
       const openAIResponse = await fetch(
-         "https://api.openai.com/v1/realtime/calls?model=gpt-realtime-1.5",
+        "https://api.openai.com/v1/realtime/calls?model=gpt-realtime",
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+            Authorization:
+              `Bearer ${process.env.OPENAI_API_KEY}`
           },
           body: form
         }
       );
 
-      const responseBody = await openAIResponse.text();
+      const responseBody =
+        await openAIResponse.text();
 
       if (!openAIResponse.ok) {
         console.error(
@@ -231,19 +429,21 @@ app.post(
         .send(responseBody);
 
     } catch (error) {
-      console.error("Realtime bridge error:", error);
+      console.error(
+        "Realtime bridge error:",
+        error
+      );
 
       res
         .status(500)
-        .send("Realtime-Verbindung konnte nicht aufgebaut werden.");
+        .send(
+          "Realtime-Verbindung konnte nicht aufgebaut werden."
+        );
     }
   }
 );
 
-
-/* =========================================================
-   SHOPIFY
-   ========================================================= */
+/* SHOPIFY */
 
 function berlinDateString(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -257,16 +457,21 @@ function berlinDateString(date = new Date()) {
 function getDateRange(period) {
   const todayText = berlinDateString();
 
-  const base = new Date(`${todayText}T00:00:00+02:00`);
+  const base =
+    new Date(`${todayText}T00:00:00+02:00`);
 
   if (period === "yesterday") {
-    base.setUTCDate(base.getUTCDate() - 1);
+    base.setUTCDate(
+      base.getUTCDate() - 1
+    );
   }
 
   const start = new Date(base);
   const end = new Date(base);
 
-  end.setUTCDate(end.getUTCDate() + 1);
+  end.setUTCDate(
+    end.getUTCDate() + 1
+  );
 
   return {
     start: start.toISOString(),
@@ -274,128 +479,147 @@ function getDateRange(period) {
   };
 }
 
-app.post("/api/shopify-summary", async (req, res) => {
-  const domain = process.env.SHOPIFY_STORE_DOMAIN;
-  const token = process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
-  const apiVersion =
-    process.env.SHOPIFY_API_VERSION || "2026-07";
+app.post(
+  "/api/shopify-summary",
+  async (req, res) => {
+    const domain =
+      process.env.SHOPIFY_STORE_DOMAIN;
 
-  if (!domain || !token) {
-    return res.status(503).json({
-      configured: false,
-      message:
-        "Shopify ist im Voice-JARVIS noch nicht verbunden."
-    });
-  }
+    const token =
+      process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
 
-  try {
-    const period =
-      req.body?.period === "yesterday"
-        ? "yesterday"
-        : "today";
+    const apiVersion =
+      process.env.SHOPIFY_API_VERSION ||
+      "2026-07";
 
-    const { start, end } = getDateRange(period);
+    if (!domain || !token) {
+      return res.status(503).json({
+        configured: false,
+        message:
+          "Shopify ist noch nicht verbunden."
+      });
+    }
 
-    const queryString =
-      `created_at:>=${start} created_at:<${end}`;
+    try {
+      const period =
+        req.body?.period === "yesterday"
+          ? "yesterday"
+          : "today";
 
-    const query = `
-      query JarvisOrders($query: String!) {
-        orders(
-          first: 100,
-          query: $query,
-          sortKey: CREATED_AT
-        ) {
-          nodes {
-            name
-            createdAt
-            cancelledAt
-            displayFinancialStatus
+      const { start, end } =
+        getDateRange(period);
 
-            currentTotalPriceSet {
-              shopMoney {
-                amount
-                currencyCode
+      const queryString =
+        `created_at:>=${start} created_at:<${end}`;
+
+      const query = `
+        query JarvisOrders($query: String!) {
+          orders(
+            first: 100,
+            query: $query,
+            sortKey: CREATED_AT
+          ) {
+            nodes {
+              name
+              createdAt
+              cancelledAt
+              displayFinancialStatus
+              currentTotalPriceSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
               }
             }
           }
         }
-      }
-    `;
+      `;
 
-    const shopifyResponse = await fetch(
-      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": token
-        },
-        body: JSON.stringify({
-          query,
-          variables: {
-            query: queryString
+      const shopifyResponse =
+        await fetch(
+          `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+              "X-Shopify-Access-Token":
+                token
+            },
+            body: JSON.stringify({
+              query,
+              variables: {
+                query: queryString
+              }
+            })
           }
-        })
+        );
+
+      const data =
+        await shopifyResponse.json();
+
+      if (
+        !shopifyResponse.ok ||
+        data.errors
+      ) {
+        return res.status(502).json({
+          configured: true,
+          error:
+            data.errors || data
+        });
       }
-    );
 
-    const data = await shopifyResponse.json();
+      const orders =
+        data.data?.orders?.nodes || [];
 
-    if (!shopifyResponse.ok || data.errors) {
-      console.error("Shopify error:", data);
+      const validOrders =
+        orders.filter(
+          order => !order.cancelledAt
+        );
 
-      return res.status(502).json({
+      const revenue =
+        validOrders.reduce(
+          (sum, order) =>
+            sum +
+            Number(
+              order
+                .currentTotalPriceSet
+                ?.shopMoney?.amount || 0
+            ),
+          0
+        );
+
+      const currency =
+        validOrders[0]
+          ?.currentTotalPriceSet
+          ?.shopMoney
+          ?.currencyCode || "EUR";
+
+      res.json({
         configured: true,
-        error: data.errors || data
+        period,
+        orders: validOrders.length,
+        order_value_sum:
+          Number(revenue.toFixed(2)),
+        currency
+      });
+
+    } catch (error) {
+      console.error(
+        "Shopify error:",
+        error
+      );
+
+      res.status(500).json({
+        configured: true,
+        error:
+          "Shopify-Abfrage fehlgeschlagen."
       });
     }
-
-    const orders =
-      data.data?.orders?.nodes || [];
-
-    const validOrders =
-      orders.filter(order => !order.cancelledAt);
-
-    const revenue =
-      validOrders.reduce((sum, order) => {
-        return (
-          sum +
-          Number(
-            order.currentTotalPriceSet?.shopMoney?.amount || 0
-          )
-        );
-      }, 0);
-
-    const currency =
-      validOrders[0]?.currentTotalPriceSet?.shopMoney
-        ?.currencyCode || "EUR";
-
-    res.json({
-      configured: true,
-      period,
-      orders: validOrders.length,
-      order_value_sum:
-        Number(revenue.toFixed(2)),
-      currency,
-      note:
-        "Summe der aktuellen Bestellwerte aus Shopify. Kann von Shopify Analytics total_sales abweichen."
-    });
-
-  } catch (error) {
-    console.error("Shopify request error:", error);
-
-    res.status(500).json({
-      configured: true,
-      error: "Shopify-Abfrage fehlgeschlagen."
-    });
   }
-});
+);
 
-
-/* =========================================================
-   GOOGLE OAUTH
-   ========================================================= */
+/* GOOGLE */
 
 async function getGoogleAccessToken() {
   const clientId =
@@ -415,279 +639,414 @@ async function getGoogleAccessToken() {
     return null;
   }
 
-  const body = new URLSearchParams({
-    client_id: clientId,
-    client_secret: clientSecret,
-    refresh_token: refreshToken,
-    grant_type: "refresh_token"
-  });
+  const body =
+    new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token"
+    });
 
-  const response = await fetch(
-    "https://oauth2.googleapis.com/token",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/x-www-form-urlencoded"
-      },
-      body
-    }
-  );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-
-    console.error(
-      "Google OAuth error:",
-      errorText
+  const response =
+    await fetch(
+      "https://oauth2.googleapis.com/token",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/x-www-form-urlencoded"
+        },
+        body
+      }
     );
 
+  if (!response.ok) {
     throw new Error(
       "Google Access Token konnte nicht erneuert werden."
     );
   }
 
-  const data = await response.json();
+  const data =
+    await response.json();
 
   return data.access_token;
 }
 
+/* GMAIL */
 
-/* =========================================================
-   GMAIL
-   ========================================================= */
+app.post(
+  "/api/important-emails",
+  async (req, res) => {
+    try {
+      const accessToken =
+        await getGoogleAccessToken();
 
-app.post("/api/important-emails", async (req, res) => {
-  try {
-    const accessToken =
-      await getGoogleAccessToken();
-
-    if (!accessToken) {
-      return res.status(503).json({
-        configured: false,
-        message:
-          "Gmail ist im Voice-JARVIS noch nicht verbunden."
-      });
-    }
-
-    const requestedLimit =
-      Number(req.body?.limit || 3);
-
-    const limit =
-      Math.min(
-        Math.max(requestedLimit, 1),
-        10
-      );
-
-    const gmailQuery =
-      encodeURIComponent(
-        "newer_than:2d -in:spam -in:trash -category:promotions"
-      );
-
-    const listResponse = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${gmailQuery}&maxResults=${limit}`,
-      {
-        headers: {
-          Authorization:
-            `Bearer ${accessToken}`
-        }
+      if (!accessToken) {
+        return res.status(503).json({
+          configured: false,
+          message:
+            "Gmail ist noch nicht verbunden."
+        });
       }
-    );
 
-    const listData =
-      await listResponse.json();
+      const limit =
+        Math.min(
+          Math.max(
+            Number(req.body?.limit || 3),
+            1
+          ),
+          10
+        );
 
-    if (!listResponse.ok) {
+      const gmailQuery =
+        encodeURIComponent(
+          "newer_than:2d -in:spam -in:trash -category:promotions"
+        );
+
+      const listResponse =
+        await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${gmailQuery}&maxResults=${limit}`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${accessToken}`
+            }
+          }
+        );
+
+      const listData =
+        await listResponse.json();
+
+      if (!listResponse.ok) {
+        return res.status(502).json({
+          configured: true,
+          error: listData
+        });
+      }
+
+      const emails = [];
+
+      for (
+        const item of
+        listData.messages || []
+      ) {
+        const messageResponse =
+          await fetch(
+            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${item.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
+            {
+              headers: {
+                Authorization:
+                  `Bearer ${accessToken}`
+              }
+            }
+          );
+
+        if (!messageResponse.ok) {
+          continue;
+        }
+
+        const message =
+          await messageResponse.json();
+
+        const headers =
+          Object.fromEntries(
+            (
+              message.payload?.headers ||
+              []
+            ).map(header => [
+              header.name.toLowerCase(),
+              header.value
+            ])
+          );
+
+        emails.push({
+          from: headers.from || "",
+          subject:
+            headers.subject || "",
+          date: headers.date || "",
+          snippet:
+            message.snippet || ""
+        });
+      }
+
+      res.json({
+        configured: true,
+        emails
+      });
+
+    } catch (error) {
       console.error(
-        "Gmail list error:",
-        listData
+        "Gmail error:",
+        error
       );
 
-      return res.status(502).json({
+      res.status(500).json({
         configured: true,
-        error: listData
+        error:
+          "Gmail-Abfrage fehlgeschlagen."
       });
     }
+  }
+);
 
-    const messageIds =
-      listData.messages || [];
+/* CALENDAR */
 
-    const emails = [];
+app.post(
+  "/api/calendar-today",
+  async (req, res) => {
+    try {
+      const accessToken =
+        await getGoogleAccessToken();
 
-    for (const item of messageIds) {
-      const messageResponse = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${item.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
-        {
+      if (!accessToken) {
+        return res.status(503).json({
+          configured: false,
+          message:
+            "Google Kalender ist noch nicht verbunden."
+        });
+      }
+
+      const todayText =
+        berlinDateString();
+
+      const start =
+        new Date(
+          `${todayText}T00:00:00+02:00`
+        );
+
+      const end =
+        new Date(start);
+
+      end.setUTCDate(
+        end.getUTCDate() + 1
+      );
+
+      const url =
+        new URL(
+          "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+        );
+
+      url.searchParams.set(
+        "timeMin",
+        start.toISOString()
+      );
+
+      url.searchParams.set(
+        "timeMax",
+        end.toISOString()
+      );
+
+      url.searchParams.set(
+        "singleEvents",
+        "true"
+      );
+
+      url.searchParams.set(
+        "orderBy",
+        "startTime"
+      );
+
+      const response =
+        await fetch(url, {
           headers: {
             Authorization:
               `Bearer ${accessToken}`
           }
-        }
-      );
+        });
 
-      const message =
-        await messageResponse.json();
+      const data =
+        await response.json();
 
-      if (!messageResponse.ok) {
-        continue;
+      if (!response.ok) {
+        return res.status(502).json({
+          configured: true,
+          error: data
+        });
       }
 
-      const headerArray =
-        message.payload?.headers || [];
-
-      const headers =
-        Object.fromEntries(
-          headerArray.map(header => [
-            header.name.toLowerCase(),
-            header.value
-          ])
+      const events =
+        (data.items || []).map(
+          event => ({
+            summary:
+              event.summary ||
+              "(ohne Titel)",
+            start:
+              event.start?.dateTime ||
+              event.start?.date,
+            end:
+              event.end?.dateTime ||
+              event.end?.date,
+            location:
+              event.location || ""
+          })
         );
 
-      emails.push({
-        from: headers.from || "",
-        subject: headers.subject || "",
-        date: headers.date || "",
-        snippet: message.snippet || ""
+      res.json({
+        configured: true,
+        events
+      });
+
+    } catch (error) {
+      console.error(
+        "Calendar error:",
+        error
+      );
+
+      res.status(500).json({
+        configured: true,
+        error:
+          "Kalender-Abfrage fehlgeschlagen."
       });
     }
-
-    res.json({
-      configured: true,
-      emails
-    });
-
-  } catch (error) {
-    console.error("Gmail error:", error);
-
-    res.status(500).json({
-      configured: true,
-      error:
-        "Gmail-Abfrage fehlgeschlagen."
-    });
   }
-});
+);
 
+/* WEATHER */
 
-/* =========================================================
-   GOOGLE CALENDAR
-   ========================================================= */
+app.post(
+  "/api/weather",
+  async (req, res) => {
+    try {
+      const location =
+        String(
+          req.body?.location || ""
+        ).trim();
 
-app.post("/api/calendar-today", async (req, res) => {
-  try {
-    const accessToken =
-      await getGoogleAccessToken();
+      if (!location) {
+        return res.status(400).json({
+          error: "Ort fehlt."
+        });
+      }
 
-    if (!accessToken) {
-      return res.status(503).json({
-        configured: false,
-        message:
-          "Google Kalender ist im Voice-JARVIS noch nicht verbunden."
-      });
-    }
+      const geoUrl =
+        new URL(
+          "https://geocoding-api.open-meteo.com/v1/search"
+        );
 
-    const todayText =
-      berlinDateString();
-
-    const start =
-      new Date(
-        `${todayText}T00:00:00+02:00`
+      geoUrl.searchParams.set(
+        "name",
+        location
       );
 
-    const end =
-      new Date(start);
-
-    end.setUTCDate(
-      end.getUTCDate() + 1
-    );
-
-    const url =
-      new URL(
-        "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+      geoUrl.searchParams.set(
+        "count",
+        "1"
       );
 
-    url.searchParams.set(
-      "timeMin",
-      start.toISOString()
-    );
+      geoUrl.searchParams.set(
+        "language",
+        "de"
+      );
 
-    url.searchParams.set(
-      "timeMax",
-      end.toISOString()
-    );
+      geoUrl.searchParams.set(
+        "format",
+        "json"
+      );
 
-    url.searchParams.set(
-      "singleEvents",
-      "true"
-    );
+      const geoResponse =
+        await fetch(geoUrl);
 
-    url.searchParams.set(
-      "orderBy",
-      "startTime"
-    );
+      const geoData =
+        await geoResponse.json();
 
-    const calendarResponse =
-      await fetch(url, {
-        headers: {
-          Authorization:
-            `Bearer ${accessToken}`
+      const place =
+        geoData.results?.[0];
+
+      if (!place) {
+        return res.status(404).json({
+          error:
+            `Ort "${location}" nicht gefunden.`
+        });
+      }
+
+      const weatherUrl =
+        new URL(
+          "https://api.open-meteo.com/v1/forecast"
+        );
+
+      weatherUrl.searchParams.set(
+        "latitude",
+        String(place.latitude)
+      );
+
+      weatherUrl.searchParams.set(
+        "longitude",
+        String(place.longitude)
+      );
+
+      weatherUrl.searchParams.set(
+        "current",
+        "temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m"
+      );
+
+      weatherUrl.searchParams.set(
+        "daily",
+        "temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+      );
+
+      weatherUrl.searchParams.set(
+        "timezone",
+        "auto"
+      );
+
+      weatherUrl.searchParams.set(
+        "forecast_days",
+        "1"
+      );
+
+      const weatherResponse =
+        await fetch(weatherUrl);
+
+      const weatherData =
+        await weatherResponse.json();
+
+      if (!weatherResponse.ok) {
+        return res.status(502).json({
+          error: weatherData
+        });
+      }
+
+      res.json({
+        configured: true,
+        location: {
+          name: place.name,
+          region:
+            place.admin1 || "",
+          country:
+            place.country || ""
+        },
+        current:
+          weatherData.current || {},
+        today: {
+          max_temperature:
+            weatherData.daily
+              ?.temperature_2m_max?.[0],
+
+          min_temperature:
+            weatherData.daily
+              ?.temperature_2m_min?.[0],
+
+          max_precipitation_probability:
+            weatherData.daily
+              ?.precipitation_probability_max?.[0]
         }
       });
 
-    const data =
-      await calendarResponse.json();
-
-    if (!calendarResponse.ok) {
+    } catch (error) {
       console.error(
-        "Calendar error:",
-        data
+        "Weather error:",
+        error
       );
 
-      return res.status(502).json({
-        configured: true,
-        error: data
+      res.status(500).json({
+        error:
+          "Wetter konnte nicht geladen werden."
       });
     }
-
-    const events =
-      (data.items || []).map(event => ({
-        summary:
-          event.summary || "(ohne Titel)",
-
-        start:
-          event.start?.dateTime ||
-          event.start?.date,
-
-        end:
-          event.end?.dateTime ||
-          event.end?.date,
-
-        location:
-          event.location || ""
-      }));
-
-    res.json({
-      configured: true,
-      events
-    });
-
-  } catch (error) {
-    console.error(
-      "Calendar request error:",
-      error
-    );
-
-    res.status(500).json({
-      configured: true,
-      error:
-        "Kalender-Abfrage fehlgeschlagen."
-    });
   }
-});
+);
 
-
-/* =========================================================
-   HOMEPAGE + HEALTH
-   ========================================================= */
+/* HOMEPAGE */
 
 app.get("/", (req, res) => {
   res.sendFile(
@@ -699,14 +1058,12 @@ app.get("/", (req, res) => {
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
-    service: "jarvis-druckelite24"
+    service:
+      "jarvis-druckelite24"
   });
 });
 
-
-/* =========================================================
-   START SERVER
-   ========================================================= */
+/* START */
 
 app.listen(
   PORT,
