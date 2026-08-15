@@ -162,7 +162,7 @@ app.post(
       );
 
       const openAIResponse = await fetch(
-        "https://api.openai.com/v1/realtime/calls",
+       "https://api.openai.com/v1/realtime/calls?model=gpt-realtime",
         {
           method: "POST",
           headers: {
