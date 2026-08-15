@@ -2,8 +2,16 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V7.9 · INTRO-MUSIK + ECHTE LAUTSTÄRKE-ANGLEICHUNG
-   (Basis: V7.8, überarbeitet am 15.08.2026)
+   V8.0 · ZEITMESSUNG
+   (Basis: V7.9, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN GEGENÜBER V7.9:
+   15. Zeitmessung eingebaut (Browser-Konsole, Zeilen mit "[TIMING]"):
+       Transkription, ChatGPT-Antwort, Zeit bis der erste Ton hörbar
+       wird, komplette Sprachausgabe, Gesamtzeit pro Runde. Zweck:
+       endlich sehen, WO die Zeit tatsächlich hängt, statt weiter zu
+       raten. Browser-Konsole öffnen (F12), eine Frage stellen, die
+       Zeilen mit "[TIMING]" ablesen.
 
    ÄNDERUNGEN GEGENÜBER V7.8:
    13. Die Startzeremonie-Kürzung aus V7.6 hatte die Intro-Musik
@@ -1109,6 +1117,7 @@ async function speakWithElevenLabs(text) {
   }, ELEVEN_TIMEOUT_MS);
 
   assistantSpeaking = true;
+  const speakStart = performance.now();
 
   try {
     setJarvisState("thinking");
@@ -1127,6 +1136,10 @@ async function speakWithElevenLabs(text) {
       const blob = await nextBlobPromise;
       if (!active || !blob) break;
 
+      if (i === 0) {
+        console.log(`[TIMING] Zeit bis erster Ton hörbar wird: ${Math.round(performance.now() - speakStart)}ms`);
+      }
+
       if (i + 1 < chunks.length) {
         nextBlobPromise = fetchTtsBlob(chunks[i + 1], ttsController);
       }
@@ -1136,6 +1149,8 @@ async function speakWithElevenLabs(text) {
 
       await playBlob(blob);
     }
+
+    console.log(`[TIMING] Komplette Sprachausgabe (${chunks.length} Satz-Teile) fertig: ${Math.round(performance.now() - speakStart)}ms`);
   } finally {
     clearTimeout(timeout);
     assistantSpeaking = false;
@@ -1153,12 +1168,15 @@ async function processRecordedAudio(blob) {
   processing = true;
 
   let spokeResponse = false;
+  const turnStart = performance.now();
 
   try {
     setJarvisState("thinking");
     setLog("Verarbeite Sprache …");
 
+    const transcribeStart = performance.now();
     const transcript = await transcribeAudio(blob);
+    console.log(`[TIMING] Transkription (Browser -> Server -> zurück): ${Math.round(performance.now() - transcribeStart)}ms`);
     if (!active) return;
 
     console.log("Mattl:", transcript);
@@ -1186,13 +1204,17 @@ async function processRecordedAudio(blob) {
     await sleep(150);
     setLog("Denke nach …");
 
+    const chatStart = performance.now();
     const answer = await askJarvis(transcript);
+    console.log(`[TIMING] ChatGPT-Antwort (Browser -> Server -> zurück): ${Math.round(performance.now() - chatStart)}ms`);
     if (!active) return;
 
     console.log("JARVIS:", answer);
 
     await speakWithElevenLabs(answer);
     spokeResponse = true;
+
+    console.log(`[TIMING] ===> GESAMT von "Aufnahme fertig" bis "letzter Ton verklungen": ${Math.round(performance.now() - turnStart)}ms`);
   } catch (error) {
     console.error("JARVIS turn error:", error);
 
