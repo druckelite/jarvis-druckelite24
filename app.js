@@ -2,13 +2,15 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V5.5
-   - ElevenLabs für Startbegrüßung
-   - Doppelbegrüßung behoben
-   - cedar-Fallback nur bei echtem ElevenLabs-Fehler
-   - OpenAI Realtime weiterhin für normale Antworten
-   - Intro leise + sanftes Ausblenden
-   - Mikro während JARVIS spricht aus
+   V5.6
+   ---------------------------------------------------------
+   - ElevenLabs: Startbegrüßung
+   - ElevenLabs: normale Gespräche
+   - OpenAI Realtime denkt + liefert Text
+   - Shopify/Wetter-Toolantworten vorerst weiterhin cedar
+   - Semantic VAD bleibt aktiv
+   - Mikro bleibt beim Sprechen komplett aus
+   - Doppelbegrüßung verhindert
    ========================================================= */
 
 
@@ -30,29 +32,38 @@ const remoteAudio =
 
 
 /* =========================================================
-   CONNECTION
+   REALTIME CONNECTION
    ========================================================= */
 
 let pc = null;
+
 let dc = null;
+
 let localStream = null;
 
 let active = false;
+
 let connecting = false;
 
 let assistantSpeaking = false;
+
 let waitingForAssistant = false;
+
 let startupGreeting = false;
 
 
 /* =========================================================
-   OPENAI AUDIO OUTPUT
+   OPENAI AUDIO
    ========================================================= */
 
 let outputAudioContext = null;
+
 let outputSource = null;
+
 let outputGain = null;
+
 let outputCompressor = null;
+
 let lastRemoteStream = null;
 
 
@@ -60,16 +71,24 @@ let lastRemoteStream = null;
    ELEVENLABS AUDIO
    ========================================================= */
 
-let elevenGreetingAudio = null;
-let elevenGreetingObjectUrl = null;
+let elevenAudio = null;
 
-/*
- * Wichtig:
- * Verhindert, dass nach einem erfolgreich
- * beendeten ElevenLabs-Audio noch der
- * cedar-Fallback ausgelöst wird.
- */
-let elevenGreetingSettled = false;
+let elevenObjectUrl = null;
+
+let elevenPlaybackFinished = false;
+
+
+/* =========================================================
+   OPENAI TEXT RESPONSE
+   ========================================================= */
+
+let currentTextResponse = "";
+
+let currentTextResponseId = null;
+
+let currentTextResponsePurpose = null;
+
+let currentResponseHasToolCall = false;
 
 
 /* =========================================================
@@ -77,6 +96,7 @@ let elevenGreetingSettled = false;
    ========================================================= */
 
 let introAudio = null;
+
 let introFadeTimer = null;
 
 
@@ -102,9 +122,16 @@ const MAX_HANDLED_TOOL_CALLS =
    SETTINGS
    ========================================================= */
 
+/*
+ * Nur für cedar-Toolantworten.
+ */
 const JARVIS_OUTPUT_GAIN =
   2.75;
 
+
+/*
+ * Intro.
+ */
 const INTRO_START =
   4;
 
@@ -123,10 +150,20 @@ const INTRO_DUCK_DURATION_MS =
 const INTRO_FADE_DURATION_MS =
   15000;
 
+
+/*
+ * Nach Audioausgabe kurze Pause,
+ * damit kein Lautsprecherecho
+ * direkt als neuer Satz erkannt wird.
+ */
 const LISTENING_RESUME_DELAY_MS =
   700;
 
-const ELEVEN_GREETING_TIMEOUT_MS =
+
+/*
+ * ElevenLabs Timeout.
+ */
+const ELEVEN_TIMEOUT_MS =
   20000;
 
 
@@ -140,8 +177,10 @@ function setStatus(text) {
     return;
   }
 
+
   statusEl.textContent =
     text;
+
 
   if (
     text === "Online"
@@ -166,6 +205,7 @@ function setLog(text) {
     return;
   }
 
+
   logEl.textContent =
     text;
 }
@@ -176,6 +216,7 @@ function setButtonActive(value) {
   if (!button) {
     return;
   }
+
 
   if (value) {
 
@@ -240,6 +281,7 @@ function safeSend(payload) {
       )
     );
 
+
     return true;
 
 
@@ -250,17 +292,18 @@ function safeSend(payload) {
       error
     );
 
+
     return false;
   }
 }
 
 
 /* =========================================================
-   RESPONSE WATCHDOG
+   WATCHDOG
    ========================================================= */
 
 function armResponseWatchdog(
-  ms = 12000
+  ms = 15000
 ) {
 
   clearResponseWatchdog();
@@ -271,11 +314,14 @@ function armResponseWatchdog(
       () => {
 
         console.warn(
-          "Watchdog: keine Audio-Antwort erhalten."
+          "JARVIS Watchdog ausgelöst."
         );
 
 
-        if (active) {
+        if (
+          active &&
+          !assistantSpeaking
+        ) {
 
           resumeListening();
         }
@@ -449,7 +495,7 @@ function getBerlinHour() {
   } catch (error) {
 
     console.warn(
-      "Berlin-Zeit konnte nicht bestimmt werden:",
+      "Berlin-Zeit Fehler:",
       error
     );
   }
@@ -472,7 +518,7 @@ function pickRandom(items) {
 
 
 /* =========================================================
-   GREETING
+   STARTBEGRÜSSUNG
    ========================================================= */
 
 function getGreeting() {
@@ -554,6 +600,7 @@ function stopIntro() {
       introFadeTimer
     );
 
+
     introFadeTimer =
       null;
   }
@@ -610,6 +657,7 @@ async function startIntro() {
 
           resolved =
             true;
+
 
           resolve();
         };
@@ -704,6 +752,7 @@ function duckIntro() {
       introFadeTimer
     );
 
+
     introFadeTimer =
       null;
   }
@@ -727,8 +776,10 @@ function duckIntro() {
             introFadeTimer
           );
 
+
           introFadeTimer =
             null;
+
 
           return;
         }
@@ -771,6 +822,7 @@ function duckIntro() {
           clearInterval(
             introFadeTimer
           );
+
 
           introFadeTimer =
             null;
@@ -818,8 +870,10 @@ function fadeIntroOut() {
             introFadeTimer
           );
 
+
           introFadeTimer =
             null;
+
 
           return;
         }
@@ -880,12 +934,10 @@ function fadeIntroOut() {
 
 
 /* =========================================================
-   OPENAI AUDIO
+   CEDAR AUDIO OUTPUT
    ========================================================= */
 
-function setJarvisGain(
-  value
-) {
+function setJarvisGain(value) {
 
   if (
     !outputGain ||
@@ -1057,30 +1109,22 @@ async function connectRemoteAudio(
    ELEVENLABS CLEANUP
    ========================================================= */
 
-/*
- * WICHTIGER FIX:
- *
- * onended und onerror werden zuerst entfernt.
- * Erst DANACH wird src entfernt.
- *
- * Dadurch kann das normale Aufräumen
- * KEIN künstliches error-Event mehr erzeugen,
- * das anschließend cedar startet.
- */
-function stopElevenGreeting() {
+function stopElevenAudio() {
 
   const audio =
-    elevenGreetingAudio;
+    elevenAudio;
 
 
-  elevenGreetingAudio =
+  elevenAudio =
     null;
 
 
   if (audio) {
 
     /*
-     * Eventhandler VOR src-Änderung entfernen.
+     * Eventhandler zuerst entfernen.
+     * Sonst könnte remove src
+     * einen künstlichen Fehler auslösen.
      */
     audio.onended =
       null;
@@ -1107,14 +1151,14 @@ function stopElevenGreeting() {
 
 
   if (
-    elevenGreetingObjectUrl
+    elevenObjectUrl
   ) {
 
     const oldUrl =
-      elevenGreetingObjectUrl;
+      elevenObjectUrl;
 
 
-    elevenGreetingObjectUrl =
+    elevenObjectUrl =
       null;
 
 
@@ -1130,94 +1174,52 @@ function stopElevenGreeting() {
 
 
 /* =========================================================
-   OPENAI FALLBACK GREETING
+   GENERISCHE ELEVENLABS AUSGABE
    ========================================================= */
 
-function requestOpenAIFallbackGreeting(
-  greeting
+async function speakWithElevenLabs(
+  text,
+  options = {}
 ) {
 
-  /*
-   * Fallback darf nur einmal laufen.
-   */
-  if (!active) {
+  const {
+    fallbackGreeting = false,
+    greetingText = ""
+  } = options;
+
+
+  const cleanText =
+    String(
+      text ||
+      ""
+    ).trim();
+
+
+  if (!cleanText) {
+
+    if (active) {
+
+      resumeListening();
+    }
+
     return;
   }
 
 
-  console.warn(
-    "ElevenLabs nicht verfügbar – OpenAI-Fallback."
-  );
-
-
-  startupGreeting =
-    true;
-
-
-  muteForAssistant();
-
-
-  safeSend({
-    type:
-      "response.create",
-
-    response: {
-
-      output_modalities: [
-        "audio"
-      ],
-
-      tool_choice:
-        "none",
-
-      max_output_tokens:
-        250,
-
-      instructions:
-        `Sprich ausschließlich diesen Satz auf Deutsch:
-
-"${greeting}"
-
-Kein weiterer Satz.
-Sprich ihn vollständig zu Ende.
-Danach schweigen.`
-    }
-  });
-
-
-  armResponseWatchdog(
-    15000
-  );
-}
-
-
-/* =========================================================
-   ELEVENLABS STARTUP GREETING
-   ========================================================= */
-
-async function requestStartupGreeting() {
-
-  startupGreeting =
-    true;
-
-
   /*
-   * Neuer Begrüßungsvorgang.
+   * Mikro bleibt komplett aus,
+   * während Audio geladen wird.
    */
-  elevenGreetingSettled =
-    false;
-
-
   muteForAssistant();
 
 
   setLog(
-    "JARVIS startet …"
+    "JARVIS antwortet …"
   );
 
 
-  const greeting =
-    getGreeting();
+  elevenPlaybackFinished =
+    false;
 
 
   const controller =
@@ -1231,25 +1233,13 @@ async function requestStartupGreeting() {
         controller.abort();
 
       },
-      ELEVEN_GREETING_TIMEOUT_MS
+      ELEVEN_TIMEOUT_MS
     );
 
 
   try {
 
-    /*
-     * Alte Audioinstanz sauber
-     * entfernen.
-     */
-    stopElevenGreeting();
-
-
-    /*
-     * Nach Cleanup bleibt der neue
-     * Vorgang aktiv.
-     */
-    elevenGreetingSettled =
-      false;
+    stopElevenAudio();
 
 
     const response =
@@ -1268,7 +1258,7 @@ async function requestStartupGreeting() {
           body:
             JSON.stringify({
               text:
-                greeting
+                cleanText
             }),
 
           signal:
@@ -1309,7 +1299,7 @@ async function requestStartupGreeting() {
     }
 
 
-    elevenGreetingObjectUrl =
+    elevenObjectUrl =
       URL.createObjectURL(
         blob
       );
@@ -1317,11 +1307,11 @@ async function requestStartupGreeting() {
 
     const audio =
       new Audio(
-        elevenGreetingObjectUrl
+        elevenObjectUrl
       );
 
 
-    elevenGreetingAudio =
+    elevenAudio =
       audio;
 
 
@@ -1356,54 +1346,26 @@ async function requestStartupGreeting() {
     );
 
 
-    /*
-     * =====================================================
-     * ERFOLGREICH BEENDET
-     * =====================================================
-     */
     audio.onended =
       () => {
 
-        /*
-         * Wenn bereits verarbeitet,
-         * nichts mehr tun.
-         */
         if (
-          elevenGreetingSettled
+          elevenPlaybackFinished
         ) {
 
           return;
         }
 
 
-        /*
-         * SOFORT sperren.
-         * Dadurch kann kein späteres
-         * error-Event mehr cedar starten.
-         */
-        elevenGreetingSettled =
+        elevenPlaybackFinished =
           true;
-
-
-        console.log(
-          "ElevenLabs Begrüßung erfolgreich beendet."
-        );
 
 
         assistantSpeaking =
           false;
 
 
-        startupGreeting =
-          false;
-
-
-        /*
-         * Handler werden in
-         * stopElevenGreeting zuerst
-         * entfernt.
-         */
-        stopElevenGreeting();
+        stopElevenAudio();
 
 
         setTimeout(
@@ -1420,32 +1382,23 @@ async function requestStartupGreeting() {
       };
 
 
-    /*
-     * =====================================================
-     * ECHTER AUDIOFEHLER
-     * =====================================================
-     */
     audio.onerror =
       event => {
 
-        /*
-         * Nach erfolgreichem Ende
-         * niemals Fallback starten.
-         */
         if (
-          elevenGreetingSettled
+          elevenPlaybackFinished
         ) {
 
           return;
         }
 
 
-        elevenGreetingSettled =
+        elevenPlaybackFinished =
           true;
 
 
         console.error(
-          "ElevenLabs echter Audiofehler:",
+          "ElevenLabs Audiofehler:",
           event
         );
 
@@ -1454,15 +1407,42 @@ async function requestStartupGreeting() {
           false;
 
 
-        stopElevenGreeting();
+        stopElevenAudio();
 
 
         /*
-         * NUR bei echtem Fehler
-         * cedar verwenden.
+         * Nur bei Startbegrüßung
+         * verwenden wir noch cedar
+         * als Sicherheits-Fallback.
          */
-        requestOpenAIFallbackGreeting(
-          greeting
+        if (
+          fallbackGreeting &&
+          greetingText
+        ) {
+
+          requestOpenAIFallbackGreeting(
+            greetingText
+          );
+
+          return;
+        }
+
+
+        setLog(
+          "Sprachausgabe konnte nicht gestartet werden."
+        );
+
+
+        setTimeout(
+          () => {
+
+            if (active) {
+
+              resumeListening();
+            }
+
+          },
+          500
         );
       };
 
@@ -1477,26 +1457,20 @@ async function requestStartupGreeting() {
     );
 
 
-    /*
-     * Wenn ElevenLabs bereits
-     * erfolgreich fertig war,
-     * darf dieser Catch ebenfalls
-     * keinen Fallback starten.
-     */
     if (
-      elevenGreetingSettled
+      elevenPlaybackFinished
     ) {
 
       return;
     }
 
 
-    elevenGreetingSettled =
+    elevenPlaybackFinished =
       true;
 
 
     console.error(
-      "ElevenLabs greeting error:",
+      "ElevenLabs Fehler:",
       error
     );
 
@@ -1505,16 +1479,208 @@ async function requestStartupGreeting() {
       false;
 
 
-    stopElevenGreeting();
+    stopElevenAudio();
 
 
-    /*
-     * Nur hier echter Fallback.
-     */
-    requestOpenAIFallbackGreeting(
-      greeting
+    if (
+      fallbackGreeting &&
+      greetingText
+    ) {
+
+      requestOpenAIFallbackGreeting(
+        greetingText
+      );
+
+      return;
+    }
+
+
+    setLog(
+      "ElevenLabs konnte nicht antworten."
+    );
+
+
+    setTimeout(
+      () => {
+
+        if (active) {
+
+          resumeListening();
+        }
+
+      },
+      500
     );
   }
+}
+
+
+/* =========================================================
+   STARTBEGRÜSSUNG
+   ========================================================= */
+
+async function requestStartupGreeting() {
+
+  startupGreeting =
+    true;
+
+
+  const greeting =
+    getGreeting();
+
+
+  await speakWithElevenLabs(
+    greeting,
+    {
+      fallbackGreeting:
+        true,
+
+      greetingText:
+        greeting
+    }
+  );
+}
+
+
+/* =========================================================
+   CEDAR START-FALLBACK
+   ========================================================= */
+
+function requestOpenAIFallbackGreeting(
+  greeting
+) {
+
+  if (!active) {
+    return;
+  }
+
+
+  console.warn(
+    "ElevenLabs Start-Fallback: cedar."
+  );
+
+
+  muteForAssistant();
+
+
+  safeSend({
+    type:
+      "response.create",
+
+    response: {
+
+      output_modalities: [
+        "audio"
+      ],
+
+      tool_choice:
+        "none",
+
+      max_output_tokens:
+        250,
+
+      metadata: {
+        response_purpose:
+          "startup_fallback"
+      },
+
+      instructions:
+        `Sprich ausschließlich diesen Satz auf Deutsch:
+
+"${greeting}"
+
+Kein weiterer Satz.
+Sprich vollständig zu Ende.
+Danach schweigen.`
+    }
+  });
+
+
+  armResponseWatchdog(
+    15000
+  );
+}
+
+
+/* =========================================================
+   NORMAL RESPONSE
+   ========================================================= */
+
+/*
+ * Semantic VAD erzeugt jetzt KEINE
+ * automatische Antwort mehr.
+ *
+ * Nach speech_stopped fordern wir
+ * bewusst eine TEXT-Antwort an.
+ */
+function requestNormalTextResponse() {
+
+  if (
+    !active ||
+    !dc ||
+    dc.readyState !== "open"
+  ) {
+
+    return;
+  }
+
+
+  currentTextResponse =
+    "";
+
+  currentTextResponseId =
+    null;
+
+  currentTextResponsePurpose =
+    "normal_elevenlabs";
+
+  currentResponseHasToolCall =
+    false;
+
+
+  setJarvisState(
+    "thinking"
+  );
+
+
+  setLog(
+    "Denke nach …"
+  );
+
+
+  setMicrophoneEnabled(
+    false
+  );
+
+
+  waitingForAssistant =
+    true;
+
+
+  safeSend({
+    type:
+      "response.create",
+
+    response: {
+
+      output_modalities: [
+        "text"
+      ],
+
+      metadata: {
+        response_purpose:
+          "normal_elevenlabs"
+      },
+
+      max_output_tokens:
+        350
+    }
+  });
+
+
+  armResponseWatchdog(
+    20000
+  );
 }
 
 
@@ -1538,6 +1704,10 @@ async function runTool(event) {
   handledToolCalls.add(
     event.call_id
   );
+
+
+  currentResponseHasToolCall =
+    true;
 
 
   if (
@@ -1709,6 +1879,10 @@ async function runTool(event) {
   }
 
 
+  /*
+   * Echtes Ergebnis zurück
+   * an OpenAI-Konversation.
+   */
   safeSend({
     type:
       "conversation.item.create",
@@ -1729,6 +1903,12 @@ async function runTool(event) {
   });
 
 
+  /*
+   * WICHTIG:
+   *
+   * Shopify/Wetter bleiben in
+   * diesem Test noch auf cedar.
+   */
   safeSend({
     type:
       "response.create",
@@ -1738,6 +1918,11 @@ async function runTool(event) {
       output_modalities: [
         "audio"
       ],
+
+      metadata: {
+        response_purpose:
+          "tool_cedar"
+      },
 
       instructions:
         `Beantworte die letzte Frage ausschließlich anhand des gerade gelieferten Tool-Ergebnisses.
@@ -1814,7 +1999,7 @@ async function startJarvis() {
 
     /*
      * AudioContext direkt nach
-     * Benutzer-Klick aktivieren.
+     * Nutzer-Klick aktivieren.
      */
     try {
 
@@ -1852,13 +2037,23 @@ async function startJarvis() {
     }
 
 
+    /*
+     * Intro.
+     */
     await startIntro();
 
 
+    /*
+     * WebRTC.
+     */
     pc =
       new RTCPeerConnection();
 
 
+    /*
+     * cedar-Audio wird weiterhin
+     * für Tool-Antworten gebraucht.
+     */
     pc.ontrack =
       async event => {
 
@@ -1901,6 +2096,9 @@ async function startJarvis() {
       };
 
 
+    /*
+     * Realtime DataChannel.
+     */
     dc =
       pc.createDataChannel(
         "oai-events"
@@ -1930,6 +2128,51 @@ async function startJarvis() {
         );
 
 
+        /*
+         * =================================================
+         * WICHTIG:
+         *
+         * Server.js startet noch mit create_response:true.
+         *
+         * Direkt nach Öffnen der Verbindung
+         * überschreiben wir die Session.
+         *
+         * Semantic VAD bleibt erhalten,
+         * erzeugt aber KEINE automatische
+         * cedar-Antwort mehr.
+         * =================================================
+         */
+        safeSend({
+          type:
+            "session.update",
+
+          session: {
+
+            output_modalities: [
+              "text"
+            ],
+
+            turn_detection: {
+
+              type:
+                "semantic_vad",
+
+              eagerness:
+                "low",
+
+              create_response:
+                false,
+
+              interrupt_response:
+                false
+            }
+          }
+        });
+
+
+        /*
+         * Mikro während Start aus.
+         */
         setMicrophoneEnabled(
           false
         );
@@ -1940,6 +2183,9 @@ async function startJarvis() {
         );
 
 
+        /*
+         * Intro kurz alleine.
+         */
         await sleep(
           INTRO_VOICE_DELAY_MS
         );
@@ -1955,12 +2201,7 @@ async function startJarvis() {
 
 
         /*
-         * Nur ElevenLabs startet
-         * die Begrüßung.
-         *
-         * Hier wird KEIN zusätzliches
-         * response.create an OpenAI
-         * gesendet.
+         * Neue ElevenLabs-Stimme.
          */
         await requestStartupGreeting();
       };
@@ -2021,6 +2262,21 @@ async function startJarvis() {
 
 
         /* =================================================
+           SESSION UPDATED
+           ================================================= */
+
+        if (
+          event.type ===
+          "session.updated"
+        ) {
+
+          console.log(
+            "Realtime Session auf ElevenLabs-Textmodus umgestellt."
+          );
+        }
+
+
+        /* =================================================
            USER SPEECH START
            ================================================= */
 
@@ -2055,17 +2311,23 @@ async function startJarvis() {
           "input_audio_buffer.speech_stopped"
         ) {
 
+          /*
+           * Mikro sofort aus.
+           */
           muteForAssistant();
 
 
-          setLog(
-            "Denke nach …"
-          );
+          /*
+           * Da create_response:false,
+           * müssen wir die Modellantwort
+           * jetzt selbst starten.
+           */
+          requestNormalTextResponse();
         }
 
 
         /* =================================================
-           TRANSCRIPTION
+           USER TRANSCRIPT
            ================================================= */
 
         if (
@@ -2096,7 +2358,119 @@ async function startJarvis() {
 
 
         /* =================================================
-           OPENAI AUDIO START
+           RESPONSE CREATED
+           ================================================= */
+
+        if (
+          event.type ===
+          "response.created"
+        ) {
+
+          const purpose =
+            event.response
+              ?.metadata
+              ?.response_purpose ||
+            null;
+
+
+          if (
+            purpose ===
+            "normal_elevenlabs"
+          ) {
+
+            currentTextResponse =
+              "";
+
+
+            currentTextResponseId =
+              event.response?.id ||
+              null;
+
+
+            currentTextResponsePurpose =
+              purpose;
+
+
+            currentResponseHasToolCall =
+              false;
+          }
+        }
+
+
+        /* =================================================
+           OPENAI TEXT DELTA
+           ================================================= */
+
+        if (
+          event.type ===
+          "response.output_text.delta"
+        ) {
+
+          const delta =
+            String(
+              event.delta ||
+              ""
+            );
+
+
+          if (delta) {
+
+            currentTextResponse +=
+              delta;
+          }
+        }
+
+
+        /* =================================================
+           OPENAI TEXT DONE
+           ================================================= */
+
+        if (
+          event.type ===
+          "response.output_text.done"
+        ) {
+
+          /*
+           * Manche API-Versionen
+           * liefern hier bereits den
+           * kompletten finalen Text.
+           */
+          const text =
+            String(
+              event.text ||
+              ""
+            ).trim();
+
+
+          if (text) {
+
+            currentTextResponse =
+              text;
+          }
+        }
+
+
+        /* =================================================
+           TOOL CALL
+           ================================================= */
+
+        if (
+          event.type ===
+          "response.function_call_arguments.done"
+        ) {
+
+          currentResponseHasToolCall =
+            true;
+
+
+          await runTool(
+            event
+          );
+        }
+
+
+        /* =================================================
+           CEDAR TOOL AUDIO START
            ================================================= */
 
         if (
@@ -2105,6 +2479,10 @@ async function startJarvis() {
         ) {
 
           assistantSpeaking =
+            true;
+
+
+          waitingForAssistant =
             true;
 
 
@@ -2133,7 +2511,7 @@ async function startJarvis() {
 
 
         /* =================================================
-           OPENAI AUDIO STOP
+           CEDAR TOOL AUDIO STOP
            ================================================= */
 
         if (
@@ -2160,21 +2538,6 @@ async function startJarvis() {
 
 
         /* =================================================
-           TOOL CALL
-           ================================================= */
-
-        if (
-          event.type ===
-          "response.function_call_arguments.done"
-        ) {
-
-          await runTool(
-            event
-          );
-        }
-
-
-        /* =================================================
            RESPONSE DONE
            ================================================= */
 
@@ -2183,6 +2546,16 @@ async function startJarvis() {
           "response.done"
         ) {
 
+          const purpose =
+            event.response
+              ?.metadata
+              ?.response_purpose ||
+            currentTextResponsePurpose;
+
+
+          /*
+           * Fehler.
+           */
           if (
             event.response?.status ===
             "failed"
@@ -2210,12 +2583,87 @@ async function startJarvis() {
               },
               500
             );
+
+
+            return;
+          }
+
+
+          /*
+           * =================================================
+           * NORMALE ANTWORT
+           * =================================================
+           *
+           * Nur wenn KEIN Tool benutzt wurde,
+           * wird der OpenAI-Text jetzt über
+           * ElevenLabs gesprochen.
+           */
+          if (
+            purpose ===
+              "normal_elevenlabs" &&
+            !currentResponseHasToolCall
+          ) {
+
+            clearResponseWatchdog();
+
+
+            const text =
+              String(
+                currentTextResponse ||
+                ""
+              ).trim();
+
+
+            currentTextResponse =
+              "";
+
+
+            currentTextResponseId =
+              null;
+
+
+            currentTextResponsePurpose =
+              null;
+
+
+            if (text) {
+
+              console.log(
+                "JARVIS Text:",
+                text
+              );
+
+
+              await speakWithElevenLabs(
+                text
+              );
+
+
+            } else {
+
+              console.warn(
+                "OpenAI lieferte keinen Antworttext."
+              );
+
+
+              setTimeout(
+                () => {
+
+                  if (active) {
+
+                    resumeListening();
+                  }
+
+                },
+                500
+              );
+            }
           }
         }
 
 
         /* =================================================
-           TRANSCRIPTION ERROR
+           TRANSCRIPTION FAILED
            ================================================= */
 
         if (
@@ -2284,7 +2732,7 @@ async function startJarvis() {
               }
 
             },
-            500
+            700
           );
         }
       };
@@ -2307,9 +2755,8 @@ async function startJarvis() {
               true,
 
             /*
-             * Aus, damit leise
-             * Hintergrundgeräusche
-             * nicht hochgeregelt werden.
+             * Leise Nebengeräusche
+             * nicht künstlich hochziehen.
              */
             autoGainControl:
               false,
@@ -2320,6 +2767,9 @@ async function startJarvis() {
         });
 
 
+    /*
+     * Start zunächst stumm.
+     */
     setMicrophoneEnabled(
       false
     );
@@ -2447,18 +2897,30 @@ async function stopJarvis() {
     false;
 
 
-  /*
-   * Verhindert auch beim manuellen
-   * Stoppen einen Fallback.
-   */
-  elevenGreetingSettled =
+  elevenPlaybackFinished =
     true;
+
+
+  currentTextResponse =
+    "";
+
+
+  currentTextResponseId =
+    null;
+
+
+  currentTextResponsePurpose =
+    null;
+
+
+  currentResponseHasToolCall =
+    false;
 
 
   clearResponseWatchdog();
 
 
-  stopElevenGreeting();
+  stopElevenAudio();
 
 
   stopIntro();
@@ -2532,8 +2994,10 @@ async function stopJarvis() {
 
     remoteAudio.pause();
 
+
     remoteAudio.srcObject =
       null;
+
 
   } catch {}
 
@@ -2604,13 +3068,13 @@ if (button) {
 } else {
 
   console.error(
-    "#toggle-Button nicht im DOM gefunden."
+    "#toggle-Button nicht gefunden."
   );
 }
 
 
 /* =========================================================
-   CLEANUP
+   PAGE CLEANUP
    ========================================================= */
 
 window.addEventListener(
