@@ -1,9 +1,9 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
-   V7.0 · SIMPLE AUDIO PIPELINE
+   V7.2 · ROBUST TEXT RESPONSE + NOISE FILTER
 
    =========================================================
-   NEUE ARCHITEKTUR
+   ARCHITEKTUR
    =========================================================
 
    Browser-Mikrofon
@@ -24,13 +24,13 @@
         ↓
    POST /api/elevenlabs-tts
         ↓
-   ELEVENLABS · einzige Stimme
+   ElevenLabs · einzige Stimme
 
    ---------------------------------------------------------
-   KEIN OPENAI REALTIME MEHR
+   KEIN OPENAI REALTIME
    KEIN CEDAR
    KEIN response.create
-   KEINE konkurrierenden Responses
+   KEIN WEBRTC AUF DEM SERVER
    =========================================================
 */
 
@@ -78,7 +78,8 @@ app.get(
     return res.sendFile(
       req.params.file,
       {
-        root: "."
+        root:
+          "."
       }
     );
   }
@@ -91,7 +92,8 @@ app.get(
 
 app.use(
   express.json({
-    limit: "2mb"
+    limit:
+      "2mb"
   })
 );
 
@@ -397,12 +399,16 @@ GESPRÄCH:
 - Formuliere ausschließlich Text, der anschließend natürlich gesprochen werden kann.
 - Keine Markdown-Tabellen.
 - Keine komplizierten Aufzählungszeichen in gesprochenen Antworten.
-- Keine Meta-Erklärung über das technische System.
+- Keine Meta-Erklärungen über das technische System.
+- Beginne direkt mit der eigentlichen Antwort.
+- Antworte möglichst innerhalb von 2 bis 6 gesprochenen Sätzen, sofern Mattl nicht mehr Details verlangt.
 
 WICHTIG ZUR STIMME:
-- Deine Antwort wird anschließend ausschließlich von ElevenLabs gesprochen.
+- Deine Antwort wird ausschließlich von ElevenLabs gesprochen.
 - Du selbst erzeugst keinen Audiostream.
 - Schreibe deshalb natürlich gesprochenes Deutsch.
+- Zahlen sollen sich gut vorlesen lassen.
+- Vermeide unnötige Sonderzeichen.
 
 DRUCKELITE24:
 Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
@@ -472,18 +478,6 @@ zum Beispiel:
    OPENAI TRANSCRIPTION
    ========================================================= */
 
-/*
- * WICHTIG:
- *
- * Diese Route bekommt direkt die Binärdaten aus MediaRecorder.
- *
- * app.js wird beispielsweise senden:
- *
- * Content-Type: audio/webm
- *
- * KEIN multer nötig.
- * KEIN zusätzliches npm-Paket nötig.
- */
 app.post(
   "/api/transcribe",
 
@@ -544,13 +538,6 @@ app.post(
       }
 
 
-      /*
-       * Browser liefert normalerweise:
-       *
-       * audio/webm;codecs=opus
-       *
-       * Für Blob/FormData reicht audio/webm.
-       */
       const incomingType =
         String(
           req.headers[
@@ -636,9 +623,6 @@ app.post(
       );
 
 
-      /*
-       * Deutsch erzwingen.
-       */
       form.append(
         "language",
         "de"
@@ -646,16 +630,30 @@ app.post(
 
 
       /*
-       * Begriffe helfen bei Eigennamen.
+       * Weniger empfindlich gegen
+       * Hintergrundgeräusche.
        */
       form.append(
+        "threshold",
+        process.env.OPENAI_TRANSCRIBE_THRESHOLD ||
+        "0.65"
+      );
+
+
+      form.append(
+        "response_format",
+        "json"
+      );
+
+
+      form.append(
         "prompt",
-        "Deutsche Sprache. Der Benutzer heißt Mattl. Begriffe: Druckelite24, Shopify, Umsatz, Bestellungen, Verkäufe, Bestellwert, DTF, Textildruck, E-Commerce, Ludwigshafen am Rhein."
+        "Deutsche Sprache. Transkribiere nur tatsächlich gesprochene Wörter. Ignoriere Hintergrundgeräusche, Musik, Fernseher, Lüfter, Tastatur und unverständliche Nebengeräusche. Der Benutzer heißt Mattl. Begriffe: Druckelite24, Shopify, Umsatz, Bestellungen, Verkäufe, Bestellwert, DTF, Textildruck, E-Commerce, Ludwigshafen am Rhein."
       );
 
 
       console.log(
-        `Transcription: ${req.body.length} Bytes`
+        `Transcription input: ${req.body.length} Bytes`
       );
 
 
@@ -700,7 +698,7 @@ app.post(
       } catch {
 
         console.error(
-          "Transcription raw:",
+          "Transcription raw response:",
           raw
         );
 
@@ -807,50 +805,96 @@ app.post(
 
 
 /* =========================================================
-   OPENAI TEXT RESPONSE
+   RESPONSES API HELPERS
    ========================================================= */
 
-async function createJarvisResponse({
-  message,
-  previousResponseId = null,
-  liveData = null
-}) {
+function extractResponseText(
+  data
+) {
 
-  if (
-    !process.env.OPENAI_API_KEY
-  ) {
+  if (!data) {
 
-    throw new Error(
-      "OPENAI_API_KEY fehlt."
-    );
+    return "";
   }
 
 
-  let inputText =
+  /*
+   * SDK-kompatibler Fall.
+   */
+  const direct =
     String(
-      message ||
+      data.output_text ||
       ""
     ).trim();
 
 
-  if (
-    liveData
-  ) {
+  if (direct) {
 
-    inputText +=
-      `
-
-LIVE-DATEN:
-${JSON.stringify(
-  liveData,
-  null,
-  2
-)}
-
-Beantworte die ursprüngliche Frage ausschließlich anhand dieser Live-Daten, soweit sie aktuelle Werte betrifft.
-Erfinde keine zusätzlichen Live-Werte.`;
+    return direct;
   }
 
+
+  /*
+   * Direkter REST-Fall:
+   * data.output[] durchsuchen.
+   */
+  const pieces =
+    [];
+
+
+  for (
+    const item of
+    data.output ||
+    []
+  ) {
+
+    if (
+      item?.type !==
+        "message"
+    ) {
+
+      continue;
+    }
+
+
+    for (
+      const content of
+      item.content ||
+      []
+    ) {
+
+      if (
+        content?.type ===
+          "output_text" &&
+        content?.text
+      ) {
+
+        pieces.push(
+          content.text
+        );
+      }
+    }
+  }
+
+
+  return pieces
+    .join(
+      " "
+    )
+    .trim();
+}
+
+
+/* =========================================================
+   ONE RESPONSES API REQUEST
+   ========================================================= */
+
+async function requestOpenAIResponse({
+  inputText,
+  previousResponseId,
+  maxOutputTokens,
+  reasoningEffort
+}) {
 
   const body = {
 
@@ -864,17 +908,34 @@ Erfinde keine zusätzlichen Live-Werte.`;
     input:
       inputText,
 
+    /*
+     * GPT-5:
+     * sichtbare Ausgabe UND
+     * Reasoning teilen sich dieses Limit.
+     */
     max_output_tokens:
-      500,
+      maxOutputTokens,
+
+    reasoning: {
+
+      effort:
+        reasoningEffort
+    },
+
+    text: {
+
+      format: {
+
+        type:
+          "text"
+      }
+    },
 
     store:
       true
   };
 
 
-  /*
-   * Gespräch fortsetzen.
-   */
   if (
     previousResponseId
   ) {
@@ -907,7 +968,7 @@ Erfinde keine zusätzlichen Live-Werte.`;
 
         signal:
           timeoutSignal(
-            30000
+            45000
           )
       }
     );
@@ -930,13 +991,13 @@ Erfinde keine zusätzlichen Live-Werte.`;
   } catch {
 
     console.error(
-      "Responses raw:",
+      "Responses raw response:",
       raw
     );
 
 
     throw new Error(
-      "OpenAI hat keine gültige Antwort geliefert."
+      "OpenAI hat keine gültige JSON-Antwort geliefert."
     );
   }
 
@@ -946,7 +1007,7 @@ Erfinde keine zusätzlichen Live-Werte.`;
   ) {
 
     console.error(
-      "OpenAI Responses error:",
+      "OpenAI Responses HTTP error:",
       response.status,
       data
     );
@@ -954,72 +1015,274 @@ Erfinde keine zusätzlichen Live-Werte.`;
 
     throw new Error(
       data?.error?.message ||
-      "OpenAI konnte keine Antwort erzeugen."
+      `OpenAI HTTP ${response.status}`
     );
   }
 
 
-  /*
-   * output_text ist primär ein SDK-Helper.
-   * Beim direkten REST-Call lesen wir
-   * deshalb zusätzlich data.output[].
-   */
-  let outputText =
+  return data;
+}
+
+
+/* =========================================================
+   OPENAI TEXT RESPONSE
+   ========================================================= */
+
+async function createJarvisResponse({
+  message,
+  previousResponseId = null,
+  liveData = null
+}) {
+
+  if (
+    !process.env.OPENAI_API_KEY
+  ) {
+
+    throw new Error(
+      "OPENAI_API_KEY fehlt."
+    );
+  }
+
+
+  let inputText =
     String(
-      data.output_text ||
+      message ||
       ""
     ).trim();
 
 
   if (
-    !outputText
+    !inputText
   ) {
 
-    const pieces =
-      [];
-
-
-    for (
-      const item of
-      data.output ||
-      []
-    ) {
-
-      for (
-        const content of
-        item.content ||
-        []
-      ) {
-
-        if (
-          content.type ===
-            "output_text" &&
-          content.text
-        ) {
-
-          pieces.push(
-            content.text
-          );
-        }
-      }
-    }
-
-
-    outputText =
-      pieces
-        .join(
-          " "
-        )
-        .trim();
+    throw new Error(
+      "Leere Benutzernachricht."
+    );
   }
 
 
   if (
+    liveData
+  ) {
+
+    inputText +=
+      `
+
+LIVE-DATEN:
+${JSON.stringify(
+  liveData,
+  null,
+  2
+)}
+
+Beantworte Mattls ursprüngliche Frage jetzt kurz und konkret anhand dieser Live-Daten.
+Für aktuelle Werte sind ausschließlich die LIVE-DATEN maßgeblich.
+Erfinde keine weiteren aktuellen Zahlen.`;
+  }
+
+
+  /*
+   * =====================================================
+   * ERSTER VERSUCH
+   * =====================================================
+   *
+   * Niedriger Reasoning-Aufwand,
+   * damit genug Tokens für den
+   * sichtbaren Antworttext bleiben.
+   */
+  let data =
+    await requestOpenAIResponse({
+
+      inputText,
+
+      previousResponseId,
+
+      maxOutputTokens:
+        1200,
+
+      reasoningEffort:
+        "low"
+    });
+
+
+  let outputText =
+    extractResponseText(
+      data
+    );
+
+
+  console.log(
+    "OpenAI response status:",
+    data.status
+  );
+
+
+  console.log(
+    "OpenAI response id:",
+    data.id
+  );
+
+
+  console.log(
+    "OpenAI output tokens:",
+    data.usage?.output_tokens
+  );
+
+
+  console.log(
+    "OpenAI reasoning tokens:",
+    data.usage
+      ?.output_tokens_details
+      ?.reasoning_tokens
+  );
+
+
+  /*
+   * =====================================================
+   * FALLBACK
+   * =====================================================
+   *
+   * Falls GPT-5 das komplette
+   * Tokenbudget fürs Reasoning
+   * verbraucht hat oder die Antwort
+   * sonst unvollständig ist,
+   * automatisch einmal neu versuchen.
+   *
+   * Wichtig:
+   * Wir verwenden hierbei NICHT
+   * die incomplete response als
+   * previous_response_id.
+   *
+   * Wir gehen wieder vom letzten
+   * erfolgreichen Gesprächszustand aus.
+   */
+  if (
+    !outputText ||
+    data.status ===
+      "incomplete"
+  ) {
+
+    console.warn(
+      "OpenAI Antwort unvollständig.",
+      {
+        status:
+          data.status,
+
+        incomplete_reason:
+          data.incomplete_details
+            ?.reason,
+
+        output_items:
+          data.output?.length ||
+          0
+      }
+    );
+
+
+    data =
+      await requestOpenAIResponse({
+
+        inputText:
+          `${inputText}
+
+WICHTIG:
+Gib jetzt direkt eine kurze sichtbare Antwort auf Deutsch aus.
+Keine lange interne Analyse.
+Die Antwort soll für eine Sprachausgabe geeignet sein.`,
+
+        previousResponseId,
+
+        maxOutputTokens:
+          2400,
+
+        reasoningEffort:
+          "low"
+      });
+
+
+    outputText =
+      extractResponseText(
+        data
+      );
+
+
+    console.log(
+      "OpenAI fallback status:",
+      data.status
+    );
+
+
+    console.log(
+      "OpenAI fallback reasoning tokens:",
+      data.usage
+        ?.output_tokens_details
+        ?.reasoning_tokens
+    );
+  }
+
+
+  /*
+   * Immer noch kein Text:
+   * aussagekräftigen Fehler ausgeben.
+   */
+  if (
     !outputText
   ) {
 
+    const incompleteReason =
+      data.incomplete_details
+        ?.reason;
+
+
+    console.error(
+      "OpenAI lieferte keinen sichtbaren Text:",
+      JSON.stringify(
+        {
+          id:
+            data.id,
+
+          status:
+            data.status,
+
+          incomplete_details:
+            data.incomplete_details,
+
+          usage:
+            data.usage,
+
+          output:
+            data.output
+        },
+        null,
+        2
+      )
+    );
+
+
+    if (
+      incompleteReason ===
+      "max_output_tokens"
+    ) {
+
+      throw new Error(
+        "OpenAI hat das Antwortlimit erreicht, bevor sichtbarer Text erzeugt wurde."
+      );
+    }
+
+
+    if (
+      incompleteReason ===
+      "max_tokens"
+    ) {
+
+      throw new Error(
+        "OpenAI hat das Tokenlimit erreicht, bevor sichtbarer Text erzeugt wurde."
+      );
+    }
+
+
     throw new Error(
-      "OpenAI hat keinen Antworttext geliefert."
+      `OpenAI hat keinen Antworttext geliefert. Status: ${data.status || "unbekannt"}.`
     );
   }
 
@@ -1145,6 +1408,12 @@ async function getShopifyAccessToken() {
       );
 
   } catch {
+
+    console.error(
+      "Shopify token raw:",
+      raw
+    );
+
 
     throw new Error(
       "Shopify hat keine gültige Token-Antwort geliefert."
@@ -1427,7 +1696,7 @@ async function getShopifySummary(
 
 
 /* =========================================================
-   SHOPIFY ENDPOINT
+   SHOPIFY SUMMARY ENDPOINT
    ========================================================= */
 
 app.post(
@@ -2239,7 +2508,7 @@ function getWeatherDayFromText(
 
 
 /* =========================================================
-   JARVIS CHAT
+   JARVIS CHAT ENDPOINT
    ========================================================= */
 
 app.post(
@@ -2281,12 +2550,18 @@ app.post(
       }
 
 
+      console.log(
+        "JARVIS question:",
+        message
+      );
+
+
       let liveData =
         null;
 
 
       /*
-       * SHOPIFY
+       * SHOPIFY LIVE
        */
       if (
         isShopifyQuestion(
@@ -2329,7 +2604,7 @@ app.post(
 
 
       /*
-       * WEATHER
+       * WEATHER LIVE
        */
       } else if (
         isWeatherQuestion(
@@ -2540,20 +2815,29 @@ app.post(
 
                 voice_settings: {
 
+                  /*
+                   * Etwas stabiler und
+                   * deutlicher als vorher.
+                   */
                   stability:
-                    0.48,
+                    0.58,
 
                   similarity_boost:
-                    0.82,
+                    0.84,
 
                   style:
-                    0.18,
+                    0.12,
 
                   use_speaker_boost:
                     true,
 
+                  /*
+                   * Minimal langsamer,
+                   * damit die Aussprache
+                   * klarer wird.
+                   */
                   speed:
-                    1.0
+                    0.96
                 }
               }),
 
@@ -2780,7 +3064,7 @@ app.get(
         true,
 
       version:
-        "JARVIS V7.0",
+        "JARVIS V7.2",
 
       architecture:
         "mediarecorder -> transcription -> responses -> elevenlabs",
@@ -2791,15 +3075,31 @@ app.get(
       cedar:
         false,
 
-      transcription:
+      transcription_model:
+        process.env.OPENAI_TRANSCRIBE_MODEL ||
         "gpt-4o-mini-transcribe",
+
+      transcription_threshold:
+        Number(
+          process.env.OPENAI_TRANSCRIBE_THRESHOLD ||
+          0.65
+        ),
 
       text_model:
         process.env.OPENAI_TEXT_MODEL ||
         "gpt-5-mini",
 
+      reasoning_effort:
+        "low",
+
+      max_output_tokens:
+        1200,
+
       speech_output:
         "elevenlabs-only",
+
+      elevenlabs_speed:
+        0.96,
 
       language:
         "de",
@@ -2847,7 +3147,8 @@ app.get(
     return res.sendFile(
       "index.html",
       {
-        root: "."
+        root:
+          "."
       }
     );
   }
@@ -2865,7 +3166,7 @@ app.listen(
   () => {
 
     console.log(
-      `JARVIS V7.0 läuft auf Port ${PORT}`
+      `JARVIS V7.2 läuft auf Port ${PORT}`
     );
 
 
@@ -2885,7 +3186,22 @@ app.listen(
 
 
     console.log(
+      "Transkriptions-Threshold: 0.65"
+    );
+
+
+    console.log(
       "Antwort: OpenAI Responses API"
+    );
+
+
+    console.log(
+      "Reasoning: LOW"
+    );
+
+
+    console.log(
+      "Antwortlimit: 1200 Tokens + automatischer Fallback"
     );
 
 
