@@ -1,7 +1,18 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
-   V7.9 · ZEITMESSUNG
-   (Basis: V7.8, überarbeitet am 15.08.2026)
+   V8.0 · NOTFIX WEBSUCHE
+   (Basis: V7.9, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN IN V8.0:
+   16. KRITISCHER FIX: OpenAI lehnt reasoning.effort "minimal" zusammen
+       mit dem web_search-Tool grundsätzlich ab (API-Fehler "The
+       following tools cannot be used with reasoning.effort 'minimal':
+       web_search") - das hatte JARVIS komplett lahmgelegt, auch bei
+       ganz normalen Fragen. Websuche wird jetzt nur noch aktiviert,
+       wenn eine Heuristik (isWebSearchQuestion) erkennt, dass die
+       Frage tatsächlich aktuelle Infos von außen braucht - dann UND
+       nur dann auf reasoning "low" hochgestuft. Für alles andere
+       bleibt es beim schnellen "minimal" ohne das Tool.
 
    ÄNDERUNGEN IN V7.9:
    15. Zeitmessung eingebaut (Render-Logs, Zeilen mit "[TIMING]"):
@@ -584,7 +595,13 @@ function extractResponseText(data) {
    ONE RESPONSES API REQUEST
    ========================================================= */
 
-async function requestOpenAIResponse({ inputText, previousResponseId, maxOutputTokens, reasoningEffort }) {
+async function requestOpenAIResponse({
+  inputText,
+  previousResponseId,
+  maxOutputTokens,
+  reasoningEffort,
+  enableWebSearch
+}) {
   const body = {
     model: process.env.OPENAI_TEXT_MODEL || "gpt-5-mini",
     instructions: JARVIS_INSTRUCTIONS,
@@ -593,13 +610,18 @@ async function requestOpenAIResponse({ inputText, previousResponseId, maxOutputT
     max_output_tokens: maxOutputTokens,
     reasoning: { effort: reasoningEffort },
     text: { format: { type: "text" } },
-    // Websuche als Werkzeug - GPT entscheidet selbst, ob es sie für die
-    // aktuelle Frage braucht (z.B. Nachrichten, aktuelle Ereignisse).
-    // Für Shopify/Wetter nutzt es weiterhin die eigenen LIVE-DATEN,
-    // dafür ist keine Suche nötig - siehe JARVIS_INSTRUCTIONS.
-    tools: [{ type: "web_search" }],
     store: true
   };
+
+  // FIX: OpenAI lehnt reasoning.effort "minimal" zusammen mit dem
+  // web_search-Tool grundsätzlich ab (harter API-Fehler, hat JARVIS
+  // komplett lahmgelegt - auch bei ganz normalen Fragen ohne Websuche-
+  // Bedarf, weil das Tool bisher immer mitgeschickt wurde). Jetzt wird
+  // die Websuche nur noch eingebunden, wenn sie laut Heuristik
+  // tatsächlich gebraucht wird - dann UND nur dann auf "low" hochstufen.
+  if (enableWebSearch) {
+    body.tools = [{ type: "web_search" }];
+  }
 
   if (previousResponseId) {
     body.previous_response_id = previousResponseId;
@@ -662,13 +684,21 @@ Für aktuelle Werte sind ausschließlich die LIVE-DATEN maßgeblich.
 Erfinde keine weiteren aktuellen Zahlen.`;
   }
 
+  // FIX: Websuche und reasoning.effort "minimal" vertragen sich laut
+  // OpenAI nicht (harter API-Fehler). Deshalb nur bei Bedarf aktivieren
+  // und dann auf "low" hochstufen - für alle anderen Fragen bleibt es
+  // bei "minimal" ohne das Tool, das ist der schnelle Normalfall.
+  const needsWebSearch = isWebSearchQuestion(inputText);
+  const reasoningEffort = needsWebSearch ? "low" : "minimal";
+
   // ERSTER VERSUCH: minimaler Reasoning-Aufwand - für ein Sprachgespräch
   // reicht das völlig aus und spart spürbar Antwortzeit gegenüber "low".
   let data = await requestOpenAIResponse({
     inputText,
     previousResponseId,
     maxOutputTokens: 1200,
-    reasoningEffort: "minimal"
+    reasoningEffort,
+    enableWebSearch: needsWebSearch
   });
 
   let outputText = extractResponseText(data);
@@ -677,6 +707,7 @@ Erfinde keine weiteren aktuellen Zahlen.`;
   console.log("OpenAI response id:", data.id);
   console.log("OpenAI output tokens:", data.usage?.output_tokens);
   console.log("OpenAI reasoning tokens:", data.usage?.output_tokens_details?.reasoning_tokens);
+  console.log("OpenAI web search used:", needsWebSearch);
 
   // FALLBACK: Falls GPT-5 das komplette Tokenbudget fürs Reasoning
   // verbraucht hat oder die Antwort sonst unvollständig ist,
@@ -699,7 +730,8 @@ Keine lange interne Analyse.
 Die Antwort soll für eine Sprachausgabe geeignet sein.`,
       previousResponseId,
       maxOutputTokens: 2400,
-      reasoningEffort: "minimal"
+      reasoningEffort,
+      enableWebSearch: needsWebSearch
     });
 
     outputText = extractResponseText(data);
@@ -1323,6 +1355,45 @@ function isWeatherQuestion(text) {
     n.includes("regnet") ||
     n.includes("wind")
   );
+}
+
+/*
+ * Grobe Heuristik, ob eine Frage aktuelle Infos von außen braucht
+ * (Nachrichten, Weltgeschehen, aktuelle Fakten) - nur DANN wird die
+ * Websuche aktiviert (siehe requestOpenAIResponse). Nicht perfekt,
+ * aber besser als die Websuche immer mitzuschicken - kostet sonst
+ * unnötig Zeit UND verträgt sich technisch nicht mit "minimal"-
+ * Reasoning, das für alle anderen Fragen genutzt wird.
+ *
+ * Fehlt ein Stichwort, das öfter vorkommen sollte - einfach ergänzen.
+ */
+function isWebSearchQuestion(text) {
+  const n = normalize(text);
+  const keywords = [
+    "nachrichten",
+    "neuigkeiten",
+    "was ist los",
+    "was gibt es neues",
+    "weltgeschehen",
+    "aktuelle",
+    "aktuell",
+    "neuste",
+    "neueste",
+    "heute passiert",
+    "wer ist",
+    "wer war",
+    "wahl",
+    "kanzler",
+    "president",
+    "präsident",
+    "kurs von",
+    "aktienkurs",
+    "börse",
+    "ergebnis",
+    "spielstand",
+    "gewonnen"
+  ];
+  return keywords.some(word => n.includes(word));
 }
 
 function getShopifyPeriodFromText(text) {
