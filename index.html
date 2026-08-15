@@ -27,14 +27,9 @@
   />
 </head>
 
-
 <body>
 
   <main class="app-shell">
-
-    <!-- =========================================
-         HEADER
-         ========================================= -->
 
     <header class="topbar">
 
@@ -50,7 +45,6 @@
 
       </div>
 
-
       <div
         class="status-pill"
         id="status"
@@ -60,10 +54,6 @@
 
     </header>
 
-
-    <!-- =========================================
-         JARVIS
-         ========================================= -->
 
     <section class="hero">
 
@@ -78,17 +68,12 @@
         </h1>
 
         <p class="hero-subline">
-          Dein persönlicher Business-Assistent für
-          Gespräche, Shopify, E-Mails, Termine,
-          Wetter und Druckelite24.
+          Sprich frei mit JARVIS über Shopify, Wetter,
+          Business, Ideen und deinen Alltag.
         </p>
 
       </div>
 
-
-      <!-- =======================================
-           VOICE BUTTON
-           ======================================= -->
 
       <div class="voice-panel">
 
@@ -96,7 +81,7 @@
           id="toggle"
           class="voice-button"
           type="button"
-          aria-label="Mit JARVIS sprechen"
+          aria-label="JARVIS starten oder stoppen"
         >
 
           <span class="voice-core"></span>
@@ -132,14 +117,7 @@
     </section>
 
 
-    <!-- =========================================
-         CAPABILITIES
-         ========================================= -->
-
     <section class="quick-grid">
-
-
-      <!-- SHOPIFY -->
 
       <article class="quick-card">
 
@@ -152,14 +130,11 @@
         </div>
 
         <div class="quick-note">
-          Bestellungen, Umsatz und
-          Business-Kennzahlen
+          Bestellungen, Umsatz und Kennzahlen
         </div>
 
       </article>
 
-
-      <!-- COMMUNICATION -->
 
       <article class="quick-card">
 
@@ -172,14 +147,11 @@
         </div>
 
         <div class="quick-note">
-          Wichtige Kundenmails,
-          Nachrichten und Follow-ups
+          Wichtige Nachrichten und Follow-ups
         </div>
 
       </article>
 
-
-      <!-- CALENDAR -->
 
       <article class="quick-card">
 
@@ -192,14 +164,11 @@
         </div>
 
         <div class="quick-note">
-          Termine, Fristen und
-          Tagesplanung
+          Termine, Fristen und Tagesplanung
         </div>
 
       </article>
 
-
-      <!-- WEATHER -->
 
       <article class="quick-card">
 
@@ -212,8 +181,7 @@
         </div>
 
         <div class="quick-note">
-          Aktuelle Bedingungen
-          und Prognosen
+          Aktuelle Bedingungen und Prognosen
         </div>
 
       </article>
@@ -221,69 +189,46 @@
     </section>
 
 
-    <!-- =========================================
-         COMMAND EXAMPLES
-         ========================================= -->
-
     <section class="command-panel">
 
       <div class="command-title">
-        Sprich mit JARVIS
+        Freies Gespräch
       </div>
-
 
       <div class="command-list">
 
         <div class="command-chip">
-          „Jarvis, wie viele Shopify-Bestellungen
-          habe ich heute?“
+          „Wie viele Shopify-Bestellungen habe ich heute?“
         </div>
 
-
         <div class="command-chip">
-          „Jarvis, wie hoch ist mein Umsatz heute?“
+          „Wie hoch ist mein Umsatz heute?“
         </div>
 
-
         <div class="command-chip">
-          „Jarvis, wie wird morgen das Wetter
-          in Ludwigshafen?“
+          „Wie wird morgen das Wetter in Ludwigshafen?“
         </div>
 
-
         <div class="command-chip">
-          „Jarvis, was hältst du von meiner Idee?“
+          „Was hältst du von meiner Idee?“
         </div>
 
       </div>
 
 
       <div class="command-help">
-
-        Kugel drücken · sprechen ·
-        Kugel erneut drücken
-
+        Einmal starten · danach frei sprechen
       </div>
 
     </section>
 
 
-    <!-- =========================================
-         FOOTER
-         ========================================= -->
-
     <footer class="footer">
-
       Druckelite24 · JARVIS V3
-
     </footer>
 
   </main>
 
-
-  <!-- ===========================================
-       AUDIO OUTPUT
-       =========================================== -->
 
   <audio
     id="remoteAudio"
@@ -292,15 +237,8 @@
   ></audio>
 
 
-  <!-- ===========================================
-       JARVIS APPLICATION
-
-       v=4 verhindert, dass der Browser
-       eine alte app.js aus dem Cache verwendet.
-       =========================================== -->
-
-  <script src="app.js?v=4"></script>
+  <!-- Neue Continuous-Conversation-Version -->
+  <script src="app.js?v=5"></script>
 
 </body>
-
 </html>
