@@ -332,17 +332,23 @@ body::after {
    ========================================================= */
 
 .cockpit {
-  display: grid;
-  grid-template-columns: 280px 1fr 280px;
-  gap: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.1rem;
   flex: 1;
-  align-items: stretch;
 }
+
+/* Reaktor oben, dann alle Widgets untereinander */
+.stage { order: 0; width: 100%; }
+.column-left { order: 1; }
+.column-right { order: 2; }
 
 .column {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.1rem;
+  width: min(640px, 100%);
 }
 
 
@@ -351,6 +357,8 @@ body::after {
    ========================================================= */
 
 .panel {
+  position: relative;
+  overflow: hidden;
   background: var(--panel);
   border: 1px solid var(--panel-border);
   clip-path: var(--clip-corner);
@@ -359,7 +367,48 @@ body::after {
   flex-direction: column;
   gap: 0.7rem;
   backdrop-filter: blur(3px);
+  animation: panel-in 0.6s ease both;
+  transition: border-color 0.25s ease, transform 0.25s ease,
+    box-shadow 0.25s ease;
 }
+
+.panel:hover {
+  border-color: rgba(231, 7, 121, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 34px -14px rgba(231, 7, 121, 0.5);
+}
+
+/* Licht-Sweep: alle paar Sekunden gleitet ein Glanz durch */
+.panel::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 45%;
+  left: -60%;
+  background: linear-gradient(
+    105deg,
+    transparent,
+    rgba(255, 255, 255, 0.05),
+    rgba(231, 7, 121, 0.05),
+    transparent
+  );
+  animation: panel-sweep 7s ease-in-out infinite;
+}
+
+/* Gestaffelter Einflug + versetzte Sweeps */
+.column .panel:nth-child(1) { animation-delay: 0.05s; }
+.column .panel:nth-child(2) { animation-delay: 0.15s; }
+.column .panel:nth-child(3) { animation-delay: 0.25s; }
+.column .panel:nth-child(4) { animation-delay: 0.35s; }
+.column .panel:nth-child(5) { animation-delay: 0.45s; }
+.column .panel:nth-child(6) { animation-delay: 0.55s; }
+.column .panel:nth-child(1)::before { animation-delay: 0s; }
+.column .panel:nth-child(2)::before { animation-delay: 1.4s; }
+.column .panel:nth-child(3)::before { animation-delay: 2.8s; }
+.column .panel:nth-child(4)::before { animation-delay: 4.2s; }
+.column .panel:nth-child(5)::before { animation-delay: 5.6s; }
+.column .panel:nth-child(6)::before { animation-delay: 6.3s; }
 
 .panel-grow { flex: 1; }
 
@@ -430,40 +479,46 @@ body::after {
   font-weight: 400;
 }
 
-/* Zeit-Panel (großes Datum wie im Command Center) */
-.time-panel {
-  flex-direction: row;
-  align-items: center;
-  gap: 1rem;
+/* Datum + Uhrzeit oben in der Kopfzeile */
+.top-datetime {
+  text-align: right;
 }
 
-.time-big {
-  font-family: var(--font-display);
-  font-size: 3.2rem;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--text);
-  text-shadow: 0 0 24px rgba(231, 7, 121, 0.5);
-}
-
-.time-side {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.time-month {
+.top-date {
   font-family: var(--font-mono);
   font-size: 0.68rem;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.24em;
   color: var(--magenta);
+  text-transform: uppercase;
 }
 
-.time-clock {
+.top-clock {
   font-family: var(--font-mono);
-  font-size: 1.15rem;
+  font-size: 1.25rem;
   letter-spacing: 0.14em;
   color: var(--text);
+  text-shadow: 0 0 16px rgba(231, 7, 121, 0.4);
+}
+
+/* Skeleton-Zeilen für Platzhalter-Panels (Gmail/News) */
+.skel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.2rem 0;
+}
+
+.skel-row {
+  height: 9px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    #1c1c21 25%,
+    #2d2d35 50%,
+    #1c1c21 75%
+  );
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.8s linear infinite;
 }
 
 /* Wochenchart */
@@ -659,6 +714,9 @@ body[data-jarvis-state="hearing"] .eq span {
 .gauge {
   position: relative;
   aspect-ratio: 1;
+  width: 100%;
+  max-width: 96px;
+  margin: 0 auto;
   border-radius: 50%;
   background:
     radial-gradient(closest-side, var(--void) 72%, transparent 73% 100%),
@@ -738,6 +796,26 @@ h1 {
   background-clip: text;
   color: transparent;
   text-shadow: 0 0 52px rgba(231, 7, 121, 0.4);
+  animation: h1-glitch 9s linear infinite;
+}
+
+/* Radar-Linie: wandert langsam über den ganzen Screen */
+.radar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 2px;
+  top: -3%;
+  z-index: 45;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(231, 7, 121, 0.55),
+    transparent
+  );
+  box-shadow: 0 0 14px 2px rgba(231, 7, 121, 0.35);
+  animation: radar-drift 11s linear infinite;
 }
 
 .voice-panel {
@@ -987,6 +1065,35 @@ audio { display: none; }
 @keyframes spin-rev { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
 @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes panel-sweep {
+  0%, 55% { left: -60%; }
+  75%, 100% { left: 130%; }
+}
+
+@keyframes skel-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@keyframes radar-drift {
+  0% { top: -3%; opacity: 0; }
+  8% { opacity: 0.5; }
+  92% { opacity: 0.5; }
+  100% { top: 103%; opacity: 0; }
+}
+
+@keyframes h1-glitch {
+  0%, 91%, 100% { transform: none; text-shadow: 0 0 52px rgba(231, 7, 121, 0.4); }
+  92% { transform: translateX(2px); text-shadow: -3px 0 rgba(231, 7, 121, 0.8), 3px 0 rgba(64, 220, 255, 0.5); }
+  94% { transform: translateX(-2px); text-shadow: 3px 0 rgba(231, 7, 121, 0.8), -3px 0 rgba(64, 220, 255, 0.5); }
+  96% { transform: none; text-shadow: 0 0 52px rgba(231, 7, 121, 0.4); }
+}
+
 @keyframes breathe {
   0%, 100% { transform: scale(1); opacity: 0.88; }
   50% { transform: scale(1.05); opacity: 1; }
@@ -1041,12 +1148,6 @@ audio { display: none; }
 /* =========================================================
    RESPONSIVE
    ========================================================= */
-
-@media (max-width: 1080px) {
-  .cockpit {
-    grid-template-columns: 240px 1fr 240px;
-  }
-}
 
 @media (max-width: 920px) {
   .cockpit {
@@ -1133,7 +1234,7 @@ audio { display: none; }
 
   .brand-logo { height: 26px; }
 
-  .top-clock { display: none; }
+  .top-clock { font-size: 1rem; }
 }
 
 
@@ -1171,6 +1272,8 @@ audio { display: none; }
 
   <div class="hud">
 
+    <div class="radar" aria-hidden="true"></div>
+
     <!-- =================================================
          TOPBAR
          ================================================= -->
@@ -1187,8 +1290,11 @@ audio { display: none; }
         <div class="top-sub">V5 · BUSINESS VOICE ASSISTANT</div>
       </div>
       <div class="top-right">
+        <div class="top-datetime">
+          <div class="top-date"><span id="hudDay">--</span>. <span id="hudMonth">—</span></div>
+          <div class="top-clock" id="hudBigTime">--:--:--</div>
+        </div>
         <div class="status-pill" id="status">Offline</div>
-        <div class="top-clock" id="hudClock">--:--:--</div>
       </div>
     </header>
 
@@ -1312,15 +1418,6 @@ audio { display: none; }
       <!-- ============ RECHTE PANEL-SPALTE ============ -->
       <aside class="column column-right">
 
-        <!-- GROSSE ZEIT (wie im Command Center) -->
-        <section class="panel time-panel">
-          <div class="time-big" id="hudDay">--</div>
-          <div class="time-side">
-            <div class="time-month" id="hudMonth">—</div>
-            <div class="time-clock" id="hudBigTime">--:--:--</div>
-          </div>
-        </section>
-
         <!-- WETTER LIVE (echte Daten) -->
         <section class="panel">
           <div class="panel-head">
@@ -1345,6 +1442,47 @@ audio { display: none; }
               <span id="wxWind">—</span><label>WIND KM/H</label>
             </div>
           </div>
+        </section>
+
+        <!-- GMAIL (Platzhalter für Phase 2) -->
+        <section class="panel">
+          <div class="panel-head">
+            <span>GMAIL · POSTEINGANG</span>
+            <span class="panel-dot"></span>
+          </div>
+          <div class="skel-list">
+            <div class="skel-row" style="width: 88%"></div>
+            <div class="skel-row" style="width: 64%"></div>
+            <div class="skel-row" style="width: 76%"></div>
+          </div>
+          <div class="panel-foot">PHASE 2 · WIRD VERBUNDEN</div>
+        </section>
+
+        <!-- NACHRICHTEN (Platzhalter) -->
+        <section class="panel">
+          <div class="panel-head">
+            <span>NACHRICHTEN</span>
+            <span class="panel-dot"></span>
+          </div>
+          <div class="skel-list">
+            <div class="skel-row" style="width: 72%"></div>
+            <div class="skel-row" style="width: 84%"></div>
+          </div>
+          <div class="panel-foot">PHASE 2 · WIRD VERBUNDEN</div>
+        </section>
+
+        <!-- NEWS (Platzhalter) -->
+        <section class="panel">
+          <div class="panel-head">
+            <span>NEWS · BRANCHE</span>
+            <span class="panel-dot"></span>
+          </div>
+          <div class="skel-list">
+            <div class="skel-row" style="width: 92%"></div>
+            <div class="skel-row" style="width: 58%"></div>
+            <div class="skel-row" style="width: 80%"></div>
+          </div>
+          <div class="panel-foot">PHASE 2 · WIRD VERBUNDEN</div>
         </section>
 
         <!-- SYSTEM-GAUGES -->
