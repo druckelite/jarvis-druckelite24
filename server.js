@@ -28,8 +28,7 @@ function berlinDate(date = new Date()) {
 }
 
 function nextDateString(dateString) {
-  const date =
-    new Date(`${dateString}T12:00:00Z`);
+  const date = new Date(`${dateString}T12:00:00Z`);
 
   date.setUTCDate(
     date.getUTCDate() + 1
@@ -68,6 +67,7 @@ function getPeriodDates(period) {
   };
 }
 
+
 /* =========================================================
    JARVIS PERSONALITY
    ========================================================= */
@@ -100,7 +100,7 @@ CHARAKTER
 - Kein Butler-Stil.
 - Kein Callcenter-Stil.
 
-Beispiele für deinen Ton:
+Beispiele:
 "Klar, Mattl."
 "Hab ich."
 "Sieht gut aus."
@@ -118,9 +118,9 @@ GESPRÄCH
 - Standardmäßig kurze bis mittellange Antworten.
 - Keine unnötigen Monologe.
 - Keine automatische Anschlussfrage nach jeder Antwort.
-- Wenn du fertig bist, warte auf Mattl.
+- Wenn du fertig bist, schweige und höre wieder zu.
 - Berücksichtige den Kontext des laufenden Gesprächs.
-- Wenn du akustisch unsicher bist, frage kurz nach.
+- Wenn du etwas akustisch nicht sicher verstanden hast, frage kurz nach.
 
 LIVE-DATEN
 Erfinde niemals aktuelle Daten.
@@ -203,6 +203,7 @@ Vor kritischen Aktionen brauchst du Mattls ausdrückliche Zustimmung:
 - Daten löschen
 `;
 
+
 /* =========================================================
    REALTIME TOOLS
    ========================================================= */
@@ -211,10 +212,13 @@ const realtimeTools = [
   {
     type: "function",
     name: "get_shopify_summary",
+
     description:
       "Liest echte aktuelle Shopify-Bestellungen, Umsatz und durchschnittlichen Bestellwert für heute oder gestern.",
+
     parameters: {
       type: "object",
+
       properties: {
         period: {
           type: "string",
@@ -224,9 +228,11 @@ const realtimeTools = [
           ]
         }
       },
+
       required: [
         "period"
       ],
+
       additionalProperties: false
     }
   },
@@ -234,26 +240,33 @@ const realtimeTools = [
   {
     type: "function",
     name: "get_weather",
+
     description:
       "Liest echtes Wetter für einen Ort für heute oder morgen.",
+
     parameters: {
       type: "object",
+
       properties: {
         location: {
           type: "string"
         },
+
         day: {
           type: "string",
+
           enum: [
             "today",
             "tomorrow"
           ]
         }
       },
+
       required: [
         "location",
         "day"
       ],
+
       additionalProperties: false
     }
   },
@@ -261,10 +274,13 @@ const realtimeTools = [
   {
     type: "function",
     name: "get_important_emails",
+
     description:
       "Liest aktuelle wichtige E-Mails.",
+
     parameters: {
       type: "object",
+
       properties: {
         limit: {
           type: "integer",
@@ -272,9 +288,11 @@ const realtimeTools = [
           maximum: 10
         }
       },
+
       required: [
         "limit"
       ],
+
       additionalProperties: false
     }
   },
@@ -282,8 +300,10 @@ const realtimeTools = [
   {
     type: "function",
     name: "get_calendar_today",
+
     description:
       "Liest die heutigen Kalendereinträge.",
+
     parameters: {
       type: "object",
       properties: {},
@@ -291,6 +311,7 @@ const realtimeTools = [
     }
   }
 ];
+
 
 /* =========================================================
    OPENAI REALTIME SESSION
@@ -329,6 +350,7 @@ app.post(
 
       const session = {
         type: "realtime",
+
         model: "gpt-realtime",
 
         output_modalities: [
@@ -349,6 +371,11 @@ app.post(
 
         audio: {
           input: {
+
+            /*
+             * Laptop-/Raummikrofon:
+             * Noise Reduction läuft vor VAD.
+             */
             noise_reduction: {
               type: "far_field"
             },
@@ -364,41 +391,48 @@ app.post(
                 "Deutsch. Benutzer heißt Mattl. Begriffe: Druckelite24, Shopify, Umsatz, Bestellungen, DTF, Textildruck, E-Commerce, Ludwigshafen."
             },
 
+            /*
+             * STRIKTERE GERÄUSCHERKENNUNG
+             *
+             * 0.98:
+             * Leise Raumgeräusche und TV sollen
+             * deutlich schwerer auslösen.
+             *
+             * interrupt_response false:
+             * Ein VAD-Trigger darf JARVIS beim
+             * Sprechen nicht automatisch abbrechen.
+             */
             turn_detection: {
-              type:
-                "server_vad",
+              type: "server_vad",
 
-              threshold:
-                0.90,
+              threshold: 0.98,
 
-              prefix_padding_ms:
-                300,
+              prefix_padding_ms: 180,
 
-              silence_duration_ms:
-                650,
+              silence_duration_ms: 600,
 
-              create_response:
-                true,
+              create_response: true,
 
-              interrupt_response:
-                true
+              interrupt_response: false
             }
           },
 
           output: {
-            voice:
-              "cedar"
+            voice: "cedar"
           }
         }
       };
 
+
       const form =
         new FormData();
+
 
       form.append(
         "sdp",
         req.body
       );
+
 
       form.append(
         "session",
@@ -409,6 +443,7 @@ app.post(
               session
             )
           ],
+
           {
             type:
               "application/json"
@@ -416,9 +451,11 @@ app.post(
         )
       );
 
+
       const response =
         await fetch(
           "https://api.openai.com/v1/realtime/calls?model=gpt-realtime",
+
           {
             method: "POST",
 
@@ -427,13 +464,14 @@ app.post(
                 `Bearer ${process.env.OPENAI_API_KEY}`
             },
 
-            body:
-              form
+            body: form
           }
         );
 
+
       const body =
         await response.text();
+
 
       if (!response.ok) {
         console.error(
@@ -451,6 +489,7 @@ app.post(
           );
       }
 
+
       return res
         .status(201)
         .type(
@@ -460,11 +499,13 @@ app.post(
           body
         );
 
+
     } catch (error) {
       console.error(
         "Realtime bridge error:",
         error
       );
+
 
       return res
         .status(500)
@@ -475,6 +516,7 @@ app.post(
   }
 );
 
+
 /* =========================================================
    SHOPIFY AUTH
    ========================================================= */
@@ -483,6 +525,7 @@ let shopifyTokenCache = {
   token: null,
   expiresAt: 0
 };
+
 
 async function getShopifyAccessToken() {
   if (
@@ -494,17 +537,21 @@ async function getShopifyAccessToken() {
     return shopifyTokenCache.token;
   }
 
+
   const domain =
     process.env
       .SHOPIFY_STORE_DOMAIN;
+
 
   const clientId =
     process.env
       .SHOPIFY_CLIENT_ID;
 
+
   const clientSecret =
     process.env
       .SHOPIFY_CLIENT_SECRET;
+
 
   if (
     !domain ||
@@ -515,6 +562,7 @@ async function getShopifyAccessToken() {
       "Shopify ist nicht vollständig konfiguriert."
     );
   }
+
 
   const params =
     new URLSearchParams({
@@ -528,31 +576,35 @@ async function getShopifyAccessToken() {
         clientSecret
     });
 
+
   const response =
     await fetch(
       `https://${domain}/admin/oauth/access_token`,
+
       {
-        method:
-          "POST",
+        method: "POST",
 
         headers: {
           "Content-Type":
             "application/x-www-form-urlencoded"
         },
 
-        body:
-          params
+        body: params
       }
     );
+
 
   const raw =
     await response.text();
 
+
   let data;
+
 
   try {
     data =
       JSON.parse(raw);
+
   } catch {
     console.error(
       "Shopify token raw response:",
@@ -563,6 +615,7 @@ async function getShopifyAccessToken() {
       "Shopify hat keine gültige Token-Antwort geliefert."
     );
   }
+
 
   if (
     !response.ok ||
@@ -578,11 +631,13 @@ async function getShopifyAccessToken() {
     );
   }
 
+
   const expiresIn =
     Number(
       data.expires_in ||
       86399
     );
+
 
   shopifyTokenCache = {
     token:
@@ -593,12 +648,15 @@ async function getShopifyAccessToken() {
       expiresIn * 1000
   };
 
+
   console.log(
     "Shopify access token refreshed."
   );
 
+
   return data.access_token;
 }
+
 
 /* =========================================================
    SHOPIFY DATA
@@ -611,13 +669,16 @@ async function getShopifySummary(
     process.env
       .SHOPIFY_STORE_DOMAIN;
 
+
   const apiVersion =
     process.env
       .SHOPIFY_API_VERSION ||
     "2026-07";
 
+
   const token =
     await getShopifyAccessToken();
+
 
   const {
     start,
@@ -627,8 +688,10 @@ async function getShopifySummary(
       period
     );
 
+
   const search =
     `created_at:>=${start} created_at:<${end}`;
+
 
   const query = `
     query JarvisOrders($query: String!) {
@@ -654,12 +717,13 @@ async function getShopifySummary(
     }
   `;
 
+
   const response =
     await fetch(
       `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+
       {
-        method:
-          "POST",
+        method: "POST",
 
         headers: {
           "Content-Type":
@@ -681,8 +745,10 @@ async function getShopifySummary(
       }
     );
 
+
   const data =
     await response.json();
+
 
   if (
     !response.ok ||
@@ -698,17 +764,20 @@ async function getShopifySummary(
     );
   }
 
+
   const orders =
     data.data
       ?.orders
       ?.nodes ||
     [];
 
+
   const valid =
     orders.filter(
       order =>
         !order.cancelledAt
     );
+
 
   const revenue =
     valid.reduce(
@@ -724,8 +793,10 @@ async function getShopifySummary(
             ?.amount ||
           0
         ),
+
       0
     );
+
 
   const currency =
     valid[0]
@@ -734,15 +805,16 @@ async function getShopifySummary(
       ?.currencyCode ||
     "EUR";
 
+
   const average =
     valid.length
       ? revenue /
         valid.length
       : 0;
 
+
   return {
-    configured:
-      true,
+    configured: true,
 
     period,
 
@@ -761,10 +833,10 @@ async function getShopifySummary(
 
     currency,
 
-    source:
-      "Shopify"
+    source: "Shopify"
   };
 }
+
 
 /* =========================================================
    SHOPIFY ENDPOINT
@@ -781,14 +853,17 @@ app.post(
           ? "yesterday"
           : "today";
 
+
       const data =
         await getShopifySummary(
           period
         );
 
+
       return res.json(
         data
       );
+
 
     } catch (error) {
       console.error(
@@ -796,11 +871,11 @@ app.post(
         error
       );
 
+
       return res
         .status(500)
         .json({
-          configured:
-            false,
+          configured: false,
 
           error:
             error.message ||
@@ -809,6 +884,7 @@ app.post(
     }
   }
 );
+
 
 /* =========================================================
    WEATHER
@@ -825,11 +901,13 @@ app.post(
           ""
         ).trim();
 
+
       const day =
         req.body?.day ===
           "tomorrow"
           ? "tomorrow"
           : "today";
+
 
       if (
         normalize(location)
@@ -841,6 +919,7 @@ app.post(
           "Ludwigshafen am Rhein";
       }
 
+
       if (!location) {
         return res
           .status(400)
@@ -850,42 +929,51 @@ app.post(
           });
       }
 
+
       const geo =
         new URL(
           "https://geocoding-api.open-meteo.com/v1/search"
         );
+
 
       geo.searchParams.set(
         "name",
         location
       );
 
+
       geo.searchParams.set(
         "count",
         "5"
       );
+
 
       geo.searchParams.set(
         "language",
         "de"
       );
 
+
       geo.searchParams.set(
         "format",
         "json"
       );
+
 
       const geoResponse =
         await fetch(
           geo
         );
 
+
       const geoData =
         await geoResponse.json();
+
 
       const candidates =
         geoData.results ||
         [];
+
 
       if (
         !candidates.length
@@ -898,8 +986,9 @@ app.post(
           });
       }
 
-      let place =
-        null;
+
+      let place = null;
+
 
       if (
         normalize(location)
@@ -923,6 +1012,7 @@ app.post(
           );
       }
 
+
       place =
         place ||
         candidates.find(
@@ -932,10 +1022,12 @@ app.post(
         ) ||
         candidates[0];
 
+
       const weather =
         new URL(
           "https://api.open-meteo.com/v1/forecast"
         );
+
 
       weather.searchParams.set(
         "latitude",
@@ -944,6 +1036,7 @@ app.post(
         )
       );
 
+
       weather.searchParams.set(
         "longitude",
         String(
@@ -951,33 +1044,40 @@ app.post(
         )
       );
 
+
       weather.searchParams.set(
         "current",
         "temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m"
       );
+
 
       weather.searchParams.set(
         "daily",
         "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
       );
 
+
       weather.searchParams.set(
         "timezone",
         "auto"
       );
+
 
       weather.searchParams.set(
         "forecast_days",
         "2"
       );
 
+
       const response =
         await fetch(
           weather
         );
 
+
       const data =
         await response.json();
+
 
       if (!response.ok) {
         throw new Error(
@@ -985,10 +1085,12 @@ app.post(
         );
       }
 
+
       const index =
         day === "tomorrow"
           ? 1
           : 0;
+
 
       return res.json({
         source:
@@ -1011,8 +1113,7 @@ app.post(
         },
 
         current:
-          day ===
-            "today"
+          day === "today"
             ? data.current
             : null,
 
@@ -1039,11 +1140,13 @@ app.post(
         }
       });
 
+
     } catch (error) {
       console.error(
         "Weather error:",
         error
       );
+
 
       return res
         .status(500)
@@ -1056,6 +1159,7 @@ app.post(
   }
 );
 
+
 /* =========================================================
    GMAIL PLACEHOLDER
    ========================================================= */
@@ -1067,14 +1171,14 @@ app.post(
     return res
       .status(503)
       .json({
-        configured:
-          false,
+        configured: false,
 
         message:
           "Mattl, Gmail ist noch nicht verbunden."
       });
   }
 );
+
 
 /* =========================================================
    CALENDAR PLACEHOLDER
@@ -1087,14 +1191,14 @@ app.post(
     return res
       .status(503)
       .json({
-        configured:
-          false,
+        configured: false,
 
         message:
           "Mattl, Google Kalender ist noch nicht verbunden."
       });
   }
 );
+
 
 /* =========================================================
    HEALTH
@@ -1108,7 +1212,7 @@ app.get(
       ok: true,
 
       version:
-        "JARVIS V4",
+        "JARVIS V4.1",
 
       architecture:
         "realtime-speech-to-speech",
@@ -1123,7 +1227,10 @@ app.get(
         "far_field",
 
       vad_threshold:
-        0.90,
+        0.98,
+
+      interrupt_response:
+        false,
 
       shopify_configured:
         Boolean(
@@ -1137,6 +1244,7 @@ app.get(
     });
   }
 );
+
 
 /* =========================================================
    ROOT
@@ -1155,6 +1263,7 @@ app.get(
   }
 );
 
+
 /* =========================================================
    START
    ========================================================= */
@@ -1165,7 +1274,7 @@ app.listen(
 
   () => {
     console.log(
-      `JARVIS V4 läuft auf Port ${PORT}`
+      `JARVIS V4.1 läuft auf Port ${PORT}`
     );
   }
 );
