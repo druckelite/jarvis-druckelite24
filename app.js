@@ -2,8 +2,15 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V8.1 · INTRO KLINGT NATÜRLICH AUS
-   (Basis: V8.0, überarbeitet am 15.08.2026)
+   V8.2 · EMPFINDLICHKEIT DEUTLICH ERHÖHT
+   (Basis: V8.1, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN GEGENÜBER V8.1:
+   17. JARVIS hat wiederholt nur auf laute Stimme reagiert - die
+       Erkennungsschwelle war zu hoch. MIN_VOICE_THRESHOLD,
+       MAX_VOICE_THRESHOLD und NOISE_MULTIPLIER deutlich herabgesetzt.
+       Unproblematisch bei gelegentlichen Fehlauslösern durch
+       Hintergrundgeräusche - die Weckwort-Prüfung fängt die still ab.
 
    ÄNDERUNGEN GEGENÜBER V8.0:
    16. Die Intro-Musik wurde bisher abrupt abgewürgt, sobald die
@@ -190,9 +197,15 @@ const MIN_RECORDING_MS = 550;
 // War 850ms - mehr Toleranz für kurze Denkpausen mitten im Satz.
 const SILENCE_DURATION_MS = 1000;
 
-const MIN_VOICE_THRESHOLD = 0.018;
-const MAX_VOICE_THRESHOLD = 0.05;
-const NOISE_MULTIPLIER = 1.8;
+// FIX: JARVIS hat wiederholt nur auf laute Stimme reagiert - die
+// Schwelle war schlicht zu hoch angesetzt. Alle drei Werte deutlich
+// herabgesetzt, damit normale Gesprächslautstärke zuverlässig erkannt
+// wird. Das Risiko, öfter auf Hintergrundgeräusche "anzuspringen", ist
+// inzwischen unproblematisch: die Weckwort-Prüfung ("Jarvis") fängt
+// solche Fehlauslöser ohnehin still ab, bevor irgendetwas passiert.
+const MIN_VOICE_THRESHOLD = 0.012;
+const MAX_VOICE_THRESHOLD = 0.035;
+const NOISE_MULTIPLIER = 1.4;
 const VOICE_CONFIRM_MS = 120;
 const WAIT_FOR_VOICE_MS = 15000;
 const MAX_RECORDING_MS = 20000;
