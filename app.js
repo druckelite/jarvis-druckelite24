@@ -2,17 +2,19 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V6.0 · CLEAN VOICE PIPELINE
+   V6.1 · TRANSCRIPTION FALLBACK
 
+   ---------------------------------------------------------
    ARCHITEKTUR
    ---------------------------------------------------------
    1. OpenAI Realtime hört NUR zu
-   2. OpenAI Realtime transkribiert NUR
-   3. KEIN response.create im Browser
-   4. /api/jarvis-chat erzeugt die Textantwort
+   2. OpenAI Realtime transkribiert
+   3. KEIN response.create
+   4. /api/jarvis-chat erzeugt Textantwort
    5. ElevenLabs ist die EINZIGE Stimme
    6. Kein cedar
-   7. Keine parallelen OpenAI-Responses
+   7. Transcription-Deltas werden gesammelt
+   8. Fallback, falls completed-Event zu spät kommt
    ========================================================= */
 
 
@@ -63,38 +65,70 @@ let chatInProgress = false;
    CONVERSATION
    ========================================================= */
 
-/*
- * Responses API Gesprächskontext.
- *
- * Der Server liefert nach jeder
- * Antwort eine response_id.
- */
 let previousResponseId = null;
 
 
 /* =========================================================
-   TRANSCRIPTION CONTROL
+   TRANSCRIPTION
    ========================================================= */
 
 /*
- * Verhindert, dass dasselbe
- * Realtime-Transkript zweimal
- * verarbeitet wird.
+ * Bereits vollständig verarbeitete
+ * Realtime-Items.
  */
 const processedItemIds =
   new Set();
+
 
 const MAX_PROCESSED_ITEMS =
   100;
 
 
 /*
- * Falls aus irgendeinem Grund
- * keine item_id kommt.
+ * Partielle Transkripte.
+ *
+ * Key:
+ * OpenAI item_id
+ *
+ * Value:
+ * bisher empfangener Text
  */
-let lastTranscriptText = "";
+const transcriptBuffers =
+  new Map();
 
-let lastTranscriptTime = 0;
+
+/*
+ * Letztes Item, das Sprache
+ * geliefert hat.
+ */
+let latestTranscriptItemId =
+  null;
+
+
+/*
+ * Fallback-Timer.
+ *
+ * Falls completed nicht kommt,
+ * verwenden wir nach einigen
+ * Sekunden die bereits empfangenen
+ * Delta-Texte.
+ */
+let transcriptFallbackTimer =
+  null;
+
+
+let transcriptRecoveryTimer =
+  null;
+
+
+/*
+ * Dedupe ohne item_id.
+ */
+let lastTranscriptText =
+  "";
+
+let lastTranscriptTime =
+  0;
 
 
 /* =========================================================
@@ -118,7 +152,7 @@ let introFadeTimer = null;
 
 
 /* =========================================================
-   NETWORK CONTROLLERS
+   NETWORK
    ========================================================= */
 
 let chatController = null;
@@ -133,17 +167,22 @@ let ttsController = null;
 const INTRO_START =
   4;
 
+
 const INTRO_START_VOLUME =
   0.28;
+
 
 const INTRO_VOICE_DELAY_MS =
   2000;
 
+
 const INTRO_BACKGROUND_VOLUME =
   0.025;
 
+
 const INTRO_DUCK_DURATION_MS =
   1800;
+
 
 const INTRO_FADE_DURATION_MS =
   15000;
@@ -158,10 +197,33 @@ const LISTENING_RESUME_DELAY_MS =
 
 
 /*
- * Netzwerk-Timeouts.
+ * Nach speech_stopped warten wir
+ * maximal so lange auf completed.
+ *
+ * Wenn schon Delta-Text vorhanden
+ * ist, verwenden wir diesen.
+ */
+const TRANSCRIPT_FALLBACK_MS =
+  3500;
+
+
+/*
+ * Absolute Obergrenze.
+ *
+ * JARVIS darf niemals dauerhaft
+ * auf "Verarbeite Sprache …"
+ * stehen bleiben.
+ */
+const TRANSCRIPT_RECOVERY_MS =
+  8000;
+
+
+/*
+ * Netzwerk.
  */
 const CHAT_TIMEOUT_MS =
   45000;
+
 
 const ELEVEN_TIMEOUT_MS =
   25000;
@@ -292,6 +354,41 @@ function addProcessedItemId(
 
 
 /* =========================================================
+   TRANSCRIPTION TIMERS
+   ========================================================= */
+
+function clearTranscriptTimers() {
+
+  if (
+    transcriptFallbackTimer
+  ) {
+
+    clearTimeout(
+      transcriptFallbackTimer
+    );
+
+
+    transcriptFallbackTimer =
+      null;
+  }
+
+
+  if (
+    transcriptRecoveryTimer
+  ) {
+
+    clearTimeout(
+      transcriptRecoveryTimer
+    );
+
+
+    transcriptRecoveryTimer =
+      null;
+  }
+}
+
+
+/* =========================================================
    MICROPHONE
    ========================================================= */
 
@@ -342,10 +439,6 @@ function resumeListening() {
   }
 
 
-  /*
-   * Niemals wieder zuhören,
-   * solange noch etwas läuft.
-   */
   if (
     assistantSpeaking ||
     chatInProgress
@@ -353,6 +446,9 @@ function resumeListening() {
 
     return;
   }
+
+
+  clearTranscriptTimers();
 
 
   waitingForAssistant =
@@ -526,12 +622,14 @@ function getGreeting() {
 
 
 /* =========================================================
-   INTRO
+   INTRO CLEANUP
    ========================================================= */
 
 function stopIntro() {
 
-  if (introFadeTimer) {
+  if (
+    introFadeTimer
+  ) {
 
     clearInterval(
       introFadeTimer
@@ -543,7 +641,9 @@ function stopIntro() {
   }
 
 
-  if (introAudio) {
+  if (
+    introAudio
+  ) {
 
     try {
 
@@ -557,6 +657,10 @@ function stopIntro() {
   }
 }
 
+
+/* =========================================================
+   INTRO START
+   ========================================================= */
 
 async function startIntro() {
 
@@ -655,7 +759,8 @@ async function startIntro() {
 
 
       if (
-        introAudio.readyState >= 1
+        introAudio.readyState >=
+        1
       ) {
 
         play();
@@ -683,7 +788,9 @@ function duckIntro() {
   }
 
 
-  if (introFadeTimer) {
+  if (
+    introFadeTimer
+  ) {
 
     clearInterval(
       introFadeTimer
@@ -753,7 +860,8 @@ function duckIntro() {
 
 
         if (
-          progress >= 1
+          progress >=
+          1
         ) {
 
           clearInterval(
@@ -841,7 +949,8 @@ function fadeIntroOut() {
 
 
         if (
-          progress >= 1
+          progress >=
+          1
         ) {
 
           clearInterval(
@@ -886,12 +995,6 @@ function stopElevenAudio() {
 
   if (audio) {
 
-    /*
-     * Erst Handler entfernen.
-     *
-     * Dadurch erzeugt Cleanup
-     * keine falschen Fehler-Events.
-     */
     audio.onended =
       null;
 
@@ -955,7 +1058,9 @@ async function speakWithElevenLabs(
     ).trim();
 
 
-  if (!cleanText) {
+  if (
+    !cleanText
+  ) {
 
     assistantSpeaking =
       false;
@@ -972,14 +1077,12 @@ async function speakWithElevenLabs(
   }
 
 
-  /*
-   * Garantiert:
-   * niemals zwei ElevenLabs-Audios.
-   */
   stopElevenAudio();
 
 
-  if (ttsController) {
+  if (
+    ttsController
+  ) {
 
     try {
 
@@ -1065,7 +1168,9 @@ async function speakWithElevenLabs(
     );
 
 
-    if (!response.ok) {
+    if (
+      !response.ok
+    ) {
 
       const errorText =
         await response.text();
@@ -1083,7 +1188,8 @@ async function speakWithElevenLabs(
 
     if (
       !blob ||
-      blob.size === 0
+      blob.size ===
+        0
     ) {
 
       throw new Error(
@@ -1308,10 +1414,6 @@ async function requestStartupGreeting() {
     getGreeting();
 
 
-  /*
-   * Während Begrüßung:
-   * Mikro garantiert aus.
-   */
   chatInProgress =
     true;
 
@@ -1323,7 +1425,7 @@ async function requestStartupGreeting() {
 
 
 /* =========================================================
-   JARVIS CHAT
+   CHAT REQUEST
    ========================================================= */
 
 async function sendTranscriptToJarvis(
@@ -1353,9 +1455,6 @@ async function sendTranscriptToJarvis(
   }
 
 
-  /*
-   * EIN Request gleichzeitig.
-   */
   if (
     chatInProgress
   ) {
@@ -1367,6 +1466,9 @@ async function sendTranscriptToJarvis(
 
     return;
   }
+
+
+  clearTranscriptTimers();
 
 
   chatInProgress =
@@ -1400,7 +1502,9 @@ async function sendTranscriptToJarvis(
   );
 
 
-  if (chatController) {
+  if (
+    chatController
+  ) {
 
     try {
 
@@ -1488,7 +1592,9 @@ async function sendTranscriptToJarvis(
     }
 
 
-    if (!response.ok) {
+    if (
+      !response.ok
+    ) {
 
       throw new Error(
         data.error ||
@@ -1504,7 +1610,9 @@ async function sendTranscriptToJarvis(
       ).trim();
 
 
-    if (!answer) {
+    if (
+      !answer
+    ) {
 
       throw new Error(
         "JARVIS hat keinen Antworttext geliefert."
@@ -1512,9 +1620,6 @@ async function sendTranscriptToJarvis(
     }
 
 
-    /*
-     * Gesprächskontext speichern.
-     */
     if (
       data.response_id
     ) {
@@ -1530,15 +1635,6 @@ async function sendTranscriptToJarvis(
     );
 
 
-    /*
-     * WICHTIG:
-     *
-     * Der Text geht jetzt ausschließlich
-     * an ElevenLabs.
-     *
-     * Keine Realtime Response.
-     * Kein cedar.
-     */
     await speakWithElevenLabs(
       answer
     );
@@ -1602,7 +1698,120 @@ async function sendTranscriptToJarvis(
 
 
 /* =========================================================
-   TRANSCRIPT HANDLING
+   TRANSCRIPT PROCESSOR
+   ========================================================= */
+
+async function processTranscript(
+  transcript,
+  itemId = ""
+) {
+
+  const cleanTranscript =
+    String(
+      transcript ||
+      ""
+    ).trim();
+
+
+  if (
+    !cleanTranscript
+  ) {
+
+    return false;
+  }
+
+
+  clearTranscriptTimers();
+
+
+  /*
+   * Item bereits beantwortet?
+   */
+  if (
+    itemId &&
+    processedItemIds.has(
+      itemId
+    )
+  ) {
+
+    return false;
+  }
+
+
+  if (
+    itemId
+  ) {
+
+    addProcessedItemId(
+      itemId
+    );
+
+
+    transcriptBuffers.delete(
+      itemId
+    );
+  }
+
+
+  /*
+   * Fallback-Dedupe.
+   */
+  const now =
+    Date.now();
+
+
+  if (
+    !itemId &&
+    cleanTranscript ===
+      lastTranscriptText &&
+    now -
+      lastTranscriptTime <
+      3000
+  ) {
+
+    return false;
+  }
+
+
+  lastTranscriptText =
+    cleanTranscript;
+
+
+  lastTranscriptTime =
+    now;
+
+
+  setLog(
+    `Verstanden: ${cleanTranscript}`
+  );
+
+
+  /*
+   * Wichtig:
+   *
+   * Erst jetzt wird chatInProgress
+   * freigegeben und anschließend
+   * der Chat gestartet.
+   */
+  chatInProgress =
+    false;
+
+
+  waitingForAssistant =
+    true;
+
+
+  await sendTranscriptToJarvis(
+    cleanTranscript
+  );
+
+
+  return true;
+}
+
+
+/* =========================================================
+   COMPLETED TRANSCRIPT
    ========================================================= */
 
 async function handleCompletedTranscript(
@@ -1616,17 +1825,36 @@ async function handleCompletedTranscript(
     ).trim();
 
 
-  if (!transcript) {
-
-    chatInProgress =
-      false;
-
-
-    waitingForAssistant =
-      false;
+  const itemId =
+    String(
+      event.item_id ||
+      ""
+    ).trim();
 
 
-    resumeListening();
+  /*
+   * completed gewinnt immer
+   * gegenüber dem Delta-Fallback.
+   */
+  if (
+    itemId &&
+    processedItemIds.has(
+      itemId
+    )
+  ) {
+
+    return;
+  }
+
+
+  if (
+    transcript
+  ) {
+
+    await processTranscript(
+      transcript,
+      itemId
+    );
 
 
     return;
@@ -1634,16 +1862,58 @@ async function handleCompletedTranscript(
 
 
   /*
-   * =====================================================
-   * DUPLIKATE ÜBER ITEM-ID VERHINDERN
-   * =====================================================
+   * Falls completed leer sein sollte,
+   * versuchen wir den Delta-Buffer.
    */
+  if (
+    itemId &&
+    transcriptBuffers.has(
+      itemId
+    )
+  ) {
+
+    const buffered =
+      transcriptBuffers.get(
+        itemId
+      );
+
+
+    await processTranscript(
+      buffered,
+      itemId
+    );
+  }
+}
+
+
+/* =========================================================
+   TRANSCRIPTION DELTA
+   ========================================================= */
+
+function handleTranscriptDelta(
+  event
+) {
 
   const itemId =
     String(
       event.item_id ||
       ""
     ).trim();
+
+
+  const delta =
+    String(
+      event.delta ||
+      ""
+    );
+
+
+  if (
+    !delta
+  ) {
+
+    return;
+  }
 
 
   if (
@@ -1653,43 +1923,29 @@ async function handleCompletedTranscript(
     )
   ) {
 
-    console.log(
-      "Doppeltes Transkript ignoriert:",
-      itemId
-    );
-
-
     return;
   }
-
-
-  if (itemId) {
-
-    addProcessedItemId(
-      itemId
-    );
-  }
-
-
-  /*
-   * Fallback-Dedupe,
-   * falls keine item_id vorhanden ist.
-   */
-  const now =
-    Date.now();
 
 
   if (
-    !itemId &&
-    transcript ===
-      lastTranscriptText &&
-    now -
-      lastTranscriptTime <
-      2500
+    itemId
   ) {
 
-    console.log(
-      "Doppeltes Transkript ignoriert."
+    latestTranscriptItemId =
+      itemId;
+
+
+    const current =
+      transcriptBuffers.get(
+        itemId
+      ) ||
+      "";
+
+
+    transcriptBuffers.set(
+      itemId,
+      current +
+      delta
     );
 
 
@@ -1697,33 +1953,276 @@ async function handleCompletedTranscript(
   }
 
 
-  lastTranscriptText =
-    transcript;
+  /*
+   * Seltenes Fallback ohne item_id.
+   */
+  const fallbackId =
+    "__latest__";
 
 
-  lastTranscriptTime =
-    now;
+  const current =
+    transcriptBuffers.get(
+      fallbackId
+    ) ||
+    "";
+
+
+  transcriptBuffers.set(
+    fallbackId,
+    current +
+    delta
+  );
+}
+
+
+/* =========================================================
+   TRANSCRIPT FALLBACK
+   ========================================================= */
+
+async function useBufferedTranscriptFallback() {
+
+  if (
+    !active ||
+    chatInProgress ||
+    assistantSpeaking
+  ) {
+
+    return;
+  }
+
+
+  let itemId =
+    latestTranscriptItemId;
+
+
+  let text =
+    "";
+
+
+  /*
+   * Erst das letzte bekannte
+   * echte Item versuchen.
+   */
+  if (
+    itemId
+  ) {
+
+    text =
+      String(
+        transcriptBuffers.get(
+          itemId
+        ) ||
+        ""
+      ).trim();
+  }
+
+
+  /*
+   * Falls dieses leer ist,
+   * neuesten nicht verarbeiteten
+   * Buffer suchen.
+   */
+  if (!text) {
+
+    const entries =
+      Array.from(
+        transcriptBuffers.entries()
+      )
+        .reverse();
+
+
+    for (
+      const [
+        candidateId,
+        candidateText
+      ] of
+      entries
+    ) {
+
+      if (
+        candidateId !==
+          "__latest__" &&
+        processedItemIds.has(
+          candidateId
+        )
+      ) {
+
+        continue;
+      }
+
+
+      const clean =
+        String(
+          candidateText ||
+          ""
+        ).trim();
+
+
+      if (
+        clean
+      ) {
+
+        itemId =
+          candidateId ===
+            "__latest__"
+            ? ""
+            : candidateId;
+
+
+        text =
+          clean;
+
+
+        break;
+      }
+    }
+  }
+
+
+  if (
+    !text
+  ) {
+
+    console.warn(
+      "Noch kein Transkript für Fallback vorhanden."
+    );
+
+
+    return;
+  }
+
+
+  console.warn(
+    "Completed-Event verspätet – Delta-Transkript wird verwendet:",
+    text
+  );
+
+
+  await processTranscript(
+    text,
+    itemId
+  );
+}
+
+
+/* =========================================================
+   SPEECH STOPPED
+   ========================================================= */
+
+function startTranscriptWaiting() {
+
+  clearTranscriptTimers();
+
+
+  waitingForAssistant =
+    true;
+
+
+  muteMicrophone();
+
+
+  setJarvisState(
+    "thinking"
+  );
 
 
   setLog(
-    `Verstanden: ${transcript}`
+    "Verarbeite Sprache …"
   );
 
 
   /*
-   * Jetzt beginnt erst der Chat.
+   * Nach 3,5 Sekunden:
    *
-   * Wichtig:
-   * speech_stopped selbst erzeugt
-   * KEINE Antwort mehr.
+   * Wenn completed fehlt,
+   * verwenden wir die bisher
+   * empfangenen Transkript-Deltas.
    */
-  chatInProgress =
-    false;
+  transcriptFallbackTimer =
+    setTimeout(
+      async () => {
+
+        transcriptFallbackTimer =
+          null;
 
 
-  await sendTranscriptToJarvis(
-    transcript
-  );
+        await useBufferedTranscriptFallback();
+
+      },
+      TRANSCRIPT_FALLBACK_MS
+    );
+
+
+  /*
+   * Nach 8 Sekunden darf JARVIS
+   * definitiv nicht hängen bleiben.
+   */
+  transcriptRecoveryTimer =
+    setTimeout(
+      async () => {
+
+        transcriptRecoveryTimer =
+          null;
+
+
+        if (
+          chatInProgress ||
+          assistantSpeaking
+        ) {
+
+          return;
+        }
+
+
+        /*
+         * Noch ein letzter Versuch.
+         */
+        await useBufferedTranscriptFallback();
+
+
+        /*
+         * Falls auch kein Delta vorhanden:
+         * sauber zurück zum Zuhören.
+         */
+        if (
+          !chatInProgress &&
+          !assistantSpeaking
+        ) {
+
+          console.warn(
+            "Kein verwertbares Transkript erhalten."
+          );
+
+
+          waitingForAssistant =
+            false;
+
+
+          setLog(
+            "Ich habe dich nicht verstanden. Versuch es nochmal."
+          );
+
+
+          setTimeout(
+            () => {
+
+              if (
+                active &&
+                !chatInProgress &&
+                !assistantSpeaking
+              ) {
+
+                resumeListening();
+              }
+
+            },
+            900
+          );
+        }
+
+      },
+      TRANSCRIPT_RECOVERY_MS
+    );
 }
 
 
@@ -1753,6 +2252,16 @@ async function startJarvis() {
   processedItemIds.clear();
 
 
+  transcriptBuffers.clear();
+
+
+  latestTranscriptItemId =
+    null;
+
+
+  clearTranscriptTimers();
+
+
   lastTranscriptText =
     "";
 
@@ -1773,7 +2282,9 @@ async function startJarvis() {
     false;
 
 
-  if (button) {
+  if (
+    button
+  ) {
 
     button.disabled =
       true;
@@ -1822,17 +2333,9 @@ async function startJarvis() {
 
 
     /*
-     * =====================================================
-     * EXTREM WICHTIG:
-     *
-     * Es gibt KEINE OpenAI-Audioausgabe mehr.
-     *
-     * Falls die Realtime-Verbindung trotzdem
-     * irgendeinen Track bereitstellt,
-     * wird er sofort deaktiviert.
-     * =====================================================
+     * OpenAI Audio wird niemals
+     * abgespielt.
      */
-
     pc.ontrack =
       event => {
 
@@ -1849,7 +2352,9 @@ async function startJarvis() {
         } catch {}
 
 
-        if (remoteAudio) {
+        if (
+          remoteAudio
+        ) {
 
           try {
 
@@ -1872,7 +2377,9 @@ async function startJarvis() {
       };
 
 
-    if (remoteAudio) {
+    if (
+      remoteAudio
+    ) {
 
       remoteAudio.muted =
         true;
@@ -1897,7 +2404,8 @@ async function startJarvis() {
 
 
         if (
-          state === "failed"
+          state ===
+          "failed"
         ) {
 
           setLog(
@@ -1910,11 +2418,6 @@ async function startJarvis() {
     /*
      * =====================================================
      * DATA CHANNEL
-     * =====================================================
-     *
-     * Nur um Serverevents zu empfangen.
-     *
-     * Wir senden KEIN response.create.
      * =====================================================
      */
 
@@ -1940,7 +2443,9 @@ async function startJarvis() {
           false;
 
 
-        if (button) {
+        if (
+          button
+        ) {
 
           button.disabled =
             false;
@@ -1952,10 +2457,6 @@ async function startJarvis() {
         );
 
 
-        /*
-         * Während Intro und Begrüßung
-         * hört JARVIS NICHT zu.
-         */
         muteMicrophone();
 
 
@@ -1969,7 +2470,9 @@ async function startJarvis() {
         );
 
 
-        if (!active) {
+        if (
+          !active
+        ) {
 
           return;
         }
@@ -1978,10 +2481,6 @@ async function startJarvis() {
         duckIntro();
 
 
-        /*
-         * Begrüßung ist direkt
-         * ElevenLabs.
-         */
         await requestStartupGreeting();
       };
 
@@ -2045,7 +2544,7 @@ async function startJarvis() {
 
 
         /* =================================================
-           USER STARTET ZU REDEN
+           USER SPRICHT
            ================================================= */
 
         if (
@@ -2061,6 +2560,15 @@ async function startJarvis() {
 
             return;
           }
+
+
+          /*
+           * Neuer Turn:
+           * alten Delta-Buffer nicht
+           * versehentlich übernehmen.
+           */
+          latestTranscriptItemId =
+            null;
 
 
           setJarvisState(
@@ -2084,39 +2592,46 @@ async function startJarvis() {
         ) {
 
           /*
-           * =================================================
-           * ENTSCHEIDENDE ÄNDERUNG
-           * =================================================
-           *
-           * Hier wird KEINE Antwort gestartet.
-           *
-           * Wir warten ausschließlich auf:
-           *
-           * conversation.item.
-           * input_audio_transcription.completed
-           * =================================================
+           * Falls speech_stopped eine
+           * item_id enthält, merken.
            */
+          if (
+            event.item_id
+          ) {
 
-          waitingForAssistant =
-            true;
-
-
-          muteMicrophone();
-
-
-          setJarvisState(
-            "thinking"
-          );
+            latestTranscriptItemId =
+              String(
+                event.item_id
+              );
+          }
 
 
-          setLog(
-            "Verarbeite Sprache …"
+          /*
+           * KEINE KI-Antwort starten.
+           *
+           * Nur auf Transkription warten.
+           */
+          startTranscriptWaiting();
+        }
+
+
+        /* =================================================
+           TRANSCRIPTION DELTA
+           ================================================= */
+
+        if (
+          event.type ===
+          "conversation.item.input_audio_transcription.delta"
+        ) {
+
+          handleTranscriptDelta(
+            event
           );
         }
 
 
         /* =================================================
-           FERTIGES DEUTSCHES TRANSKRIPT
+           TRANSCRIPTION COMPLETED
            ================================================= */
 
         if (
@@ -2131,7 +2646,7 @@ async function startJarvis() {
 
 
         /* =================================================
-           TRANSKRIPTION FEHLGESCHLAGEN
+           TRANSCRIPTION FAILED
            ================================================= */
 
         if (
@@ -2145,30 +2660,44 @@ async function startJarvis() {
           );
 
 
-          chatInProgress =
-            false;
+          /*
+           * Vielleicht haben wir trotz
+           * failed bereits Deltas.
+           */
+          await useBufferedTranscriptFallback();
 
 
-          waitingForAssistant =
-            false;
+          if (
+            !chatInProgress &&
+            !assistantSpeaking
+          ) {
+
+            clearTranscriptTimers();
 
 
-          setLog(
-            "Ich habe dich nicht verstanden."
-          );
+            waitingForAssistant =
+              false;
 
 
-          setTimeout(
-            () => {
+            setLog(
+              "Ich habe dich nicht verstanden."
+            );
 
-              if (active) {
 
-                resumeListening();
-              }
+            setTimeout(
+              () => {
 
-            },
-            500
-          );
+                if (
+                  active
+                ) {
+
+                  resumeListening();
+                }
+
+              },
+              700
+            );
+          }
         }
 
 
@@ -2188,15 +2717,12 @@ async function startJarvis() {
 
 
           /*
-           * Es gibt in V6 KEINE
-           * Response-Fehlerbehandlung mehr,
-           * weil Realtime keine Responses
-           * erzeugen darf.
+           * Nicht sofort abbrechen.
+           *
+           * Falls schon Delta-Text da ist,
+           * versuchen wir diesen.
            */
-          setLog(
-            event.error?.message ||
-            "Transkriptionsfehler."
-          );
+          await useBufferedTranscriptFallback();
 
 
           if (
@@ -2204,20 +2730,26 @@ async function startJarvis() {
             !chatInProgress
           ) {
 
-            waitingForAssistant =
-              false;
+            setLog(
+              event.error?.message ||
+              "Transkriptionsfehler."
+            );
 
 
             setTimeout(
               () => {
 
-                if (active) {
+                if (
+                  active &&
+                  !chatInProgress &&
+                  !assistantSpeaking
+                ) {
 
                   resumeListening();
                 }
 
               },
-              500
+              700
             );
           }
         }
@@ -2242,10 +2774,6 @@ async function startJarvis() {
             noiseSuppression:
               true,
 
-            /*
-             * Hintergrundgeräusche
-             * nicht automatisch hochziehen.
-             */
             autoGainControl:
               false,
 
@@ -2255,9 +2783,6 @@ async function startJarvis() {
         });
 
 
-    /*
-     * Start immer stumm.
-     */
     muteMicrophone();
 
 
@@ -2307,7 +2832,9 @@ async function startJarvis() {
       );
 
 
-    if (!response.ok) {
+    if (
+      !response.ok
+    ) {
 
       throw new Error(
         await response.text()
@@ -2350,7 +2877,9 @@ async function startJarvis() {
       false;
 
 
-    if (button) {
+    if (
+      button
+    ) {
 
       button.disabled =
         false;
@@ -2392,6 +2921,16 @@ async function stopJarvis() {
   processedItemIds.clear();
 
 
+  transcriptBuffers.clear();
+
+
+  latestTranscriptItemId =
+    null;
+
+
+  clearTranscriptTimers();
+
+
   lastTranscriptText =
     "";
 
@@ -2401,9 +2940,11 @@ async function stopJarvis() {
 
 
   /*
-   * Netzwerk abbrechen.
+   * Chat abbrechen.
    */
-  if (chatController) {
+  if (
+    chatController
+  ) {
 
     try {
 
@@ -2417,7 +2958,12 @@ async function stopJarvis() {
   }
 
 
-  if (ttsController) {
+  /*
+   * ElevenLabs Request abbrechen.
+   */
+  if (
+    ttsController
+  ) {
 
     try {
 
@@ -2431,9 +2977,6 @@ async function stopJarvis() {
   }
 
 
-  /*
-   * Audio stoppen.
-   */
   elevenPlaybackSettled =
     true;
 
@@ -2444,14 +2987,11 @@ async function stopJarvis() {
   stopIntro();
 
 
-  /*
-   * Mikro aus.
-   */
   muteMicrophone();
 
 
   /*
-   * DataChannel schließen.
+   * DataChannel.
    */
   try {
 
@@ -2468,11 +3008,13 @@ async function stopJarvis() {
 
 
   /*
-   * Peer schließen.
+   * Peer.
    */
   try {
 
-    if (pc) {
+    if (
+      pc
+    ) {
 
       pc.close();
     }
@@ -2481,11 +3023,13 @@ async function stopJarvis() {
 
 
   /*
-   * Mikrofon-Tracks stoppen.
+   * Mikrofon.
    */
   try {
 
-    if (localStream) {
+    if (
+      localStream
+    ) {
 
       for (
         const track of
@@ -2512,10 +3056,11 @@ async function stopJarvis() {
 
 
   /*
-   * OpenAI Remote Audio
-   * endgültig stumm halten.
+   * Remote Audio definitiv aus.
    */
-  if (remoteAudio) {
+  if (
+    remoteAudio
+  ) {
 
     try {
 
@@ -2557,7 +3102,9 @@ async function stopJarvis() {
   );
 
 
-  if (button) {
+  if (
+    button
+  ) {
 
     button.disabled =
       false;
@@ -2574,20 +3121,26 @@ setJarvisState(
 );
 
 
-if (button) {
+if (
+  button
+) {
 
   button.addEventListener(
     "click",
 
     async () => {
 
-      if (connecting) {
+      if (
+        connecting
+      ) {
 
         return;
       }
 
 
-      if (active) {
+      if (
+        active
+      ) {
 
         await stopJarvis();
 
