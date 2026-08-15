@@ -2,8 +2,16 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V7.4 · SATZWEISE SPRACHAUSGABE + LAUTSTÄRKE-AUSGLEICH
-   (Basis: V7.3, überarbeitet am 15.08.2026)
+   V7.5 · ECHTE LAUTSTÄRKE-NORMALISIERUNG
+   (Basis: V7.4, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN GEGENÜBER V7.4:
+   7. Der kurze Lautstärke-Ausgleich am Anfang (nur die ersten 350ms)
+      hat nicht gereicht, weil offenbar ganze Sätze insgesamt leiser
+      oder lauter zurückkommen können - nicht nur ihr Anfang. Jetzt
+      wird jeder Audio-Clip vor dem Abspielen gemessen (Spitzenpegel)
+      und auf ein einheitliches Ziel normalisiert, damit JARVIS bei
+      jedem Satz gleich laut klingt.
 
    ÄNDERUNGEN GEGENÜBER V7.3:
    5. Antworten werden satzweise vertont und abgespielt (Fließband-
@@ -93,6 +101,7 @@ let previousResponseId = null;
 /* ============ ELEVENLABS ============ */
 let elevenAudio = null;
 let elevenObjectUrl = null;
+let currentAudioSource = null;
 let ttsController = null;
 
 /* ============ NETWORK ============ */
@@ -351,6 +360,14 @@ function fadeIntroOut() {
    ========================================================= */
 
 function stopElevenAudio() {
+  if (currentAudioSource) {
+    try {
+      currentAudioSource.onended = null;
+      currentAudioSource.stop();
+    } catch {}
+    currentAudioSource = null;
+  }
+
   if (elevenAudio) {
     elevenAudio.onended = null;
     elevenAudio.onerror = null;
@@ -901,38 +918,67 @@ function playBlob(blob) {
   return new Promise((resolve, reject) => {
     stopElevenAudio();
 
-    elevenObjectUrl = URL.createObjectURL(blob);
-    elevenAudio = new Audio(elevenObjectUrl);
-    elevenAudio.preload = "auto";
-    elevenAudio.volume = 1;
+    // Einfache Wiedergabe ohne Normalisierung - Rückfalllösung, falls
+    // Web Audio nicht verfügbar ist oder die Analyse fehlschlägt.
+    const playPlain = () => {
+      elevenObjectUrl = URL.createObjectURL(blob);
+      elevenAudio = new Audio(elevenObjectUrl);
+      elevenAudio.preload = "auto";
+      elevenAudio.volume = 1;
+      elevenAudio.onended = () => resolve();
+      elevenAudio.onerror = () => reject(new Error("ElevenLabs-Audio konnte nicht abgespielt werden."));
+      elevenAudio.play().catch(reject);
+    };
 
-    elevenAudio.onended = () => resolve();
-    elevenAudio.onerror = () => reject(new Error("ElevenLabs-Audio konnte nicht abgespielt werden."));
+    const ctx = getPlaybackAudioContext();
+    if (!ctx) {
+      playPlain();
+      return;
+    }
 
-    // FIX: kurzer Lautstärke-Ausgleich gegen das "leise Anlaufen".
-    // Die ersten 350ms werden angehoben und pendeln dann auf normale
-    // Lautstärke ein. Falls der Browser das nicht zulässt (z.B. sehr
-    // altes Gerät), spielt der Clip trotzdem ganz normal ab.
-    try {
-      const ctx = getPlaybackAudioContext();
-      if (ctx) {
-        if (ctx.state === "suspended") ctx.resume().catch(() => {});
+    (async () => {
+      try {
+        if (ctx.state === "suspended") {
+          await ctx.resume().catch(() => {});
+        }
 
-        const source = ctx.createMediaElementSource(elevenAudio);
+        const arrayBuffer = await blob.arrayBuffer();
+        const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+
+        // FIX: Statt nur den Anfang kurz anzuheben, wird jeder Satz
+        // gemessen (Spitzenpegel) und auf ein einheitliches Ziel
+        // normalisiert. So klingt JARVIS bei jedem Satz gleich laut,
+        // egal ob es der erste oder der letzte ist.
+        let peak = 0;
+        for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+          const data = audioBuffer.getChannelData(channel);
+          for (let i = 0; i < data.length; i += 8) {
+            const abs = Math.abs(data[i]);
+            if (abs > peak) peak = abs;
+          }
+        }
+
+        const TARGET_PEAK = 0.9;
+        const MAX_GAIN = 4;
+        const gainValue = peak > 0.001 ? Math.min(TARGET_PEAK / peak, MAX_GAIN) : 1;
+
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+
         const gain = ctx.createGain();
-
-        const now = ctx.currentTime;
-        gain.gain.setValueAtTime(1.6, now);
-        gain.gain.linearRampToValueAtTime(1.0, now + 0.35);
+        gain.gain.value = gainValue;
 
         source.connect(gain);
         gain.connect(ctx.destination);
-      }
-    } catch (gainError) {
-      console.warn("Lautstärke-Ausgleich nicht verfügbar, spiele normal ab:", gainError);
-    }
 
-    elevenAudio.play().catch(reject);
+        source.onended = () => resolve();
+        currentAudioSource = source;
+        source.start();
+      } catch (error) {
+        console.warn("Normalisierte Wiedergabe fehlgeschlagen, spiele normal ab:", error);
+        playPlain();
+      }
+    })();
   });
 }
 
