@@ -2,8 +2,15 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V8.2 · EMPFINDLICHKEIT DEUTLICH ERHÖHT
-   (Basis: V8.1, überarbeitet am 15.08.2026)
+   V8.3 · SCHNELLERES ABFLACHEN DER INTRO-MUSIK
+   (Basis: V8.2, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN GEGENÜBER V8.2:
+   18. Die Musik wurde bisher über 1500ms hinweg leiser, während die
+       Begrüßung schon lief - dadurch überlappten sich beide noch
+       spürbar am Anfang. Jetzt wird sie in 400ms schnell "abgeflacht",
+       sobald die Begrüßung einsetzt, und klingt danach wie gewohnt
+       über mehrere Sekunden im Hintergrund sanft aus.
 
    ÄNDERUNGEN GEGENÜBER V8.1:
    17. JARVIS hat wiederholt nur auf laute Stimme reagiert - die
@@ -188,7 +195,14 @@ const INTRO_START_VOLUME = 0.28;
 // ursprünglichen 2000ms plus dem alten abrupten Abwürgen am Ende.
 const INTRO_VOICE_DELAY_MS = 1800;
 const INTRO_BACKGROUND_VOLUME = 0.025;
-const INTRO_DUCK_DURATION_MS = 1500;
+
+// FIX: War 1500ms - dadurch überlappten sich Musik und Begrüßung noch
+// spürbar in den ersten anderthalb Sekunden, weil das Leiserwerden erst
+// startet, wenn JARVIS schon zu sprechen anfängt. Jetzt schnell (400ms)
+// leiser werden ("abflachen"), sobald die Begrüßung einsetzt - danach
+// läuft das lange, sanfte Ausklingen (INTRO_FADE_DURATION_MS) wie
+// gewohnt im Hintergrund weiter.
+const INTRO_DUCK_DURATION_MS = 400;
 const INTRO_FADE_DURATION_MS = 7000;
 
 /* ============ SETTINGS · VOICE DETECTION ============ */
