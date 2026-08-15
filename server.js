@@ -1,7 +1,22 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
-   V8.7 · ERINNERUNGEN + E-MAIL-ENTWÜRFE
-   (Basis: V8.6, überarbeitet am 15.08.2026)
+   V8.8 · GMAIL-ANBINDUNG
+   (Basis: V8.7, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN IN V8.8:
+   27. Gmail angebunden (Lesezugriff, OAuth mit Refresh Token - siehe
+       Einrichtungsanleitung). Neue Funktionen: getNewEmails(),
+       isOfferInquiryEmail() (Stichwort-Erkennung für Angebots-/
+       Preisanfragen), isEmailCheckIntent() für "hab ich neue Mails?".
+   28. Proaktiver Check erweitert: neue/ungelesene Mails werden
+       automatisch gemeldet (Vorrang vor der großen-Bestellung- und
+       offene-Bestellungen-Meldung, da zeitkritischer), mit
+       besonderer Betonung, falls eine Mail nach einer Angebots-
+       anfrage klingt.
+   29. Morgen-Briefing um ungelesene E-Mails ergänzt, wie gewünscht.
+       Braucht in Render drei neue Variablen: GOOGLE_CLIENT_ID,
+       GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN - ohne die läuft
+       alles wie bisher, nur ohne Gmail-Teil.
 
    ÄNDERUNGEN IN V8.7:
    25. Neu: Erinnerungen/Timer. "Jarvis, erinnere mich in 30 Minuten
@@ -194,6 +209,13 @@ import express from "express";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// FIX: Vorher stand die Versionsnummer an drei Stellen im Code (Kommentar
+// oben, /health-Endpunkt, Start-Meldung) - beim Aktualisieren wurden die
+// beiden letzten wiederholt vergessen, wodurch /health eine veraltete
+// Nummer zeigte, obwohl der Code längst aktuell war. Jetzt genau EINE
+// Stelle, die überall referenziert wird.
+const JARVIS_VERSION = "V8.8";
 
 
 /* =========================================================
@@ -513,6 +535,16 @@ lies die noch aktiven Erinnerungen vor, notfalls sag, dass gerade
 keine laufen. Kommt später eine automatische Erinnerungsmeldung
 (SYSTEM-HINWEIS), sprich Mattl direkt darauf an - das ist eine
 Erinnerung, die er sich selbst gestellt hat, kein Zufall.
+
+E-MAILS:
+Du hast Lesezugriff auf Mattls Gmail-Postfach (nur lesen, du sendest
+oder löschst nie etwas). Bei LIVE-DATEN vom Typ "emails_list" fasse
+neue/ungelesene Mails kurz zusammen (Absender, Betreff) - bei vielen
+nicht jede einzeln aufzählen, sondern sinnvoll zusammenfassen. Klingt
+eine Mail nach einer Angebots- oder Preisanfrage, weise Mattl darauf
+besonders hin, das ist wichtig für ihn. Gibt es keine neuen Mails,
+sag das kurz und klar. Bei einem Fehler sag ehrlich, dass der
+Postfach-Zugriff gerade nicht geklappt hat.
 
 DRUCKELITE24:
 Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
@@ -838,7 +870,8 @@ Erfinde keine weiteren aktuellen Zahlen.`;
     liveData?.type === "note_saved" ||
     liveData?.type === "notes_list" ||
     liveData?.type === "reminder_set" ||
-    liveData?.type === "reminders_list";
+    liveData?.type === "reminders_list" ||
+    liveData?.type === "emails_list";
 
   const reasoningEffort = isFastPathQuestion ? "minimal" : "low";
   const needsWebSearch = !isFastPathQuestion;
@@ -975,6 +1008,157 @@ async function getShopifyAccessToken() {
 
   console.log("Shopify access token refreshed.");
   return data.access_token;
+}
+
+
+/* =========================================================
+   GMAIL
+   =========================================================
+
+   Nutzt einen einmalig erzeugten Refresh Token (siehe Einrichtungs-
+   Anleitung), um sich bei Bedarf neue, kurzlebige Access Tokens zu
+   holen - genau wie bei Shopify, nur mit Googles OAuth-Endpunkt statt
+   Shopifys eigenem. Nur Lesezugriff (gmail.readonly) - JARVIS liest
+   mit, versendet oder löscht nichts.
+   ========================================================= */
+
+let gmailTokenCache = { token: null, expiresAt: 0 };
+
+function isGmailConfigured() {
+  return Boolean(
+    process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN
+  );
+}
+
+async function getGmailAccessToken() {
+  if (gmailTokenCache.token && Date.now() < gmailTokenCache.expiresAt - 5 * 60 * 1000) {
+    return gmailTokenCache.token;
+  }
+
+  if (!isGmailConfigured()) {
+    throw new Error("Gmail ist nicht vollständig konfiguriert.");
+  }
+
+  const params = new URLSearchParams({
+    client_id: process.env.GOOGLE_CLIENT_ID,
+    client_secret: process.env.GOOGLE_CLIENT_SECRET,
+    refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
+    grant_type: "refresh_token"
+  });
+
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params,
+    signal: timeoutSignal(10000)
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.access_token) {
+    console.error("Gmail token error:", data);
+    throw new Error("Gmail-Authentifizierung fehlgeschlagen.");
+  }
+
+  gmailTokenCache = {
+    token: data.access_token,
+    expiresAt: Date.now() + Number(data.expires_in || 3600) * 1000
+  };
+
+  return data.access_token;
+}
+
+/*
+ * Holt die zuletzt ungelesenen E-Mails (Betreff, Absender, kurzer
+ * Ausschnitt) - bewusst nur Metadaten, nicht der volle Mailtext, das
+ * reicht für die Erkennung und ist schneller.
+ */
+async function getNewEmails() {
+  const token = await getGmailAccessToken();
+
+  const listResponse = await fetch(
+    "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread&maxResults=10",
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: timeoutSignal(10000)
+    }
+  );
+
+  const listData = await listResponse.json();
+
+  if (!listResponse.ok) {
+    console.error("Gmail list error:", listData);
+    throw new Error("E-Mails konnten nicht gelesen werden.");
+  }
+
+  const refs = listData.messages || [];
+  if (!refs.length) return [];
+
+  const emails = [];
+
+  for (const ref of refs) {
+    try {
+      const msgResponse = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${ref.id}` +
+          `?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: timeoutSignal(10000)
+        }
+      );
+
+      const msgData = await msgResponse.json();
+      if (!msgResponse.ok) continue;
+
+      const headers = msgData.payload?.headers || [];
+      const subject = headers.find(h => h.name === "Subject")?.value || "(kein Betreff)";
+      const from = headers.find(h => h.name === "From")?.value || "unbekannt";
+
+      emails.push({
+        id: ref.id,
+        subject,
+        from,
+        snippet: msgData.snippet || ""
+      });
+    } catch (error) {
+      console.warn("Gmail Einzelmail-Fehler:", error);
+    }
+  }
+
+  return emails;
+}
+
+/*
+ * Grobe Erkennung, ob eine Mail nach einer Angebotsanfrage klingt -
+ * Stichwort-Heuristik wie bei den anderen Erkennungen. Neue Begriffe
+ * einfach ergänzen, falls eine echte Anfrage durchrutscht.
+ */
+function isOfferInquiryEmail(email) {
+  const text = normalize(`${email.subject} ${email.snippet}`);
+  const keywords = [
+    "angebot",
+    "anfrage",
+    "kostenvoranschlag",
+    "preisanfrage",
+    "was kostet",
+    "wieviel kostet",
+    "wie viel kostet",
+    "anbieten",
+    "quote",
+    "offer"
+  ];
+  return keywords.some(word => text.includes(word));
+}
+
+/*
+ * Erkennt, ob Mattl im Gespräch nach neuen E-Mails fragt.
+ */
+function isEmailCheckIntent(text) {
+  const n = normalize(text);
+  const mentionsMail = n.includes("mail") || n.includes("email") || n.includes("e-mail");
+  const asksAboutNew =
+    n.includes("neu") || n.includes("posteingang") || n.includes("bekommen") || n.includes("hab ich");
+  return mentionsMail && asksAboutNew;
 }
 
 
@@ -1812,6 +1996,10 @@ const LARGE_ORDER_THRESHOLD_EUR = Number(process.env.LARGE_ORDER_THRESHOLD_EUR |
 // dieselbe nicht bei jedem Check erneut erwähnt wird.
 const notifiedLargeOrders = new Set();
 
+// Merkt sich, welche E-Mails schon gemeldet wurden, damit dieselbe
+// nicht bei jedem Check erneut erwähnt wird.
+const notifiedEmailIds = new Set();
+
 async function getLargestOrderToday() {
   const domain = process.env.SHOPIFY_STORE_DOMAIN;
   const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
@@ -1872,10 +2060,11 @@ async function getLargestOrderToday() {
 }
 
 async function buildMorningBriefingFacts() {
-  const [yesterday, openOrders, weather] = await Promise.allSettled([
+  const [yesterday, openOrders, weather, emails] = await Promise.allSettled([
     getShopifySummary("yesterday"),
     getShopifyOpenOrders(),
-    getWeatherData("Ludwigshafen am Rhein", "today")
+    getWeatherData("Ludwigshafen am Rhein", "today"),
+    isGmailConfigured() ? getNewEmails() : Promise.resolve([])
   ]);
 
   const facts = [];
@@ -1894,6 +2083,18 @@ async function buildMorningBriefingFacts() {
     facts.push(
       `Wetter heute in Ludwigshafen: aktuell ${Math.round(weather.value.current.temperature_2m)} Grad, ` +
       `Höchstwert ${Math.round(weather.value.forecast?.max_temperature ?? weather.value.current.temperature_2m)} Grad.`
+    );
+  }
+
+  if (emails.status === "fulfilled" && emails.value.length) {
+    // Direkt hier schon als gemeldet markieren, damit der normale
+    // Mail-Check danach nicht dieselben Mails nochmal erwähnt.
+    for (const e of emails.value) notifiedEmailIds.add(e.id);
+
+    const offerCount = emails.value.filter(isOfferInquiryEmail).length;
+    facts.push(
+      `Ungelesene E-Mails: ${emails.value.length}` +
+      (offerCount ? `, davon ${offerCount} klingt/klingen nach Angebots-/Preisanfragen.` : ".")
     );
   }
 
@@ -1932,6 +2133,46 @@ app.post("/api/jarvis-checkin", async (req, res) => {
           text: briefingResult.text,
           response_id: briefingResult.response_id
         });
+      }
+    }
+
+    // NEUE E-MAILS: einmalig pro Mail melden, mit besonderer Betonung
+    // bei Angebots-/Preisanfragen. Vorrang vor der großen Bestellung
+    // und der Bestellungs-Erinnerung weiter unten, weil eine Kunden-
+    // anfrage per Mail oft zeitkritisch ist. Läuft komplett ins Leere
+    // (kein Fehler), solange Gmail nicht konfiguriert ist.
+    if (isGmailConfigured()) {
+      try {
+        const emails = await getNewEmails();
+        const unnotified = emails.filter(e => !notifiedEmailIds.has(e.id));
+
+        if (unnotified.length) {
+          for (const e of unnotified) notifiedEmailIds.add(e.id);
+
+          const offerInquiries = unnotified.filter(isOfferInquiryEmail);
+          const emailList = unnotified.map(e => `von ${e.from} mit Betreff "${e.subject}"`).join("; ");
+
+          const emailMessage =
+            `[SYSTEM-HINWEIS - nicht von Mattl gesprochen] Automatischer Hintergrund-Check: ` +
+            `${unnotified.length} neue E-Mail(s) sind angekommen: ${emailList}. ` +
+            (offerInquiries.length
+              ? `Wichtig: ${offerInquiries.length} davon klingt/klingen nach einer Angebots- oder ` +
+                `Preisanfrage - weise Mattl besonders darauf hin. `
+              : "") +
+            `Sprich Mattl von dir aus kurz darauf an.`;
+
+          const emailResult = await createJarvisResponse({ message: emailMessage, previousResponseId });
+
+          return res.json({
+            ok: true,
+            hasNotice: true,
+            text: emailResult.text,
+            response_id: emailResult.response_id
+          });
+        }
+      } catch (error) {
+        console.error("Proaktiver Check - Gmail-Fehler:", error);
+        // still bleiben, nicht mit einer Fehlermeldung stören.
       }
     }
 
@@ -2241,7 +2482,14 @@ app.post("/api/jarvis-chat", async (req, res) => {
 
     let liveData = null;
 
-    if (isListRemindersIntent(message)) {
+    if (isEmailCheckIntent(message)) {
+      try {
+        const emails = await getNewEmails();
+        liveData = { type: "emails_list", data: { emails } };
+      } catch (error) {
+        liveData = { type: "emails_list", error: error.message || "E-Mails konnten nicht gelesen werden." };
+      }
+    } else if (isListRemindersIntent(message)) {
       try {
         const reminders = await getReminders();
         const activeReminders = reminders.filter(r => !r.fired);
@@ -2455,7 +2703,7 @@ app.post("/api/calendar-today", (req, res) => {
 app.get("/health", (req, res) => {
   return res.json({
     ok: true,
-    version: "JARVIS V8.2",
+    version: `JARVIS ${JARVIS_VERSION}`,
     architecture: "mediarecorder -> transcription -> responses -> elevenlabs",
     realtime: false,
     cedar: false,
@@ -2469,6 +2717,7 @@ app.get("/health", (req, res) => {
     connected_shop: "Druckelite24",
     openai_configured: Boolean(process.env.OPENAI_API_KEY),
     elevenlabs_configured: Boolean(process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID),
+    gmail_configured: isGmailConfigured(),
     shopify_configured: Boolean(
       process.env.SHOPIFY_STORE_DOMAIN && process.env.SHOPIFY_CLIENT_ID && process.env.SHOPIFY_CLIENT_SECRET
     )
@@ -2490,12 +2739,13 @@ app.get("/", (req, res) => {
    ========================================================= */
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`JARVIS V7.4 läuft auf Port ${PORT}`);
+  console.log(`JARVIS ${JARVIS_VERSION} läuft auf Port ${PORT}`);
   console.log("Realtime: DEAKTIVIERT");
   console.log("Mikrofon: Browser MediaRecorder");
   console.log("Transkription: OpenAI Audio API");
   console.log("Antwort: OpenAI Responses API");
-  console.log("Reasoning: LOW");
+  console.log("Reasoning: minimal (low bei Websuche)");
   console.log("Antwortlimit: 1200 Tokens + automatischer Fallback");
   console.log("Stimme: ElevenLabs · eleven_turbo_v2_5");
+  console.log(`Gmail: ${isGmailConfigured() ? "verbunden" : "nicht verbunden"}`);
 });
