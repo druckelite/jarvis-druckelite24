@@ -12,14 +12,16 @@ let connecting = false;
 let assistantSpeaking = false;
 let responseInProgress = false;
 let greetingInProgress = false;
+let requestInProgress = false;
 
-const handledToolCalls = new Set();
 
 /* =========================================================
    UI
    ========================================================= */
 
 function setStatus(text) {
+  if (!statusEl) return;
+
   statusEl.textContent = text;
 
   if (text === "Online") {
@@ -30,15 +32,39 @@ function setStatus(text) {
 }
 
 function setLog(text) {
+  if (!logEl) return;
   logEl.textContent = text;
 }
 
+
 /* =========================================================
-   SEND
+   HELPERS
    ========================================================= */
+
+function normalize(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[.,!?;:]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function money(value, currency = "EUR") {
+  const amount = Number(value || 0);
+
+  try {
+    return new Intl.NumberFormat("de-DE", {
+      style: "currency",
+      currency
+    }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)} ${currency}`;
+  }
+}
 
 function safeSend(payload) {
   if (!dc || dc.readyState !== "open") {
+    console.warn("DataChannel ist nicht offen.");
     return false;
   }
 
@@ -46,14 +72,13 @@ function safeSend(payload) {
     dc.send(JSON.stringify(payload));
     return true;
   } catch (error) {
-    console.error("DataChannel send error:", error);
+    console.error(
+      "DataChannel send error:",
+      error
+    );
     return false;
   }
 }
-
-/* =========================================================
-   MICROPHONE
-   ========================================================= */
 
 function setMicrophoneEnabled(enabled) {
   if (!localStream) return;
@@ -63,8 +88,9 @@ function setMicrophoneEnabled(enabled) {
   }
 }
 
+
 /* =========================================================
-   CANCEL RESPONSE
+   RESPONSE CONTROL
    ========================================================= */
 
 function cancelCurrentResponse() {
@@ -84,34 +110,62 @@ function cancelCurrentResponse() {
   responseInProgress = false;
 }
 
+
 /* =========================================================
-   TEXT NORMALIZATION
+   SPEAK EXACT TEXT
    ========================================================= */
 
-function normalize(text) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(/[.,!?;:]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+function speakExact(text) {
+  const sentence =
+    String(text || "").trim();
+
+  if (!sentence) return;
+
+  console.log(
+    "JARVIS soll sagen:",
+    sentence
+  );
+
+  safeSend({
+    type: "response.create",
+
+    response: {
+      output_modalities: ["audio"],
+
+      tool_choice: "none",
+
+      max_output_tokens: 160,
+
+      instructions:
+        `Sprich ausschließlich auf Deutsch.
+
+Sprich exakt folgenden Inhalt und füge nichts hinzu:
+
+"${sentence}"
+
+Keine Rückfrage.
+Kein zusätzlicher Kommentar.
+Danach schweigen.`
+    }
+  });
 }
 
+
 /* =========================================================
-   ROUTING RULES
+   CLASSIFICATION
    ========================================================= */
 
-function isShopifyLiveQuery(text) {
+function isShopifyQuery(text) {
   const t = normalize(text);
 
   return (
     /\bshopify\b/.test(t) ||
+    /\bshop\b/.test(t) && /\b(umsatz|bestellung|verkauf|verkäufe)\b/.test(t) ||
     /\bumsatz\b/.test(t) ||
     /\bbestellungen?\b/.test(t) ||
     /\bverkäufe?\b/.test(t) ||
     /\bverkauf\b/.test(t) ||
-    /\bbestellwert\b/.test(t) ||
-    /\bwie läuft\b.*\bshop\b/.test(t) ||
-    /\bwie lief\b.*\bshop\b/.test(t)
+    /\bbestellwert\b/.test(t)
   );
 }
 
@@ -119,8 +173,7 @@ function isEmailQuery(text) {
   const t = normalize(text);
 
   return (
-    /\bmail\b/.test(t) ||
-    /\bmails\b/.test(t) ||
+    /\bmails?\b/.test(t) ||
     /\be mail\b/.test(t) ||
     /\bpostfach\b/.test(t)
   );
@@ -149,90 +202,595 @@ function isWeatherQuery(text) {
   );
 }
 
+
 /* =========================================================
-   TOOL REQUESTS
+   SHOPIFY
    ========================================================= */
 
-function requestToolResponse(toolName, transcript) {
-  console.log(
-    "JARVIS routing:",
-    transcript,
-    "=>",
-    toolName
+async function handleShopify(transcript) {
+  const t = normalize(transcript);
+
+  const period =
+    /\bgestern\b/.test(t)
+      ? "yesterday"
+      : "today";
+
+  setLog(
+    "Shopify wird abgefragt …"
   );
 
-  setLog(`Live-Daten: ${toolName}`);
+  console.log(
+    "Direkter Shopify-Aufruf:",
+    period
+  );
 
-  safeSend({
-    type: "response.create",
+  try {
+    const response =
+      await fetch(
+        "/api/shopify-summary",
+        {
+          method: "POST",
 
-    response: {
-      output_modalities: ["audio"],
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
 
-      tool_choice: {
-        type: "function",
-        name: toolName
-      },
+          body: JSON.stringify({
+            period
+          })
+        }
+      );
 
-      instructions:
-        `Der Benutzer hat auf Deutsch gesagt:
+    const raw =
+      await response.text();
 
-"${transcript}"
+    console.log(
+      "Shopify HTTP:",
+      response.status,
+      raw
+    );
 
-Du MUSST jetzt ausschließlich das vorgegebene Tool verwenden.
+    let data;
 
-Regeln:
-- noch keine freie inhaltliche Antwort
-- keine Daten erfinden
-- keine themenfremden Vorschläge
-- nur das Tool ausführen`
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = {
+        error: raw
+      };
     }
-  });
+
+
+    /*
+     * Shopify noch nicht verbunden.
+     */
+    if (
+      data.configured === false
+    ) {
+      speakExact(
+        data.message ||
+        data.error ||
+        "Mattl, Shopify ist momentan noch nicht vollständig verbunden."
+      );
+
+      return;
+    }
+
+
+    /*
+     * HTTP- oder API-Fehler.
+     */
+    if (
+      !response.ok ||
+      data.error
+    ) {
+      console.error(
+        "Shopify API Fehler:",
+        data
+      );
+
+      speakExact(
+        "Mattl, ich erreiche Shopify, aber die Abfrage ist fehlgeschlagen. Ich habe deshalb keine Zahlen erfunden."
+      );
+
+      return;
+    }
+
+
+    const orders =
+      Number(
+        data.orders || 0
+      );
+
+    const revenue =
+      Number(
+        data.revenue || 0
+      );
+
+    const currency =
+      data.currency || "EUR";
+
+    const average =
+      Number(
+        data.average_order_value || 0
+      );
+
+    const dayText =
+      period === "yesterday"
+        ? "Gestern"
+        : "Heute";
+
+
+    /*
+     * Antwort abhängig von der Frage.
+     */
+    if (
+      /\bwie viele\b/.test(t) ||
+      /\banzahl\b/.test(t)
+    ) {
+      speakExact(
+        `${dayText} hast du ${orders} Shopify-Bestellungen.`
+      );
+
+      return;
+    }
+
+
+    if (
+      /\bumsatz\b/.test(t) ||
+      /\bverkauf\b/.test(t) ||
+      /\bverkäufe\b/.test(t)
+    ) {
+      speakExact(
+        `${dayText} hast du bei Shopify ${money(
+          revenue,
+          currency
+        )} Umsatz mit ${orders} Bestellungen gemacht. Der durchschnittliche Bestellwert liegt bei ${money(
+          average,
+          currency
+        )}.`
+      );
+
+      return;
+    }
+
+
+    speakExact(
+      `${dayText} hast du ${orders} Shopify-Bestellungen mit insgesamt ${money(
+        revenue,
+        currency
+      )} Umsatz.`
+    );
+
+  } catch (error) {
+    console.error(
+      "Shopify Fetch Error:",
+      error
+    );
+
+    speakExact(
+      "Mattl, die Verbindung zu Shopify ist gerade fehlgeschlagen. Ich kann die aktuellen Daten deshalb nicht zuverlässig nennen."
+    );
+  }
 }
 
+
 /* =========================================================
-   GENERAL RESPONSE
+   EMAIL
    ========================================================= */
 
-function requestGeneralResponse(transcript) {
+async function handleEmails() {
+  setLog(
+    "E-Mails werden geprüft …"
+  );
+
+  try {
+    const response =
+      await fetch(
+        "/api/important-emails",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({
+            limit: 5
+          })
+        }
+      );
+
+    const raw =
+      await response.text();
+
+    let data;
+
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = {
+        error: raw
+      };
+    }
+
+    if (
+      data.configured === false
+    ) {
+      speakExact(
+        data.message ||
+        "Mattl, Gmail ist im Voice-JARVIS noch nicht verbunden."
+      );
+
+      return;
+    }
+
+    if (
+      !response.ok ||
+      data.error
+    ) {
+      speakExact(
+        "Mattl, ich konnte deine E-Mails gerade nicht zuverlässig abrufen."
+      );
+
+      return;
+    }
+
+    const emails =
+      Array.isArray(data.emails)
+        ? data.emails
+        : [];
+
+    if (!emails.length) {
+      speakExact(
+        "Mattl, ich habe aktuell keine wichtigen neuen E-Mails gefunden."
+      );
+
+      return;
+    }
+
+    const summaries =
+      emails
+        .slice(0, 3)
+        .map((email, index) => {
+          const sender =
+            email.from || "unbekannter Absender";
+
+          const subject =
+            email.subject || "ohne Betreff";
+
+          return `${index + 1}. ${sender}, Betreff: ${subject}.`;
+        })
+        .join(" ");
+
+    speakExact(
+      `Mattl, ich habe ${emails.length} relevante E-Mails gefunden. ${summaries}`
+    );
+
+  } catch (error) {
+    console.error(
+      "Email Fetch Error:",
+      error
+    );
+
+    speakExact(
+      "Mattl, die E-Mail-Verbindung ist gerade nicht erreichbar."
+    );
+  }
+}
+
+
+/* =========================================================
+   CALENDAR
+   ========================================================= */
+
+async function handleCalendar() {
+  setLog(
+    "Kalender wird geprüft …"
+  );
+
+  try {
+    const response =
+      await fetch(
+        "/api/calendar-today",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({})
+        }
+      );
+
+    const raw =
+      await response.text();
+
+    let data;
+
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = {
+        error: raw
+      };
+    }
+
+    if (
+      data.configured === false
+    ) {
+      speakExact(
+        data.message ||
+        "Mattl, Google Kalender ist im Voice-JARVIS noch nicht verbunden."
+      );
+
+      return;
+    }
+
+    if (
+      !response.ok ||
+      data.error
+    ) {
+      speakExact(
+        "Mattl, ich konnte deinen Kalender gerade nicht zuverlässig abrufen."
+      );
+
+      return;
+    }
+
+    const events =
+      Array.isArray(data.events)
+        ? data.events
+        : [];
+
+    if (!events.length) {
+      speakExact(
+        "Mattl, für heute stehen keine Termine in deinem Kalender."
+      );
+
+      return;
+    }
+
+    const summaries =
+      events
+        .slice(0, 4)
+        .map(event => {
+          return (
+            event.title ||
+            event.summary ||
+            "Termin"
+          );
+        })
+        .join(", ");
+
+    speakExact(
+      `Mattl, heute hast du ${events.length} Termine. ${summaries}.`
+    );
+
+  } catch (error) {
+    console.error(
+      "Calendar Fetch Error:",
+      error
+    );
+
+    speakExact(
+      "Mattl, die Kalenderverbindung ist gerade nicht erreichbar."
+    );
+  }
+}
+
+
+/* =========================================================
+   WEATHER
+   ========================================================= */
+
+function extractWeatherLocation(transcript) {
+  const original =
+    String(transcript || "").trim();
+
+  const normalized =
+    normalize(original);
+
+  /*
+   * Bekannter häufiger Ort.
+   */
+  if (
+    normalized.includes(
+      "ludwigshafen"
+    )
+  ) {
+    return "Ludwigshafen am Rhein";
+  }
+
+  /*
+   * Einfacher Satz:
+   * "Wetter in Mannheim morgen"
+   */
+  const match =
+    original.match(
+      /\bin\s+(.+?)(?:\s+(?:heute|morgen))?[?.!,]*$/i
+    );
+
+  if (match && match[1]) {
+    return match[1].trim();
+  }
+
+  return null;
+}
+
+async function handleWeather(
+  transcript
+) {
+  const t =
+    normalize(transcript);
+
+  const day =
+    /\bmorgen\b/.test(t)
+      ? "tomorrow"
+      : "today";
+
+  const location =
+    extractWeatherLocation(
+      transcript
+    );
+
+  if (!location) {
+    speakExact(
+      "Für welchen Ort soll ich das Wetter prüfen?"
+    );
+
+    return;
+  }
+
+  setLog(
+    "Wetter wird geprüft …"
+  );
+
+  try {
+    const response =
+      await fetch(
+        "/api/weather",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({
+            location,
+            day
+          })
+        }
+      );
+
+    const raw =
+      await response.text();
+
+    let data;
+
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = {
+        error: raw
+      };
+    }
+
+    if (
+      !response.ok ||
+      data.error
+    ) {
+      speakExact(
+        "Mattl, ich konnte das Wetter gerade nicht zuverlässig abrufen."
+      );
+
+      return;
+    }
+
+    const resolved =
+      data.location?.name ||
+      location;
+
+    const forecast =
+      data.forecast || {};
+
+    const max =
+      forecast.max_temperature;
+
+    const min =
+      forecast.min_temperature;
+
+    const rain =
+      forecast.precipitation_probability;
+
+    const dayText =
+      day === "tomorrow"
+        ? "Morgen"
+        : "Heute";
+
+    speakExact(
+      `${dayText} in ${resolved}: maximal ${max} Grad, minimal ${min} Grad. Die höchste Regenwahrscheinlichkeit liegt bei ${rain} Prozent.`
+    );
+
+  } catch (error) {
+    console.error(
+      "Weather Fetch Error:",
+      error
+    );
+
+    speakExact(
+      "Mattl, die Wetterabfrage ist gerade fehlgeschlagen."
+    );
+  }
+}
+
+
+/* =========================================================
+   GENERAL ANSWER
+   ========================================================= */
+
+function handleGeneral(
+  transcript
+) {
   safeSend({
     type: "response.create",
 
     response: {
-      output_modalities: ["audio"],
+      output_modalities: [
+        "audio"
+      ],
 
       tool_choice: "none",
 
-      instructions:
-        `Antworte auf die letzte Äußerung des Benutzers.
+      max_output_tokens: 250,
 
-Erkannter deutscher Satz:
+      instructions:
+        `Der Benutzer hat gesagt:
 
 "${transcript}"
 
+Antworte ausschließlich auf Deutsch.
+
 Regeln:
-- ausschließlich Deutsch
+- beantworte exakt die Frage
 - kurz und präzise
-- keine themenfremden Vorschläge
-- wenn du den Satz nicht sicher verstanden hast, frage kurz nach
-- nach der Antwort schweigen`
+- keine Reisen, Workouts oder andere themenfremde Vorschläge
+- wenn du etwas nicht verstanden hast, frage kurz nach
+- keine erfundenen Live-Daten
+- keine automatische Anschlussfrage
+- danach schweigen`
     }
   });
 }
 
+
 /* =========================================================
-   ROUTE TRANSCRIPT
+   ROUTER
    ========================================================= */
 
-function routeTranscript(transcript) {
-  const text = normalize(transcript);
+async function routeTranscript(
+  transcript
+) {
+  const text =
+    normalize(transcript);
 
-  if (!text) {
+  if (!text) return;
+
+  if (requestInProgress) {
+    console.log(
+      "Request läuft bereits."
+    );
     return;
   }
 
   console.log(
-    "Transcription:",
+    "TRANSKRIPTION:",
     transcript
   );
 
@@ -243,273 +801,138 @@ function routeTranscript(transcript) {
     cancelCurrentResponse();
   }
 
-  if (isShopifyLiveQuery(text)) {
-    requestToolResponse(
-      "get_shopify_summary",
-      transcript
-    );
-    return;
-  }
-
-  if (isEmailQuery(text)) {
-    requestToolResponse(
-      "get_important_emails",
-      transcript
-    );
-    return;
-  }
-
-  if (isCalendarQuery(text)) {
-    requestToolResponse(
-      "get_calendar_today",
-      transcript
-    );
-    return;
-  }
-
-  if (isWeatherQuery(text)) {
-    requestToolResponse(
-      "get_weather",
-      transcript
-    );
-    return;
-  }
-
-  requestGeneralResponse(
-    transcript
-  );
-}
-
-/* =========================================================
-   RUN TOOL
-   ========================================================= */
-
-async function runTool(event) {
-  if (!event.call_id) {
-    return;
-  }
-
-  if (
-    handledToolCalls.has(event.call_id)
-  ) {
-    return;
-  }
-
-  handledToolCalls.add(
-    event.call_id
-  );
-
-  let payload = {};
+  requestInProgress = true;
 
   try {
-    payload = event.arguments
-      ? JSON.parse(event.arguments)
-      : {};
-  } catch {
-    payload = {};
-  }
-
-  let endpoint = null;
-
-  switch (event.name) {
-    case "get_shopify_summary":
-      endpoint =
-        "/api/shopify-summary";
-      break;
-
-    case "get_important_emails":
-      endpoint =
-        "/api/important-emails";
-      break;
-
-    case "get_calendar_today":
-      endpoint =
-        "/api/calendar-today";
-      break;
-
-    case "get_weather":
-      endpoint =
-        "/api/weather";
-      break;
-  }
-
-  if (!endpoint) {
-    return;
-  }
-
-  setLog(
-    "Live-Daten werden geprüft …"
-  );
-
-  let result;
-
-  try {
-    const response =
-      await fetch(
-        endpoint,
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body:
-            JSON.stringify(
-              payload
-            )
-        }
+    if (
+      isShopifyQuery(text)
+    ) {
+      console.log(
+        "ROUTE => SHOPIFY"
       );
 
-    const raw =
-      await response.text();
+      await handleShopify(
+        transcript
+      );
 
-    try {
-      result =
-        JSON.parse(raw);
-    } catch {
-      result = {
-        ok: response.ok,
-        message: raw
-      };
+      return;
     }
 
-    if (!response.ok) {
-      result.http_status =
-        response.status;
+    if (
+      isEmailQuery(text)
+    ) {
+      console.log(
+        "ROUTE => EMAIL"
+      );
+
+      await handleEmails();
+
+      return;
     }
 
-  } catch (error) {
-    console.error(
-      "Tool request error:",
-      error
+    if (
+      isCalendarQuery(text)
+    ) {
+      console.log(
+        "ROUTE => CALENDAR"
+      );
+
+      await handleCalendar();
+
+      return;
+    }
+
+    if (
+      isWeatherQuery(text)
+    ) {
+      console.log(
+        "ROUTE => WEATHER"
+      );
+
+      await handleWeather(
+        transcript
+      );
+
+      return;
+    }
+
+    console.log(
+      "ROUTE => GENERAL"
     );
 
-    result = {
-      error:
-        "Die Live-Daten konnten nicht geladen werden."
-    };
+    handleGeneral(
+      transcript
+    );
+
+  } finally {
+    /*
+     * Bei direkten HTTP-Aufrufen können
+     * wir wieder freigeben.
+     *
+     * Die eigentliche Audioantwort
+     * läuft separat über Realtime.
+     */
+    requestInProgress = false;
   }
-
-  safeSend({
-    type:
-      "conversation.item.create",
-
-    item: {
-      type:
-        "function_call_output",
-
-      call_id:
-        event.call_id,
-
-      output:
-        JSON.stringify(
-          result
-        )
-    }
-  });
-
-  /*
-   * Kurzer Delay:
-   * Tool-Ergebnis zuerst sauber in die Session übernehmen,
-   * dann genau eine Folgeantwort erzeugen.
-   */
-  setTimeout(() => {
-    safeSend({
-      type: "response.create",
-
-      response: {
-        output_modalities: ["audio"],
-
-        tool_choice: "none",
-
-        instructions:
-          `Beantworte jetzt die zuletzt gestellte Frage ausschließlich anhand des unmittelbar zuvor gelieferten function_call_output.
-
-Regeln:
-- ausschließlich Deutsch
-- kurz und konkret
-- keine erfundenen Zahlen
-- keine Reisen, Hotels, Workouts oder andere themenfremde Vorschläge
-- wenn configured=false ist, sage klar, dass diese Verbindung noch nicht eingerichtet ist
-- wenn echte Daten enthalten sind, nenne nur die relevanten Werte
-- danach schweigen`
-      }
-    });
-  }, 250);
 }
+
 
 /* =========================================================
    GREETING
    ========================================================= */
 
 function getGreeting() {
-  const hour = Number(
-    new Intl.DateTimeFormat(
-      "de-DE",
-      {
-        timeZone:
-          "Europe/Berlin",
+  const hour =
+    Number(
+      new Intl.DateTimeFormat(
+        "de-DE",
+        {
+          timeZone:
+            "Europe/Berlin",
 
-        hour:
-          "2-digit",
+          hour:
+            "2-digit",
 
-        hour12:
-          false
-      }
-    ).format(
-      new Date()
-    )
-  );
+          hour12:
+            false
+        }
+      ).format(
+        new Date()
+      )
+    );
 
   if (
     hour >= 5 &&
     hour < 11
   ) {
-    return "Guten Morgen.";
+    return "Guten Morgen, Mattl.";
   }
 
   if (
     hour >= 11 &&
     hour < 18
   ) {
-    return "Guten Tag.";
+    return "Guten Tag, Mattl.";
   }
 
-  return "Guten Abend.";
+  return "Guten Abend, Mattl.";
 }
 
 function requestGreeting() {
   greetingInProgress = true;
 
-  setMicrophoneEnabled(false);
+  setMicrophoneEnabled(
+    false
+  );
 
-  safeSend({
-    type: "response.create",
-
-    response: {
-      output_modalities: [
-        "audio"
-      ],
-
-      max_output_tokens: 12,
-
-      tool_choice: "none",
-
-      instructions:
-        `Sprich exakt nur diesen Satz:
-
-"${getGreeting()}"
-
-Kein weiteres Wort.
-Danach schweigen.`
-    }
-  });
+  speakExact(
+    getGreeting()
+  );
 }
 
+
 /* =========================================================
-   START JARVIS
+   START
    ========================================================= */
 
 async function startJarvis() {
@@ -524,8 +947,6 @@ async function startJarvis() {
 
   button.disabled = true;
 
-  handledToolCalls.clear();
-
   setStatus(
     "Verbinde …"
   );
@@ -537,6 +958,7 @@ async function startJarvis() {
   try {
     pc =
       new RTCPeerConnection();
+
 
     pc.ontrack =
       event => {
@@ -555,16 +977,46 @@ async function startJarvis() {
 
         remoteAudio
           .play()
-          .catch(() => {});
+          .catch(error => {
+            console.warn(
+              "Audio play:",
+              error
+            );
+          });
       };
+
+
+    pc.onconnectionstatechange =
+      () => {
+
+        console.log(
+          "Peer state:",
+          pc?.connectionState
+        );
+
+        if (
+          pc?.connectionState ===
+          "failed"
+        ) {
+          setLog(
+            "Voice-Verbindung fehlgeschlagen."
+          );
+        }
+      };
+
 
     dc =
       pc.createDataChannel(
         "oai-events"
       );
 
+
     dc.onopen =
       () => {
+
+        console.log(
+          "Realtime DataChannel offen."
+        );
 
         active = true;
         connecting = false;
@@ -579,10 +1031,17 @@ async function startJarvis() {
           "Online"
         );
 
+
         /*
-         * VAD erkennt Sprache,
-         * erzeugt aber keine automatische Modellantwort.
-         * Unser Routing entscheidet selbst.
+         * WICHTIG:
+         *
+         * VAD erkennt weiterhin
+         * Anfang und Ende deiner Sprache.
+         *
+         * OpenAI soll aber NICHT
+         * automatisch antworten.
+         *
+         * Erst unser Router entscheidet.
          */
         safeSend({
           type:
@@ -615,11 +1074,14 @@ async function startJarvis() {
           }
         });
 
+
         requestGreeting();
       };
 
+
     dc.onerror =
       error => {
+
         console.error(
           "DataChannel error:",
           error
@@ -630,8 +1092,14 @@ async function startJarvis() {
         );
       };
 
+
     dc.onclose =
       () => {
+
+        console.log(
+          "DataChannel geschlossen."
+        );
+
         if (
           active ||
           connecting
@@ -639,6 +1107,7 @@ async function startJarvis() {
           stopJarvis();
         }
       };
+
 
     dc.onmessage =
       async message => {
@@ -655,10 +1124,14 @@ async function startJarvis() {
         }
 
         console.log(
-          "Realtime event:",
+          "Realtime:",
           event.type
         );
 
+
+        /*
+         * Mattl beginnt zu sprechen.
+         */
         if (
           event.type ===
           "input_audio_buffer.speech_started"
@@ -676,18 +1149,26 @@ async function startJarvis() {
           );
         }
 
+
+        /*
+         * Mattl hört auf.
+         */
         if (
           event.type ===
           "input_audio_buffer.speech_stopped"
         ) {
+
           setLog(
             "Verstehe …"
           );
         }
 
+
         /*
-         * Fertige Transkription:
-         * Hier wird geroutet.
+         * DAS IST UNSER ROUTER-EVENT.
+         *
+         * Die Realtime-Transkription
+         * ist jetzt fertig.
          */
         if (
           event.type ===
@@ -703,23 +1184,27 @@ async function startJarvis() {
             `Verstanden: ${transcript}`
           );
 
-          routeTranscript(
+          await routeTranscript(
             transcript
           );
         }
+
 
         if (
           event.type ===
           "response.created"
         ) {
+
           responseInProgress =
             true;
         }
+
 
         if (
           event.type ===
           "output_audio_buffer.started"
         ) {
+
           assistantSpeaking =
             true;
 
@@ -731,6 +1216,7 @@ async function startJarvis() {
           );
         }
 
+
         if (
           event.type ===
           "output_audio_buffer.stopped"
@@ -738,6 +1224,7 @@ async function startJarvis() {
 
           assistantSpeaking =
             false;
+
 
           if (
             greetingInProgress
@@ -757,6 +1244,7 @@ async function startJarvis() {
             return;
           }
 
+
           if (active) {
             setLog(
               "JARVIS hört zu."
@@ -764,14 +1252,16 @@ async function startJarvis() {
           }
         }
 
+
         if (
           event.type ===
-          "response.function_call_arguments.done"
+          "output_audio_buffer.cleared"
         ) {
-          await runTool(
-            event
-          );
+
+          assistantSpeaking =
+            false;
         }
+
 
         if (
           event.type ===
@@ -781,11 +1271,9 @@ async function startJarvis() {
           responseInProgress =
             false;
 
-          const status =
-            event.response?.status;
-
           if (
-            status === "failed"
+            event.response?.status ===
+            "failed"
           ) {
 
             console.error(
@@ -799,9 +1287,9 @@ async function startJarvis() {
           }
         }
 
+
         if (
-          event.type ===
-          "error"
+          event.type === "error"
         ) {
 
           console.error(
@@ -816,7 +1304,6 @@ async function startJarvis() {
             code !==
             "response_cancel_not_active"
           ) {
-
             setLog(
               event.error?.message ||
               "JARVIS-Fehler."
@@ -825,6 +1312,10 @@ async function startJarvis() {
         }
       };
 
+
+    /*
+     * MICROPHONE
+     */
     localStream =
       await navigator
         .mediaDevices
@@ -844,26 +1335,39 @@ async function startJarvis() {
           }
         });
 
+
+    /*
+     * Bis Begrüßung fertig:
+     * Mikrofon aus.
+     */
     setMicrophoneEnabled(
       false
     );
+
 
     for (
       const track of
       localStream.getAudioTracks()
     ) {
+
       pc.addTrack(
         track,
         localStream
       );
     }
 
+
+    /*
+     * WEBRTC OFFER
+     */
     const offer =
       await pc.createOffer();
+
 
     await pc.setLocalDescription(
       offer
     );
+
 
     const response =
       await fetch(
@@ -881,19 +1385,24 @@ async function startJarvis() {
         }
       );
 
+
     if (!response.ok) {
+
       throw new Error(
         await response.text()
       );
     }
 
+
     const answerSdp =
       await response.text();
+
 
     await pc.setRemoteDescription({
       type: "answer",
       sdp: answerSdp
     });
+
 
   } catch (error) {
 
@@ -911,18 +1420,22 @@ async function startJarvis() {
   } finally {
 
     connecting = false;
+
     button.disabled = false;
   }
 }
+
 
 /* =========================================================
    STOP
    ========================================================= */
 
 function stopJarvis() {
+
   try {
     cancelCurrentResponse();
   } catch {}
+
 
   try {
     if (
@@ -933,22 +1446,31 @@ function stopJarvis() {
     }
   } catch {}
 
+
   try {
     if (pc) {
+      pc.ontrack = null;
+      pc.onconnectionstatechange =
+        null;
+
       pc.close();
     }
   } catch {}
 
+
   try {
     if (localStream) {
+
       for (
         const track of
         localStream.getTracks()
       ) {
+
         track.stop();
       }
     }
   } catch {}
+
 
   try {
     remoteAudio.pause();
@@ -956,23 +1478,34 @@ function stopJarvis() {
       null;
   } catch {}
 
+
   pc = null;
   dc = null;
   localStream = null;
 
   active = false;
   connecting = false;
-  assistantSpeaking = false;
-  responseInProgress = false;
-  greetingInProgress = false;
 
-  handledToolCalls.clear();
+  assistantSpeaking =
+    false;
 
-  button.disabled = false;
+  responseInProgress =
+    false;
+
+  greetingInProgress =
+    false;
+
+  requestInProgress =
+    false;
+
+
+  button.disabled =
+    false;
 
   button.classList.remove(
     "active"
   );
+
 
   setStatus(
     "Offline"
@@ -983,26 +1516,33 @@ function stopJarvis() {
   );
 }
 
+
 /* =========================================================
    BUTTON
    ========================================================= */
 
 button.addEventListener(
   "click",
+
   async () => {
 
     if (connecting) {
       return;
     }
 
+
     if (active) {
+
       stopJarvis();
+
       return;
     }
+
 
     await startJarvis();
   }
 );
+
 
 /* =========================================================
    CLEANUP
@@ -1010,6 +1550,7 @@ button.addEventListener(
 
 window.addEventListener(
   "pagehide",
+
   () => {
     stopJarvis();
   }
