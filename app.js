@@ -1,11 +1,21 @@
+/* =========================================================
+   ÄNDERUNGEN IN DIESER VERSION
+   =========================================================
+   1) Watchdog: Mikro bleibt nicht mehr für immer stumm,
+      falls JARVIS mal keine Audio-Antwort schickt.
+   2) Lautstärke wird jetzt sanft geregelt statt hart
+      gesprungen -> kein Knacken mehr beim Sprechbeginn.
+   3) Doppelte ontrack-Events verbinden den Stream nicht
+      mehr unnötig neu.
+   4) handledToolCalls wächst bei langen Sessions nicht
+      mehr unbegrenzt.
+   5) Absicherung, falls der #toggle-Button im HTML fehlt.
+   ========================================================= */
+
 const button = document.querySelector("#toggle");
 const statusEl = document.querySelector("#status");
 const logEl = document.querySelector("#log");
 const remoteAudio = document.querySelector("#remoteAudio");
-
-/* =========================================================
-   CONNECTION
-   ========================================================= */
 
 let pc = null;
 let dc = null;
@@ -15,37 +25,47 @@ let active = false;
 let connecting = false;
 
 let assistantSpeaking = false;
-let requestInProgress = false;
-
-/* =========================================================
-   AUDIO OUTPUT
-   ========================================================= */
+let waitingForAssistant = false;
+let startupGreeting = false;
 
 let outputAudioContext = null;
 let outputSource = null;
 let outputGain = null;
-
-/* =========================================================
-   INTRO
-   ========================================================= */
+let lastRemoteStream = null;
 
 let introAudio = null;
 let introFadeTimer = null;
+
+// Sicherheitsnetz: falls JARVIS nach einer Anfrage
+// aus irgendeinem Grund NICHT antwortet (z. B. Response
+// ohne Audio, verlorenes Event), würde das Mikro sonst
+// für immer stumm bleiben. Dieser Timer holt es zurück.
+let responseWatchdog = null;
+
+const handledToolCalls = new Set();
+const MAX_HANDLED_TOOL_CALLS = 50;
 
 /* =========================================================
    SETTINGS
    ========================================================= */
 
+/*
+ * JARVIS deutlich lauter.
+ */
 const JARVIS_OUTPUT_GAIN = 2.20;
 
+/*
+ * Intro
+ */
 const INTRO_START = 4;
-
 const INTRO_VOICE_DELAY_MS = 2500;
 
+/*
+ * Intro wird beim Sprechen stark abgesenkt.
+ */
 const INTRO_BACKGROUND_VOLUME = 0.06;
 
 const INTRO_DUCK_DURATION_MS = 1200;
-
 const INTRO_FADE_DURATION_MS = 15000;
 
 
@@ -65,13 +85,11 @@ function setStatus(text) {
   }
 }
 
-
 function setLog(text) {
   if (!logEl) return;
 
   logEl.textContent = text;
 }
-
 
 function setButtonActive(value) {
   if (!button) return;
@@ -81,6 +99,14 @@ function setButtonActive(value) {
   } else {
     button.classList.remove("active");
   }
+}
+
+// Steuert den visuellen Zustand des HUD-Reaktors über ein
+// data-Attribut am <body>. Das CSS reagiert darauf mit
+// unterschiedlichen Glow-/Bewegungs-Mustern:
+// offline | connecting | listening | hearing | thinking | speaking
+function setJarvisState(state) {
+  document.body.dataset.jarvisState = state;
 }
 
 
@@ -94,25 +120,11 @@ function sleep(ms) {
   });
 }
 
-
-function normalize(text) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(/[.,!?;:]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-
 function safeSend(payload) {
   if (
     !dc ||
     dc.readyState !== "open"
   ) {
-    console.warn(
-      "DataChannel nicht offen."
-    );
-
     return false;
   }
 
@@ -125,7 +137,7 @@ function safeSend(payload) {
 
   } catch (error) {
     console.error(
-      "DataChannel send:",
+      "DataChannel send error:",
       error
     );
 
@@ -134,31 +146,37 @@ function safeSend(payload) {
 }
 
 
-function formatMoney(
-  value,
-  currency = "EUR"
-) {
-  try {
-    return new Intl.NumberFormat(
-      "de-DE",
-      {
-        style: "currency",
-        currency
-      }
-    ).format(
-      Number(value || 0)
+/* =========================================================
+   RESPONSE WATCHDOG
+   ========================================================= */
+
+// Wird direkt nach jedem "response.create" gestartet.
+// Kommt keine Audio-Antwort (output_audio_buffer.started),
+// gibt der Watchdog das Mikro nach Ablauf der Zeit wieder frei.
+function armResponseWatchdog(ms = 12000) {
+  clearResponseWatchdog();
+
+  responseWatchdog = setTimeout(() => {
+    console.warn(
+      "Watchdog: keine Audio-Antwort erhalten, Mikro wird freigegeben."
     );
 
-  } catch {
-    return (
-      `${Number(value || 0).toFixed(2)} ${currency}`
-    );
+    if (active) {
+      resumeListening();
+    }
+  }, ms);
+}
+
+function clearResponseWatchdog() {
+  if (responseWatchdog) {
+    clearTimeout(responseWatchdog);
+    responseWatchdog = null;
   }
 }
 
 
 /* =========================================================
-   MICROPHONE
+   MICROPHONE CONTROL
    ========================================================= */
 
 function setMicrophoneEnabled(enabled) {
@@ -166,33 +184,44 @@ function setMicrophoneEnabled(enabled) {
     return;
   }
 
-  for (
-    const track of
-    localStream.getAudioTracks()
-  ) {
+  const tracks =
+    localStream.getAudioTracks();
+
+  for (const track of tracks) {
     track.enabled = enabled;
   }
 
   console.log(
-    "Mikro:",
+    "Microphone:",
     enabled
-      ? "AN"
-      : "AUS"
+      ? "ENABLED"
+      : "MUTED"
   );
 }
 
 
+function muteForAssistant() {
+  waitingForAssistant = true;
+
+  setJarvisState("thinking");
+
+  setMicrophoneEnabled(false);
+}
+
+
 function resumeListening() {
+  clearResponseWatchdog();
+
   if (!active) {
     return;
   }
 
-  requestInProgress = false;
+  waitingForAssistant = false;
   assistantSpeaking = false;
 
-  setMicrophoneEnabled(
-    true
-  );
+  setJarvisState("listening");
+
+  setMicrophoneEnabled(true);
 
   setLog(
     "JARVIS hört zu."
@@ -205,42 +234,42 @@ function resumeListening() {
    ========================================================= */
 
 function getBerlinHour() {
-  try {
-    const formatter =
-      new Intl.DateTimeFormat(
-        "de-DE",
-        {
-          timeZone:
-            "Europe/Berlin",
+  const formatter =
+    new Intl.DateTimeFormat(
+      "de-DE",
+      {
+        timeZone:
+          "Europe/Berlin",
 
-          hour:
-            "numeric",
+        hour:
+          "numeric",
 
-          hourCycle:
-            "h23"
-        }
-      );
+        hourCycle:
+          "h23"
+      }
+    );
 
-    const parts =
-      formatter.formatToParts(
-        new Date()
-      );
+  const parts =
+    formatter.formatToParts(
+      new Date()
+    );
 
-    const hour =
-      Number(
-        parts.find(
-          p =>
-            p.type === "hour"
-        )?.value
-      );
+  const hourPart =
+    parts.find(
+      part =>
+        part.type === "hour"
+    );
 
-    if (!Number.isNaN(hour)) {
-      return hour;
-    }
+  const hour =
+    Number(
+      hourPart?.value
+    );
 
-  } catch {}
+  if (Number.isNaN(hour)) {
+    return new Date().getHours();
+  }
 
-  return new Date().getHours();
+  return hour;
 }
 
 
@@ -339,7 +368,7 @@ async function startIntro() {
 
   introAudio =
     new Audio(
-      "/Intro.mp3?v=9"
+      "/Intro.mp3?v=7"
     );
 
   introAudio.preload =
@@ -352,12 +381,9 @@ async function startIntro() {
     let resolved = false;
 
     const done = () => {
-      if (resolved) {
-        return;
-      }
+      if (resolved) return;
 
       resolved = true;
-
       resolve();
     };
 
@@ -378,7 +404,7 @@ async function startIntro() {
 
       } catch (error) {
         console.error(
-          "Intro:",
+          "Intro error:",
           error
         );
 
@@ -439,11 +465,10 @@ function duckIntro() {
   }
 
 
-  const startVolume =
+  const original =
     introAudio.volume;
 
-
-  const started =
+  const start =
     performance.now();
 
 
@@ -455,8 +480,7 @@ function duckIntro() {
             introFadeTimer
           );
 
-          introFadeTimer =
-            null;
+          introFadeTimer = null;
 
           return;
         }
@@ -466,7 +490,7 @@ function duckIntro() {
           Math.min(
             (
               performance.now() -
-              started
+              start
             ) /
             INTRO_DUCK_DURATION_MS,
             1
@@ -483,9 +507,9 @@ function duckIntro() {
 
 
         introAudio.volume =
-          startVolume -
+          original -
           (
-            startVolume -
+            original -
             INTRO_BACKGROUND_VOLUME
           ) *
           smooth;
@@ -498,8 +522,7 @@ function duckIntro() {
             introFadeTimer
           );
 
-          introFadeTimer =
-            null;
+          introFadeTimer = null;
 
           fadeIntroOut();
         }
@@ -510,6 +533,10 @@ function duckIntro() {
 }
 
 
+/* =========================================================
+   INTRO LONG FADE
+   ========================================================= */
+
 function fadeIntroOut() {
   if (
     !introAudio ||
@@ -519,8 +546,11 @@ function fadeIntroOut() {
   }
 
 
-  const started =
+  const start =
     performance.now();
+
+  const volume =
+    INTRO_BACKGROUND_VOLUME;
 
 
   introFadeTimer =
@@ -531,8 +561,7 @@ function fadeIntroOut() {
             introFadeTimer
           );
 
-          introFadeTimer =
-            null;
+          introFadeTimer = null;
 
           return;
         }
@@ -542,7 +571,7 @@ function fadeIntroOut() {
           Math.min(
             (
               performance.now() -
-              started
+              start
             ) /
             INTRO_FADE_DURATION_MS,
             1
@@ -553,7 +582,7 @@ function fadeIntroOut() {
           Math.max(
             0,
 
-            INTRO_BACKGROUND_VOLUME *
+            volume *
             Math.pow(
               1 - progress,
               1.7
@@ -568,8 +597,7 @@ function fadeIntroOut() {
             introFadeTimer
           );
 
-          introFadeTimer =
-            null;
+          introFadeTimer = null;
 
 
           try {
@@ -577,8 +605,7 @@ function fadeIntroOut() {
           } catch {}
 
 
-          introAudio =
-            null;
+          introAudio = null;
         }
 
       },
@@ -588,20 +615,50 @@ function fadeIntroOut() {
 
 
 /* =========================================================
-   JARVIS AUDIO
+   JARVIS AUDIO OUTPUT
    ========================================================= */
 
+function setJarvisGain(value) {
+  if (!outputGain || !outputAudioContext) {
+    return;
+  }
+
+  const now = outputAudioContext.currentTime;
+
+  outputGain.gain.cancelScheduledValues(now);
+  outputGain.gain.setTargetAtTime(value, now, 0.05);
+}
+
+
 async function connectRemoteAudio(stream) {
+  /*
+   * Gleicher Stream wie zuvor?
+   * Dann nichts neu verbinden (verhindert
+   * Aussetzer, falls ontrack mehrfach feuert).
+   */
+  if (stream === lastRemoteStream) {
+    return;
+  }
+
+  lastRemoteStream = stream;
+
   remoteAudio.srcObject =
     stream;
 
-  remoteAudio.volume =
-    1;
+  /*
+   * HTML Audio selbst auf Maximum.
+   */
+  remoteAudio.volume = 1;
 
 
   try {
     await remoteAudio.play();
-  } catch {}
+  } catch (error) {
+    console.warn(
+      "remoteAudio.play:",
+      error
+    );
+  }
 
 
   try {
@@ -622,6 +679,11 @@ async function connectRemoteAudio(stream) {
       await outputAudioContext.resume();
     }
 
+
+    /*
+     * MediaElementSource nur einmal
+     * für dieses Audio-Element erstellen.
+     */
 
     if (!outputSource) {
       outputSource =
@@ -647,14 +709,18 @@ async function connectRemoteAudio(stream) {
     }
 
 
-    if (outputGain) {
-      outputGain.gain.value =
-        JARVIS_OUTPUT_GAIN;
-    }
+    /*
+     * JARVIS deutlich verstärken.
+     */
+
+    setJarvisGain(
+      JARVIS_OUTPUT_GAIN
+    );
+
 
   } catch (error) {
     console.warn(
-      "Audio Gain:",
+      "Audio gain unavailable:",
       error
     );
   }
@@ -662,92 +728,17 @@ async function connectRemoteAudio(stream) {
 
 
 /* =========================================================
-   QUERY CLASSIFICATION
+   STARTUP GREETING
    ========================================================= */
 
-function isShopifyQuery(text) {
-  const t =
-    normalize(text);
+function requestStartupGreeting() {
+  startupGreeting = true;
 
-  return (
-    t.includes("shopify") ||
-    t.includes("bestellung") ||
-    t.includes("bestellungen") ||
-    t.includes("umsatz") ||
-    t.includes("verkauf") ||
-    t.includes("verkäufe") ||
-    t.includes("bestellwert") ||
-    t.includes("mein shop") ||
-    t.includes("unser shop")
-  );
-}
+  /*
+   * Mikro während der Begrüßung AUS.
+   */
 
-
-function isWeatherQuery(text) {
-  const t =
-    normalize(text);
-
-  return (
-    t.includes("wetter") ||
-    t.includes("temperatur") ||
-    t.includes("regen") ||
-    t.includes("regnet")
-  );
-}
-
-
-function isEmailQuery(text) {
-  const t =
-    normalize(text);
-
-  return (
-    t.includes("mail") ||
-    t.includes("email") ||
-    t.includes("e mail") ||
-    t.includes("postfach")
-  );
-}
-
-
-function isCalendarQuery(text) {
-  const t =
-    normalize(text);
-
-  return (
-    t.includes("kalender") ||
-    t.includes("termin") ||
-    t.includes("termine")
-  );
-}
-
-
-/* =========================================================
-   EXACT SPEECH
-   ========================================================= */
-
-function speakExact(text) {
-  const sentence =
-    String(text || "")
-      .trim();
-
-  if (!sentence) {
-    resumeListening();
-    return;
-  }
-
-
-  requestInProgress =
-    true;
-
-
-  setMicrophoneEnabled(
-    false
-  );
-
-
-  setLog(
-    "JARVIS spricht."
-  );
+  muteForAssistant();
 
 
   safeSend({
@@ -763,58 +754,124 @@ function speakExact(text) {
         "none",
 
       max_output_tokens:
-        180,
+        60,
 
       instructions:
-        `Sprich exakt den folgenden Text auf Deutsch.
+        `Sprich ausschließlich diesen Satz auf Deutsch:
 
-Du darfst keine Zahl verändern.
-Du darfst keine Information hinzufügen.
-Du darfst keinen Produktnamen ergänzen.
+"${getGreeting()}"
 
-TEXT:
-${sentence}
-
+Kein weiterer Satz.
 Danach schweigen.`
     }
   });
+
+  armResponseWatchdog();
 }
 
 
 /* =========================================================
-   SHOPIFY
+   TOOLS
    ========================================================= */
 
-async function handleShopify(
-  transcript
-) {
-  const t =
-    normalize(transcript);
-
-
-  const period =
-    t.includes(
-      "gestern"
+async function runTool(event) {
+  if (
+    !event.call_id ||
+    handledToolCalls.has(
+      event.call_id
     )
-      ? "yesterday"
-      : "today";
+  ) {
+    return;
+  }
+
+
+  handledToolCalls.add(
+    event.call_id
+  );
+
+  if (
+    handledToolCalls.size >
+    MAX_HANDLED_TOOL_CALLS
+  ) {
+    const oldest =
+      handledToolCalls
+        .values()
+        .next().value;
+
+    handledToolCalls.delete(oldest);
+  }
+
+
+  /*
+   * Während Live-Daten geladen werden
+   * bleibt Mikro AUS.
+   */
+
+  muteForAssistant();
+
+
+  let args = {};
+
+
+  try {
+    args =
+      event.arguments
+        ? JSON.parse(
+            event.arguments
+          )
+        : {};
+
+  } catch {
+    args = {};
+  }
+
+
+  let endpoint =
+    null;
+
+
+  switch (event.name) {
+    case "get_shopify_summary":
+      endpoint =
+        "/api/shopify-summary";
+      break;
+
+    case "get_weather":
+      endpoint =
+        "/api/weather";
+      break;
+
+    case "get_important_emails":
+      endpoint =
+        "/api/important-emails";
+      break;
+
+    case "get_calendar_today":
+      endpoint =
+        "/api/calendar-today";
+      break;
+  }
+
+
+  if (!endpoint) {
+    resumeListening();
+
+    return;
+  }
 
 
   setLog(
-    "Shopify wird geprüft …"
+    "Live-Daten werden geprüft …"
   );
 
 
-  setMicrophoneEnabled(
-    false
-  );
+  let result;
 
 
   try {
     const response =
       await fetch(
-        "/api/shopify-summary",
-
+        endpoint,
         {
           method:
             "POST",
@@ -825,9 +882,9 @@ async function handleShopify(
           },
 
           body:
-            JSON.stringify({
-              period
-            })
+            JSON.stringify(
+              args
+            )
         }
       );
 
@@ -836,422 +893,64 @@ async function handleShopify(
       await response.text();
 
 
-    let data;
-
-
     try {
-      data =
+      result =
         JSON.parse(raw);
 
     } catch {
-      throw new Error(
-        "Ungültige Shopify-Antwort."
-      );
+      result = {
+        error:
+          raw
+      };
     }
 
 
-    console.log(
-      "ECHTE SHOPIFY DATEN:",
-      data
-    );
-
-
-    if (
-      !response.ok ||
-      data.ok !== true
-    ) {
-      speakExact(
-        "Ich kann die Shopify-Daten gerade nicht verifizieren."
-      );
-
-      return;
+    if (!response.ok) {
+      result.http_status =
+        response.status;
     }
-
-
-    const dayText =
-      period ===
-        "yesterday"
-        ? "Gestern"
-        : "Heute";
-
-
-    const orders =
-      Number(
-        data.orders || 0
-      );
-
-
-    const revenue =
-      Number(
-        data.revenue || 0
-      );
-
-
-    const average =
-      Number(
-        data.average_order_value ||
-        0
-      );
-
-
-    const currency =
-      data.currency ||
-      "EUR";
-
-
-    /*
-     * WIE VIELE BESTELLUNGEN?
-     */
-    if (
-      (
-        t.includes("wie viele") ||
-        t.includes("anzahl")
-      ) &&
-      t.includes(
-        "bestell"
-      )
-    ) {
-      speakExact(
-        `${dayText} hast du ${orders} Shopify-Bestellungen.`
-      );
-
-      return;
-    }
-
-
-    /*
-     * UMSATZ
-     */
-    if (
-      t.includes("umsatz") ||
-      t.includes("umgesetzt") ||
-      t.includes("verkauf") ||
-      t.includes("verkäufe")
-    ) {
-      speakExact(
-        `${dayText} hast du ${formatMoney(
-          revenue,
-          currency
-        )} Shopify-Umsatz mit ${orders} Bestellungen. Der durchschnittliche Bestellwert liegt bei ${formatMoney(
-          average,
-          currency
-        )}.`
-      );
-
-      return;
-    }
-
-
-    /*
-     * ALLGEMEINE SHOPIFY-FRAGE
-     */
-    speakExact(
-      `${dayText} hast du ${orders} Shopify-Bestellungen mit ${formatMoney(
-        revenue,
-        currency
-      )} Umsatz. Der durchschnittliche Bestellwert liegt bei ${formatMoney(
-        average,
-        currency
-      )}.`
-    );
 
 
   } catch (error) {
     console.error(
-      "Shopify:",
+      "Tool fetch error:",
       error
     );
 
 
-    speakExact(
-      "Ich kann die Shopify-Daten gerade nicht verifizieren."
-    );
-  }
-}
-
-
-/* =========================================================
-   WEATHER
-   ========================================================= */
-
-function extractWeatherLocation(
-  transcript
-) {
-  const original =
-    String(
-      transcript || ""
-    );
-
-
-  if (
-    normalize(original)
-      .includes(
-        "ludwigshafen"
-      )
-  ) {
-    return (
-      "Ludwigshafen am Rhein"
-    );
+    result = {
+      error:
+        "Die Live-Daten konnten nicht geladen werden."
+    };
   }
 
 
-  const match =
-    original.match(
-      /\bin\s+(.+?)(?:\s+(?:heute|morgen))?[?.!,]*$/i
-    );
+  /*
+   * Tool-Ergebnis zurück an Realtime.
+   */
 
+  safeSend({
+    type:
+      "conversation.item.create",
 
-  if (
-    match &&
-    match[1]
-  ) {
-    return (
-      match[1].trim()
-    );
-  }
+    item: {
+      type:
+        "function_call_output",
 
+      call_id:
+        event.call_id,
 
-  return null;
-}
-
-
-async function handleWeather(
-  transcript
-) {
-  const t =
-    normalize(transcript);
-
-
-  const location =
-    extractWeatherLocation(
-      transcript
-    );
-
-
-  if (!location) {
-    speakExact(
-      "Für welchen Ort soll ich das Wetter prüfen?"
-    );
-
-    return;
-  }
-
-
-  const day =
-    t.includes(
-      "morgen"
-    )
-      ? "tomorrow"
-      : "today";
-
-
-  setLog(
-    "Wetter wird geprüft …"
-  );
-
-
-  try {
-    const response =
-      await fetch(
-        "/api/weather",
-
-        {
-          method:
-            "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body:
-            JSON.stringify({
-              location,
-              day
-            })
-        }
-      );
-
-
-    const data =
-      await response.json();
-
-
-    if (
-      !response.ok ||
-      data.ok !== true
-    ) {
-      speakExact(
-        "Ich konnte die Wetterdaten gerade nicht verifizieren."
-      );
-
-      return;
+      output:
+        JSON.stringify(
+          result
+        )
     }
+  });
 
 
-    const dayText =
-      day === "tomorrow"
-        ? "Morgen"
-        : "Heute";
-
-
-    const place =
-      data.location?.name ||
-      location;
-
-
-    const max =
-      data.forecast
-        ?.max_temperature;
-
-
-    const min =
-      data.forecast
-        ?.min_temperature;
-
-
-    const rain =
-      data.forecast
-        ?.precipitation_probability;
-
-
-    speakExact(
-      `${dayText} in ${place}: maximal ${max} Grad, minimal ${min} Grad. Die höchste Regenwahrscheinlichkeit liegt bei ${rain} Prozent.`
-    );
-
-
-  } catch (error) {
-    console.error(
-      "Weather:",
-      error
-    );
-
-
-    speakExact(
-      "Ich konnte die Wetterdaten gerade nicht verifizieren."
-    );
-  }
-}
-
-
-/* =========================================================
-   EMAIL
-   ========================================================= */
-
-async function handleEmail() {
-  setLog(
-    "E-Mails werden geprüft …"
-  );
-
-
-  try {
-    const response =
-      await fetch(
-        "/api/important-emails",
-
-        {
-          method:
-            "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body:
-            JSON.stringify({
-              limit: 5
-            })
-        }
-      );
-
-
-    const data =
-      await response.json();
-
-
-    speakExact(
-      data.message ||
-      "Gmail ist noch nicht verbunden."
-    );
-
-
-  } catch {
-    speakExact(
-      "Gmail ist noch nicht verbunden."
-    );
-  }
-}
-
-
-/* =========================================================
-   CALENDAR
-   ========================================================= */
-
-async function handleCalendar() {
-  setLog(
-    "Kalender wird geprüft …"
-  );
-
-
-  try {
-    const response =
-      await fetch(
-        "/api/calendar-today",
-
-        {
-          method:
-            "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body:
-            JSON.stringify({})
-        }
-      );
-
-
-    const data =
-      await response.json();
-
-
-    speakExact(
-      data.message ||
-      "Google Kalender ist noch nicht verbunden."
-    );
-
-
-  } catch {
-    speakExact(
-      "Google Kalender ist noch nicht verbunden."
-    );
-  }
-}
-
-
-/* =========================================================
-   NORMAL CONVERSATION
-   ========================================================= */
-
-function handleConversation(
-  transcript
-) {
-  requestInProgress =
-    true;
-
-
-  setMicrophoneEnabled(
-    false
-  );
-
-
-  setLog(
-    "JARVIS denkt nach …"
-  );
-
+  /*
+   * JARVIS soll das Ergebnis aussprechen.
+   */
 
   safeSend({
     type:
@@ -1262,136 +961,29 @@ function handleConversation(
         "audio"
       ],
 
-      tool_choice:
-        "none",
-
-      max_output_tokens:
-        300,
-
       instructions:
-        `Der Benutzer hat gerade gesagt:
+        `Beantworte die letzte Frage ausschließlich anhand des gerade gelieferten Tool-Ergebnisses.
 
-"${transcript}"
+Sprich ausschließlich Deutsch.
 
-Antworte darauf natürlich auf Deutsch.
-
-Du bist JARVIS.
-Locker, intelligent, direkt und gelegentlich trocken humorvoll.
-
-Beantworte seine eigentliche Aussage oder Frage.
-Keine erfundenen Live-Daten.
-Keine unnötige Anschlussfrage.
-Danach schweigen.`
+Regeln:
+- kurz und konkret
+- nenne die relevanten Zahlen klar
+- keine erfundenen Werte
+- keine Reisen
+- kein Essen
+- keine Workouts
+- keine themenfremden Vorschläge
+- nach der Antwort schweigen`
     }
   });
+
+  armResponseWatchdog();
 }
 
 
 /* =========================================================
-   ROUTER
-   ========================================================= */
-
-async function routeTranscript(
-  transcript
-) {
-  const text =
-    String(
-      transcript || ""
-    ).trim();
-
-
-  if (!text) {
-    resumeListening();
-
-    return;
-  }
-
-
-  if (
-    requestInProgress
-  ) {
-    return;
-  }
-
-
-  requestInProgress =
-    true;
-
-
-  console.log(
-    "ROUTER:",
-    text
-  );
-
-
-  if (
-    isShopifyQuery(text)
-  ) {
-    await handleShopify(
-      text
-    );
-
-    return;
-  }
-
-
-  if (
-    isWeatherQuery(text)
-  ) {
-    await handleWeather(
-      text
-    );
-
-    return;
-  }
-
-
-  if (
-    isEmailQuery(text)
-  ) {
-    await handleEmail();
-
-    return;
-  }
-
-
-  if (
-    isCalendarQuery(text)
-  ) {
-    await handleCalendar();
-
-    return;
-  }
-
-
-  handleConversation(
-    text
-  );
-}
-
-
-/* =========================================================
-   STARTUP GREETING
-   ========================================================= */
-
-function requestGreeting() {
-  requestInProgress =
-    true;
-
-
-  setMicrophoneEnabled(
-    false
-  );
-
-
-  speakExact(
-    getGreeting()
-  );
-}
-
-
-/* =========================================================
-   START
+   START REALTIME
    ========================================================= */
 
 async function startJarvis() {
@@ -1403,16 +995,19 @@ async function startJarvis() {
   }
 
 
-  connecting =
-    true;
+  connecting = true;
 
+  button.disabled = true;
 
-  button.disabled =
-    true;
+  handledToolCalls.clear();
 
 
   setStatus(
     "Verbinde …"
+  );
+
+  setJarvisState(
+    "connecting"
   );
 
 
@@ -1427,12 +1022,25 @@ async function startJarvis() {
 
 
   try {
+
+    /*
+     * Intro starten.
+     */
+
     await startIntro();
 
+
+    /*
+     * WebRTC-Verbindung.
+     */
 
     pc =
       new RTCPeerConnection();
 
+
+    /*
+     * JARVIS Audio kommt hier an.
+     */
 
     pc.ontrack =
       async event => {
@@ -1471,6 +1079,10 @@ async function startJarvis() {
       };
 
 
+    /*
+     * Realtime Event Channel.
+     */
+
     dc =
       pc.createDataChannel(
         "oai-events"
@@ -1479,16 +1091,12 @@ async function startJarvis() {
 
     dc.onopen =
       async () => {
-        active =
-          true;
 
+        active = true;
 
-        connecting =
-          false;
+        connecting = false;
 
-
-        button.disabled =
-          false;
+        button.disabled = false;
 
 
         setStatus(
@@ -1497,56 +1105,22 @@ async function startJarvis() {
 
 
         /*
-         * DAS IST DER WICHTIGE FIX.
-         *
-         * VAD bleibt aktiv.
-         *
-         * Aber OpenAI darf NICHT mehr
-         * automatisch antworten.
-         *
-         * Unser Router entscheidet.
+         * Mikro beim Start AUS.
          */
-        safeSend({
-          type:
-            "session.update",
-
-          session: {
-            tools: [],
-
-            tool_choice:
-              "none",
-
-            audio: {
-              input: {
-                turn_detection: {
-                  type:
-                    "server_vad",
-
-                  threshold:
-                    0.98,
-
-                  prefix_padding_ms:
-                    180,
-
-                  silence_duration_ms:
-                    600,
-
-                  create_response:
-                    false,
-
-                  interrupt_response:
-                    false
-                }
-              }
-            }
-          }
-        });
-
 
         setMicrophoneEnabled(
           false
         );
 
+
+        setLog(
+          "JARVIS startet …"
+        );
+
+
+        /*
+         * Intro zunächst alleine.
+         */
 
         await sleep(
           INTRO_VOICE_DELAY_MS
@@ -1558,17 +1132,26 @@ async function startJarvis() {
         }
 
 
+        /*
+         * Intro stark absenken.
+         */
+
         duckIntro();
 
 
-        requestGreeting();
+        /*
+         * Begrüßung starten.
+         */
+
+        requestStartupGreeting();
       };
 
 
     dc.onerror =
       error => {
+
         console.error(
-          "DataChannel:",
+          "Data channel:",
           error
         );
 
@@ -1581,6 +1164,7 @@ async function startJarvis() {
 
     dc.onclose =
       () => {
+
         if (
           active ||
           connecting
@@ -1592,6 +1176,7 @@ async function startJarvis() {
 
     dc.onmessage =
       async message => {
+
         let event;
 
 
@@ -1612,18 +1197,23 @@ async function startJarvis() {
         );
 
 
-        /* -----------------------------------------
-           USER STARTS SPEAKING
-           ----------------------------------------- */
+        /* =================================================
+           USER SPEECH START
+           ================================================= */
 
         if (
           event.type ===
           "input_audio_buffer.speech_started"
         ) {
+
           if (
             !assistantSpeaking &&
-            !requestInProgress
+            !waitingForAssistant
           ) {
+            setJarvisState(
+              "hearing"
+            );
+
             setLog(
               "Ich höre zu …"
             );
@@ -1631,39 +1221,37 @@ async function startJarvis() {
         }
 
 
-        /* -----------------------------------------
-           USER STOPS SPEAKING
-           ----------------------------------------- */
+        /* =================================================
+           USER SPEECH STOP
+           ================================================= */
 
         if (
           event.type ===
           "input_audio_buffer.speech_stopped"
         ) {
+
           /*
-           * Satz ist fertig.
-           *
-           * Mikro stumm, während wir
-           * auf Transkription warten.
+           * Sofort Mikro AUS.
            */
-          setMicrophoneEnabled(
-            false
-          );
+
+          muteForAssistant();
 
 
           setLog(
-            "Verstehe …"
+            "Denke nach …"
           );
         }
 
 
-        /* -----------------------------------------
-           TRANSCRIPTION READY
-           ----------------------------------------- */
+        /* =================================================
+           TRANSCRIPTION
+           ================================================= */
 
         if (
           event.type ===
           "conversation.item.input_audio_transcription.completed"
         ) {
+
           const transcript =
             String(
               event.transcript ||
@@ -1671,55 +1259,65 @@ async function startJarvis() {
             ).trim();
 
 
-          console.log(
-            "TRANSKRIPT:",
-            transcript
-          );
+          if (transcript) {
+
+            console.log(
+              "Mattl:",
+              transcript
+            );
 
 
-          if (!transcript) {
-            resumeListening();
-
-            return;
+            setLog(
+              `Verstanden: ${transcript}`
+            );
           }
-
-
-          setLog(
-            `Verstanden: ${transcript}`
-          );
-
-
-          requestInProgress =
-            false;
-
-
-          await routeTranscript(
-            transcript
-          );
         }
 
 
-        /* -----------------------------------------
-           OUTPUT START
-           ----------------------------------------- */
+        /* =================================================
+           JARVIS STARTS SPEAKING
+           ================================================= */
 
         if (
           event.type ===
           "output_audio_buffer.started"
         ) {
+
           assistantSpeaking =
             true;
 
+
+          setJarvisState(
+            "speaking"
+          );
+
+
+          /*
+           * Audio ist tatsächlich da,
+           * Watchdog wird nicht mehr gebraucht.
+           */
+
+          clearResponseWatchdog();
+
+
+          /*
+           * Mikro garantiert AUS.
+           */
 
           setMicrophoneEnabled(
             false
           );
 
 
-          if (outputGain) {
-            outputGain.gain.value =
-              JARVIS_OUTPUT_GAIN;
-          }
+          /*
+           * Sicherheit:
+           * JARVIS-Lautstärke wieder
+           * auf den gewünschten Gain setzen.
+           */
+
+          setJarvisGain(
+            JARVIS_OUTPUT_GAIN
+          );
 
 
           setLog(
@@ -1728,122 +1326,108 @@ async function startJarvis() {
         }
 
 
-        /* -----------------------------------------
-           OUTPUT FINISHED
-           ----------------------------------------- */
+        /* =================================================
+           JARVIS STOPS SPEAKING
+           ================================================= */
 
         if (
           event.type ===
           "output_audio_buffer.stopped"
         ) {
+
           assistantSpeaking =
             false;
 
-
-          requestInProgress =
+          startupGreeting =
             false;
 
 
           /*
-           * Kurze Echo-Pause.
+           * Kurze Pause, damit Lautsprecher-
+           * Echo nicht direkt als neue Sprache
+           * erkannt wird.
            */
+
           setTimeout(
             () => {
+
               if (active) {
                 resumeListening();
               }
+
             },
-            400
+            350
           );
         }
 
 
-        /* -----------------------------------------
-           RESPONSE FAILED
-           ----------------------------------------- */
+        /* =================================================
+           TOOL CALL
+           ================================================= */
 
         if (
           event.type ===
-          "response.done" &&
-          event.response?.status ===
-            "failed"
+          "response.function_call_arguments.done"
         ) {
-          console.error(
-            "Response failed:",
-            event.response
-          );
 
-
-          requestInProgress =
-            false;
-
-
-          setLog(
-            "JARVIS konnte nicht antworten."
-          );
-
-
-          setTimeout(
-            () => {
-              if (active) {
-                resumeListening();
-              }
-            },
-            500
-          );
-        }
-
-
-        /* -----------------------------------------
-           TRANSCRIPTION ERROR
-           ----------------------------------------- */
-
-        if (
-          event.type ===
-          "conversation.item.input_audio_transcription.failed"
-        ) {
-          console.error(
-            "Transcription failed:",
+          await runTool(
             event
           );
-
-
-          requestInProgress =
-            false;
-
-
-          setLog(
-            "Ich habe dich nicht verstanden."
-          );
-
-
-          setTimeout(
-            () => {
-              if (active) {
-                resumeListening();
-              }
-            },
-            500
-          );
         }
 
 
-        /* -----------------------------------------
+        /* =================================================
+           RESPONSE DONE
+           ================================================= */
+
+        if (
+          event.type ===
+          "response.done"
+        ) {
+
+          if (
+            event.response?.status ===
+            "failed"
+          ) {
+
+            console.error(
+              "Response failed:",
+              event.response
+            );
+
+
+            setLog(
+              "JARVIS konnte nicht antworten."
+            );
+
+
+            setTimeout(
+              () => {
+
+                if (active) {
+                  resumeListening();
+                }
+
+              },
+              500
+            );
+          }
+        }
+
+
+        /* =================================================
            ERROR
-           ----------------------------------------- */
+           ================================================= */
 
         if (
           event.type ===
           "error"
         ) {
+
           console.error(
             "Realtime error:",
             event
           );
-
-
-          requestInProgress =
-            false;
 
 
           setLog(
@@ -1854,9 +1438,14 @@ async function startJarvis() {
 
           setTimeout(
             () => {
-              if (active) {
+
+              if (
+                active &&
+                !assistantSpeaking
+              ) {
                 resumeListening();
               }
+
             },
             500
           );
@@ -1873,6 +1462,7 @@ async function startJarvis() {
         .mediaDevices
         .getUserMedia({
           audio: {
+
             echoCancellation:
               true,
 
@@ -1889,10 +1479,9 @@ async function startJarvis() {
 
 
     /*
-     * Start zunächst stumm,
-     * damit Intro + Begrüßung
-     * nicht aufgenommen werden.
+     * Mikro bleibt zunächst stumm.
      */
+
     setMicrophoneEnabled(
       false
     );
@@ -1902,6 +1491,7 @@ async function startJarvis() {
       const track of
       localStream.getAudioTracks()
     ) {
+
       pc.addTrack(
         track,
         localStream
@@ -1910,7 +1500,7 @@ async function startJarvis() {
 
 
     /* =====================================================
-       WEBRTC
+       WEBRTC OFFER
        ===================================================== */
 
     const offer =
@@ -1941,6 +1531,7 @@ async function startJarvis() {
 
 
     if (!response.ok) {
+
       throw new Error(
         await response.text()
       );
@@ -1961,8 +1552,9 @@ async function startJarvis() {
 
 
   } catch (error) {
+
     console.error(
-      "Start:",
+      "Start error:",
       error
     );
 
@@ -1976,35 +1568,29 @@ async function startJarvis() {
 
 
   } finally {
-    connecting =
-      false;
 
+    connecting = false;
 
-    button.disabled =
-      false;
+    button.disabled = false;
   }
 }
 
 
 /* =========================================================
-   STOP
+   STOP JARVIS
    ========================================================= */
 
 async function stopJarvis() {
-  active =
-    false;
 
+  active = false;
 
-  connecting =
-    false;
+  connecting = false;
 
+  assistantSpeaking = false;
 
-  assistantSpeaking =
-    false;
+  waitingForAssistant = false;
 
-
-  requestInProgress =
-    false;
+  startupGreeting = false;
 
 
   stopIntro();
@@ -2018,8 +1604,7 @@ async function stopJarvis() {
   try {
     if (
       dc &&
-      dc.readyState ===
-        "open"
+      dc.readyState === "open"
     ) {
       dc.close();
     }
@@ -2045,16 +1630,14 @@ async function stopJarvis() {
   } catch {}
 
 
-  localStream =
-    null;
+  localStream = null;
+
+  pc = null;
+
+  dc = null;
 
 
-  pc =
-    null;
-
-
-  dc =
-    null;
+  handledToolCalls.clear();
 
 
   try {
@@ -2067,6 +1650,11 @@ async function stopJarvis() {
 
   setButtonActive(
     false
+  );
+
+
+  setJarvisState(
+    "offline"
   );
 
 
@@ -2089,25 +1677,35 @@ async function stopJarvis() {
    BUTTON
    ========================================================= */
 
-button.addEventListener(
-  "click",
+setJarvisState("offline");
 
-  async () => {
-    if (connecting) {
-      return;
+if (button) {
+  button.addEventListener(
+    "click",
+
+    async () => {
+
+      if (connecting) {
+        return;
+      }
+
+
+      if (active) {
+
+        await stopJarvis();
+
+        return;
+      }
+
+
+      await startJarvis();
     }
-
-
-    if (active) {
-      await stopJarvis();
-
-      return;
-    }
-
-
-    await startJarvis();
-  }
-);
+  );
+} else {
+  console.error(
+    "#toggle-Button nicht im DOM gefunden."
+  );
+}
 
 
 /* =========================================================
