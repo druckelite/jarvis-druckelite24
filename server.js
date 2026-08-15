@@ -1,7 +1,25 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
-   V7.7 · PROAKTIVER HINWEIS + AUSSPRACHE-KORREKTUR
-   (Basis: V7.6, überarbeitet am 15.08.2026)
+   V7.9 · ZEITMESSUNG
+   (Basis: V7.8, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN IN V7.9:
+   15. Zeitmessung eingebaut (Render-Logs, Zeilen mit "[TIMING]"):
+       Transkriptionsdauer, ChatGPT-Antwortdauer, ElevenLabs-Streaming-
+       dauer. Zweck: endlich sehen, WO die Zeit tatsächlich hängt,
+       statt weiter zu raten.
+
+   ÄNDERUNGEN IN V7.8:
+   13. JARVIS hat jetzt Zugriff auf eine Websuche (OpenAI web_search-
+       Tool) - für aktuelle Nachrichten, Ereignisse und allgemeine
+       Fragen, die er nicht sicher weiß. Entscheidet selbst, wann er
+       sie braucht; für Shopify/Wetter nutzt er weiterhin nur die
+       eigenen LIVE-DATEN. Rohe Links werden vor der Sprachausgabe
+       herausgefiltert.
+   14. Morgen-Briefing: Beim ersten Kontakt eines neuen Tages (5-11 Uhr)
+       gibt JARVIS über /api/jarvis-checkin automatisch eine kurze
+       Zusammenfassung (Umsatz gestern, offene Bestellungen, Wetter) -
+       höchstens einmal pro Tag.
 
    ÄNDERUNGEN IN V7.7:
    11. Neuer Endpunkt /api/jarvis-checkin: Wird periodisch von app.js
@@ -163,6 +181,10 @@ function sanitizeForSpeech(text) {
     // übrig gebliebene Markdown-Reste
     .replace(/\*\*/g, "")
     .replace(/[*_`#]/g, "")
+    // FIX: Sicherheitsnetz gegen rohe Links, z.B. aus Websuche-Ergebnissen -
+    // ein vorgelesener Link klingt immer schlecht, egal woher er kommt.
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/\bwww\.\S+/gi, "")
     // gängige Abkürzungen ausschreiben
     .replace(/z\.\s?B\./gi, "zum Beispiel")
     .replace(/u\.\s?a\./gi, "unter anderem")
@@ -224,6 +246,18 @@ function berlinDate(date = new Date()) {
     month: "2-digit",
     day: "2-digit"
   }).format(date);
+}
+
+function getBerlinHour(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Berlin",
+    hour: "numeric",
+    hourCycle: "h23"
+  }).formatToParts(date);
+
+  const hourPart = parts.find(part => part.type === "hour");
+  const hour = Number(hourPart?.value);
+  return Number.isNaN(hour) ? date.getHours() : hour;
 }
 
 function nextDateString(dateString) {
@@ -330,6 +364,16 @@ WICHTIG ZUR STIMME:
 - Schreibe Centbeträge als eigene Zahl aus, zum Beispiel "49 Euro 90" statt "49,90 Euro" oder "49,90€".
 - Schreibe Abkürzungen wie "z.B.", "u.a." oder "usw." aus statt sie abzukürzen.
 - Vermeide unnötige Sonderzeichen.
+- Nenne niemals rohe Links oder URLs - fasse Informationen aus der Websuche natürlich in eigenen Worten zusammen.
+
+INTERNETZUGRIFF:
+Du hast eine Websuche als Werkzeug zur Verfügung. Nutze sie, wenn du
+aktuelle Informationen brauchst, die du nicht sicher weißt - zum
+Beispiel aktuelle Nachrichten, Ereignisse oder Fakten von heute.
+Für Fragen zu Druckelite24, Shopify, Bestellungen oder Wetter nutze
+NICHT die Websuche, sondern ausschließlich die LIVE-DATEN, falls
+welche mitgegeben wurden - die Websuche würde hier ohnehin nichts
+Sinnvolles finden und nur unnötig Zeit kosten.
 
 DRUCKELITE24:
 Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
@@ -462,12 +506,16 @@ app.post(
 
       console.log(`Transcription input: ${req.body.length} Bytes`);
 
+      const transcribeStart = Date.now();
+
       const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
         method: "POST",
         headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
         body: form,
         signal: timeoutSignal(30000)
       });
+
+      console.log(`[TIMING] Transkription (OpenAI): ${Date.now() - transcribeStart}ms`);
 
       const raw = await response.text();
       let data;
@@ -545,12 +593,19 @@ async function requestOpenAIResponse({ inputText, previousResponseId, maxOutputT
     max_output_tokens: maxOutputTokens,
     reasoning: { effort: reasoningEffort },
     text: { format: { type: "text" } },
+    // Websuche als Werkzeug - GPT entscheidet selbst, ob es sie für die
+    // aktuelle Frage braucht (z.B. Nachrichten, aktuelle Ereignisse).
+    // Für Shopify/Wetter nutzt es weiterhin die eigenen LIVE-DATEN,
+    // dafür ist keine Suche nötig - siehe JARVIS_INSTRUCTIONS.
+    tools: [{ type: "web_search" }],
     store: true
   };
 
   if (previousResponseId) {
     body.previous_response_id = previousResponseId;
   }
+
+  const gptStart = Date.now();
 
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -561,6 +616,8 @@ async function requestOpenAIResponse({ inputText, previousResponseId, maxOutputT
     body: JSON.stringify(body),
     signal: timeoutSignal(45000)
   });
+
+  console.log(`[TIMING] ChatGPT-Antwort (reasoning: ${reasoningEffort}): ${Date.now() - gptStart}ms`);
 
   const raw = await response.text();
   let data;
@@ -1028,10 +1085,78 @@ let lastProactiveNotice = { unfulfilledCount: null, notifiedAt: 0 };
 // noch einmal erwähnt - auch wenn sie sich nicht geändert hat.
 const PROACTIVE_REMINDER_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 Stunden
 
+/*
+ * Merkt sich, an welchem Tag zuletzt ein Morgen-Briefing gegeben wurde -
+ * so gibt es davon höchstens eines pro Tag, unabhängig davon, wie oft
+ * der Hintergrund-Check in der Zeit läuft.
+ */
+let lastBriefingDate = null;
+
+async function buildMorningBriefingFacts() {
+  const [yesterday, openOrders, weather] = await Promise.allSettled([
+    getShopifySummary("yesterday"),
+    getShopifyOpenOrders(),
+    getWeatherData("Ludwigshafen am Rhein", "today")
+  ]);
+
+  const facts = [];
+
+  if (yesterday.status === "fulfilled") {
+    facts.push(
+      `Umsatz gestern: ${yesterday.value.revenue} ${yesterday.value.currency} bei ${yesterday.value.orders} Bestellungen.`
+    );
+  }
+
+  if (openOrders.status === "fulfilled") {
+    facts.push(`Aktuell unbearbeitete Bestellungen: ${openOrders.value.count}.`);
+  }
+
+  if (weather.status === "fulfilled" && weather.value?.current) {
+    facts.push(
+      `Wetter heute in Ludwigshafen: aktuell ${Math.round(weather.value.current.temperature_2m)} Grad, ` +
+      `Höchstwert ${Math.round(weather.value.forecast?.max_temperature ?? weather.value.current.temperature_2m)} Grad.`
+    );
+  }
+
+  return facts;
+}
+
 app.post("/api/jarvis-checkin", async (req, res) => {
   try {
     const previousResponseId = String(req.body?.previous_response_id || "").trim() || null;
 
+    // MORGEN-BRIEFING: höchstens einmal pro Tag, nur im Zeitfenster
+    // 5-11 Uhr - der erste Kontakt an einem neuen Tag.
+    const today = berlinDate();
+    const hour = getBerlinHour();
+    const isMorningWindow = hour >= 5 && hour < 11;
+
+    if (today !== lastBriefingDate && isMorningWindow) {
+      lastBriefingDate = today;
+
+      const facts = await buildMorningBriefingFacts();
+
+      if (facts.length) {
+        const briefingMessage =
+          `[SYSTEM-HINWEIS - nicht von Mattl gesprochen] Es ist der erste Kontakt heute Morgen. ` +
+          `Gib Mattl ein kurzes Morgen-Briefing (2-4 Sätze, locker, in deinem gewohnten Stil) ` +
+          `basierend auf diesen Fakten: ${facts.join(" ")}`;
+
+        const briefingResult = await createJarvisResponse({
+          message: briefingMessage,
+          previousResponseId
+        });
+
+        return res.json({
+          ok: true,
+          hasNotice: true,
+          text: briefingResult.text,
+          response_id: briefingResult.response_id
+        });
+      }
+    }
+
+    // NORMALER CHECK: offene/unbearbeitete Bestellungen.
     let openOrders;
     try {
       openOrders = await getShopifyOpenOrders();
@@ -1288,6 +1413,8 @@ app.post("/api/elevenlabs-tts", async (req, res) => {
     );
     elevenUrl.searchParams.set("output_format", "mp3_44100_128");
 
+    const ttsStart = Date.now();
+
     const response = await fetch(elevenUrl, {
       method: "POST",
       headers: {
@@ -1317,6 +1444,8 @@ app.post("/api/elevenlabs-tts", async (req, res) => {
       signal: timeoutSignal(25000)
     });
 
+    console.log(`[TIMING] ElevenLabs - Zeit bis Antwort-Header (${safeText.length} Zeichen): ${Date.now() - ttsStart}ms`);
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error("ElevenLabs error:", response.status, errorText);
@@ -1340,6 +1469,7 @@ app.post("/api/elevenlabs-tts", async (req, res) => {
         if (value) res.write(Buffer.from(value));
       }
       res.end();
+      console.log(`[TIMING] ElevenLabs - komplett fertig gestreamt: ${Date.now() - ttsStart}ms`);
     } catch (streamError) {
       console.error("ElevenLabs stream error:", streamError);
       try { res.end(); } catch {}
