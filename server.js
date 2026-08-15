@@ -1,7 +1,22 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
-   V7.5 · AUSSPRACHE- UND EURO-FIX
-   (Basis: V7.4, überarbeitet am 15.08.2026)
+   V7.7 · PROAKTIVER HINWEIS + AUSSPRACHE-KORREKTUR
+   (Basis: V7.6, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN IN V7.7:
+   11. Neuer Endpunkt /api/jarvis-checkin: Wird periodisch von app.js
+       aufgerufen (nicht durch eine Frage von Mattl), prüft aktuell
+       offene/unbearbeitete Shopify-Bestellungen und lässt JARVIS sich
+       nur melden, wenn es wirklich etwas Neues oder Ungelöstes gibt -
+       mit 2 Stunden Cooldown, damit er nicht ständig dasselbe wiederholt.
+   12. "Druckelite24" wird jetzt exakt wie von Mattl vorgegeben
+       ausgesprochen: "Druck Elite24" - die Zahl bleibt als Zahl
+       stehen, wird nicht mehr als "vierundzwanzig" ausgeschrieben.
+
+   ÄNDERUNGEN IN V7.6:
+   10. "Jarvis" als bekannter Begriff für die Spracherkennung ergänzt -
+       wichtig, da der Name jetzt in app.js als Weckwort genutzt wird
+       und daher zuverlässig transkribiert werden muss.
 
    ÄNDERUNGEN IN V7.5:
    8. "Druckelite24" wird jetzt unabhängig von Leerzeichen, Bindestrich
@@ -113,8 +128,10 @@ function timeoutSignal(ms) {
 /*
  * Bekannte Wörter, die ElevenLabs falsch ausspricht - hier einfach
  * ergänzbar. "Druckelite24" ist ein Kunstwort, keine TTS-Stimme kann
- * die Betonung zuverlässig erraten, deshalb sagen wir ihr explizit,
- * wie es gelesen werden soll. Das Muster erkennt "Druckelite24",
+ * die Betonung zuverlässig erraten. Mattl hat die gewünschte Aussprache
+ * explizit vorgegeben: "Druck Elite24" - also nur die Wortgrenze zwischen
+ * "Druck" und "Elite" einfügen, die "24" bleibt als Zahl stehen statt
+ * ausgeschrieben zu werden. Das Muster erkennt "Druckelite24",
  * "Druckelite 24", "Druckelite-24" und "Druckelite24.de" gleichermaßen.
  * Reihenfolge wichtig: speziellere Muster (mit "24") zuerst, sonst
  * greift das kürzere zuerst.
@@ -124,7 +141,7 @@ function timeoutSignal(ms) {
 const PRONUNCIATION_FIXES = [
   {
     pattern: /Druckelite\s*-?\s*24(\.de)?/gi,
-    replacement: (match, deSuffix) => (deSuffix ? "Druck Elite vierundzwanzig Punkt de" : "Druck Elite vierundzwanzig")
+    replacement: (match, deSuffix) => (deSuffix ? "Druck Elite24 Punkt de" : "Druck Elite24")
   },
   { pattern: /Druckelite/gi, replacement: "Druck Elite" }
 ];
@@ -375,6 +392,15 @@ zum Beispiel:
 - Rückerstattungen
 - Nachrichten oder E-Mails senden
 - Daten löschen
+
+PROAKTIVE HINWEISE:
+Manchmal bekommst du eine Nachricht, die mit "[SYSTEM-HINWEIS" beginnt.
+Das kommt nicht von Mattl - das ist ein automatischer Hintergrund-Check,
+der dich bittet, Mattl von dir aus auf etwas hinzuweisen, ohne dass er
+dich gefragt hat. Sprich ihn in diesem Fall direkt und kurz an (1-2
+Sätze), in deinem gewohnten Stil - ruhig auch mal sarkastisch oder mit
+"Ja, Meister" o.ä., wenn es passt. Tu nicht so, als hätte Mattl etwas
+gefragt oder gesagt - du meldest dich von dir aus.
 `;
 
 
@@ -431,7 +457,7 @@ app.post(
 
       form.append(
         "prompt",
-        "Deutsche Sprache. Transkribiere nur tatsächlich gesprochene Wörter. Ignoriere Hintergrundgeräusche, Musik, Fernseher, Lüfter, Tastatur und unverständliche Nebengeräusche. Der Benutzer heißt Mattl. Begriffe: Druckelite24, Shopify, Umsatz, Bestellungen, Verkäufe, Bestellwert, DTF, Textildruck, E-Commerce, Ludwigshafen am Rhein."
+        "Deutsche Sprache. Transkribiere nur tatsächlich gesprochene Wörter. Ignoriere Hintergrundgeräusche, Musik, Fernseher, Lüfter, Tastatur und unverständliche Nebengeräusche. Der Benutzer heißt Mattl, der Assistent heißt Jarvis. Begriffe: Jarvis, Druckelite24, Shopify, Umsatz, Bestellungen, Verkäufe, Bestellwert, DTF, Textildruck, E-Commerce, Ludwigshafen am Rhein."
       );
 
       console.log(`Transcription input: ${req.body.length} Bytes`);
@@ -918,6 +944,133 @@ app.post("/api/shopify-week", async (req, res) => {
   } catch (error) {
     console.error("Shopify week endpoint error:", error);
     return res.status(500).json({ error: error.message || "Wochendaten fehlgeschlagen." });
+  }
+});
+
+
+/* =========================================================
+   SHOPIFY OFFENE BESTELLUNGEN
+   (Grundlage für den proaktiven Hinweis, siehe /api/jarvis-checkin)
+   ========================================================= */
+
+async function getShopifyOpenOrders() {
+  const domain = process.env.SHOPIFY_STORE_DOMAIN;
+  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
+  const token = await getShopifyAccessToken();
+
+  // Shopify filtert das direkt serverseitig über die Suchsyntax -
+  // effizienter und vollständiger als alle Bestellungen zu laden und
+  // client-seitig zu filtern (verpasst sonst ältere unbearbeitete).
+  const query = `
+    query JarvisOpenOrders {
+      orders(
+        first: 50,
+        query: "fulfillment_status:unfulfilled",
+        sortKey: CREATED_AT,
+        reverse: false
+      ) {
+        nodes {
+          name
+          createdAt
+          cancelledAt
+          displayFulfillmentStatus
+        }
+      }
+    }
+  `;
+
+  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token
+    },
+    body: JSON.stringify({ query }),
+    signal: timeoutSignal(10000)
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || data.errors) {
+    console.error("Shopify open orders error:", data);
+    throw new Error("Offene Bestellungen konnten nicht gelesen werden.");
+  }
+
+  const orders = (data.data?.orders?.nodes || []).filter(order => !order.cancelledAt);
+  const oldest = orders.length ? orders[0] : null;
+
+  return {
+    count: orders.length,
+    oldest_order_name: oldest ? oldest.name : null,
+    oldest_order_created_at: oldest ? oldest.createdAt : null
+  };
+}
+
+
+/* =========================================================
+   PROAKTIVER HINTERGRUND-CHECK
+   =========================================================
+
+   Wird periodisch von app.js aufgerufen (nicht durch eine Frage von
+   Mattl ausgelöst). Meldet nur dann etwas zurück, wenn es tatsächlich
+   etwas Neues oder Ungelöstes gibt - sonst würde JARVIS bei jedem
+   Check dieselbe Sache wiederholen, was schnell nervt.
+
+   Aktuell geprüft: unbearbeitete Shopify-Bestellungen. E-Mails können
+   hier noch nicht mit rein - Gmail ist bei Mattl noch nicht verbunden
+   (Phase 2, OAuth fehlt noch). Sobald das steht, kann hier einfach
+   ein weiterer Check ergänzt werden.
+   ========================================================= */
+
+let lastProactiveNotice = { unfulfilledCount: null, notifiedAt: 0 };
+
+// Wie lange JARVIS nach einer Meldung wartet, bevor er dieselbe Anzahl
+// noch einmal erwähnt - auch wenn sie sich nicht geändert hat.
+const PROACTIVE_REMINDER_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 Stunden
+
+app.post("/api/jarvis-checkin", async (req, res) => {
+  try {
+    const previousResponseId = String(req.body?.previous_response_id || "").trim() || null;
+
+    let openOrders;
+    try {
+      openOrders = await getShopifyOpenOrders();
+    } catch (error) {
+      console.error("Proaktiver Check - Shopify-Fehler:", error);
+      // Hintergrund-Check schlägt fehl -> einfach still bleiben,
+      // nicht mit einer Fehlermeldung stören.
+      return res.json({ ok: true, hasNotice: false });
+    }
+
+    if (!openOrders.count) {
+      lastProactiveNotice = { unfulfilledCount: 0, notifiedAt: Date.now() };
+      return res.json({ ok: true, hasNotice: false });
+    }
+
+    const countChanged = lastProactiveNotice.unfulfilledCount !== openOrders.count;
+    const cooldownElapsed = Date.now() - lastProactiveNotice.notifiedAt > PROACTIVE_REMINDER_COOLDOWN_MS;
+
+    if (!countChanged && !cooldownElapsed) {
+      return res.json({ ok: true, hasNotice: false });
+    }
+
+    lastProactiveNotice = { unfulfilledCount: openOrders.count, notifiedAt: Date.now() };
+
+    const oldestInfo = openOrders.oldest_order_created_at
+      ? `, die älteste (${openOrders.oldest_order_name}) vom ${new Date(openOrders.oldest_order_created_at).toLocaleDateString("de-DE")}`
+      : "";
+
+    const proactiveMessage =
+      `[SYSTEM-HINWEIS - nicht von Mattl gesprochen] Automatischer Hintergrund-Check: ` +
+      `Aktuell gibt es ${openOrders.count} unbearbeitete Bestellungen bei Druckelite24${oldestInfo}. ` +
+      `Sprich Mattl von dir aus kurz darauf an.`;
+
+    const result = await createJarvisResponse({ message: proactiveMessage, previousResponseId });
+
+    return res.json({ ok: true, hasNotice: true, text: result.text, response_id: result.response_id });
+  } catch (error) {
+    console.error("Proactive checkin error:", error);
+    return res.json({ ok: true, hasNotice: false });
   }
 });
 
