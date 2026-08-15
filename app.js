@@ -1,15 +1,5 @@
 /* =========================================================
-   ÄNDERUNGEN IN DIESER VERSION
-   =========================================================
-   1) Watchdog: Mikro bleibt nicht mehr für immer stumm,
-      falls JARVIS mal keine Audio-Antwort schickt.
-   2) Lautstärke wird jetzt sanft geregelt statt hart
-      gesprungen -> kein Knacken mehr beim Sprechbeginn.
-   3) Doppelte ontrack-Events verbinden den Stream nicht
-      mehr unnötig neu.
-   4) handledToolCalls wächst bei langen Sessions nicht
-      mehr unbegrenzt.
-   5) Absicherung, falls der #toggle-Button im HTML fehlt.
+   JARVIS AUDIO / VOICE TUNING
    ========================================================= */
 
 const button = document.querySelector("#toggle");
@@ -31,19 +21,17 @@ let startupGreeting = false;
 let outputAudioContext = null;
 let outputSource = null;
 let outputGain = null;
+let outputCompressor = null;
 let lastRemoteStream = null;
 
 let introAudio = null;
 let introFadeTimer = null;
 
-// Sicherheitsnetz: falls JARVIS nach einer Anfrage
-// aus irgendeinem Grund NICHT antwortet (z. B. Response
-// ohne Audio, verlorenes Event), würde das Mikro sonst
-// für immer stumm bleiben. Dieser Timer holt es zurück.
 let responseWatchdog = null;
 
 const handledToolCalls = new Set();
 const MAX_HANDLED_TOOL_CALLS = 50;
+
 
 /* =========================================================
    SETTINGS
@@ -52,21 +40,48 @@ const MAX_HANDLED_TOOL_CALLS = 50;
 /*
  * JARVIS deutlich lauter.
  */
-const JARVIS_OUTPUT_GAIN = 2.20;
+const JARVIS_OUTPUT_GAIN = 2.75;
+
 
 /*
- * Intro
+ * INTRO
+ *
+ * Startet weiterhin ab Sekunde 4.
+ * Beginnt aber deutlich leiser.
  */
 const INTRO_START = 4;
-const INTRO_VOICE_DELAY_MS = 2500;
+
+const INTRO_START_VOLUME = 0.28;
+
+const INTRO_VOICE_DELAY_MS = 2000;
+
 
 /*
- * Intro wird beim Sprechen stark abgesenkt.
+ * Sobald JARVIS begrüßt:
+ * Intro sehr weit runter.
  */
-const INTRO_BACKGROUND_VOLUME = 0.06;
+const INTRO_BACKGROUND_VOLUME = 0.025;
 
-const INTRO_DUCK_DURATION_MS = 1200;
+
+/*
+ * Weiches Absenken.
+ */
+const INTRO_DUCK_DURATION_MS = 1800;
+
+
+/*
+ * Danach noch 15 Sekunden sanft auslaufen.
+ */
 const INTRO_FADE_DURATION_MS = 15000;
+
+
+/*
+ * Nach JARVIS-Ausgabe noch etwas warten,
+ * bevor das Mikro wieder aktiviert wird.
+ *
+ * So hört er sein eigenes Echo deutlich weniger.
+ */
+const LISTENING_RESUME_DELAY_MS = 700;
 
 
 /* =========================================================
@@ -85,11 +100,13 @@ function setStatus(text) {
   }
 }
 
+
 function setLog(text) {
   if (!logEl) return;
 
   logEl.textContent = text;
 }
+
 
 function setButtonActive(value) {
   if (!button) return;
@@ -101,10 +118,17 @@ function setButtonActive(value) {
   }
 }
 
-// Steuert den visuellen Zustand des HUD-Reaktors über ein
-// data-Attribut am <body>. Das CSS reagiert darauf mit
-// unterschiedlichen Glow-/Bewegungs-Mustern:
-// offline | connecting | listening | hearing | thinking | speaking
+
+/*
+ * HUD-Status.
+ *
+ * offline
+ * connecting
+ * listening
+ * hearing
+ * thinking
+ * speaking
+ */
 function setJarvisState(state) {
   document.body.dataset.jarvisState = state;
 }
@@ -119,6 +143,7 @@ function sleep(ms) {
     setTimeout(resolve, ms);
   });
 }
+
 
 function safeSend(payload) {
   if (
@@ -150,28 +175,40 @@ function safeSend(payload) {
    RESPONSE WATCHDOG
    ========================================================= */
 
-// Wird direkt nach jedem "response.create" gestartet.
-// Kommt keine Audio-Antwort (output_audio_buffer.started),
-// gibt der Watchdog das Mikro nach Ablauf der Zeit wieder frei.
+/*
+ * Falls eine Modellantwort hängen bleibt
+ * und kein Audio startet, wird das Mikro
+ * nach einiger Zeit wieder freigegeben.
+ */
 function armResponseWatchdog(ms = 12000) {
   clearResponseWatchdog();
 
-  responseWatchdog = setTimeout(() => {
-    console.warn(
-      "Watchdog: keine Audio-Antwort erhalten, Mikro wird freigegeben."
-    );
+  responseWatchdog =
+    setTimeout(
+      () => {
+        console.warn(
+          "Watchdog: keine Audio-Antwort erhalten."
+        );
 
-    if (active) {
-      resumeListening();
-    }
-  }, ms);
+        if (active) {
+          resumeListening();
+        }
+      },
+      ms
+    );
 }
 
+
 function clearResponseWatchdog() {
-  if (responseWatchdog) {
-    clearTimeout(responseWatchdog);
-    responseWatchdog = null;
+  if (!responseWatchdog) {
+    return;
   }
+
+  clearTimeout(
+    responseWatchdog
+  );
+
+  responseWatchdog = null;
 }
 
 
@@ -200,15 +237,27 @@ function setMicrophoneEnabled(enabled) {
 }
 
 
+/*
+ * Sobald JARVIS nachdenkt / antwortet:
+ * Mikro vollständig aus.
+ */
 function muteForAssistant() {
   waitingForAssistant = true;
 
-  setJarvisState("thinking");
+  setJarvisState(
+    "thinking"
+  );
 
-  setMicrophoneEnabled(false);
+  setMicrophoneEnabled(
+    false
+  );
 }
 
 
+/*
+ * Erst NACH vollständiger Antwort
+ * wieder zuhören.
+ */
 function resumeListening() {
   clearResponseWatchdog();
 
@@ -219,9 +268,13 @@ function resumeListening() {
   waitingForAssistant = false;
   assistantSpeaking = false;
 
-  setJarvisState("listening");
+  setJarvisState(
+    "listening"
+  );
 
-  setMicrophoneEnabled(true);
+  setMicrophoneEnabled(
+    true
+  );
 
   setLog(
     "JARVIS hört zu."
@@ -265,7 +318,9 @@ function getBerlinHour() {
       hourPart?.value
     );
 
-  if (Number.isNaN(hour)) {
+  if (
+    Number.isNaN(hour)
+  ) {
     return new Date().getHours();
   }
 
@@ -287,6 +342,7 @@ function getGreeting() {
   const hour =
     getBerlinHour();
 
+
   if (
     hour >= 5 &&
     hour < 11
@@ -297,6 +353,7 @@ function getGreeting() {
       "Hey Mattl. Morgen. Was machen wir?"
     ]);
   }
+
 
   if (
     hour >= 11 &&
@@ -310,6 +367,7 @@ function getGreeting() {
     ]);
   }
 
+
   if (
     hour >= 14 &&
     hour < 18
@@ -321,6 +379,7 @@ function getGreeting() {
     ]);
   }
 
+
   if (
     hour >= 18 &&
     hour < 23
@@ -331,6 +390,7 @@ function getGreeting() {
       "Feierabend war wohl nur eine Theorie."
     ]);
   }
+
 
   return pickRandom([
     "Mattl ... ernsthaft? Na gut. Ich bin da.",
@@ -353,6 +413,7 @@ function stopIntro() {
     introFadeTimer = null;
   }
 
+
   if (introAudio) {
     try {
       introAudio.pause();
@@ -363,83 +424,103 @@ function stopIntro() {
 }
 
 
+/*
+ * Intro startet bereits deutlich leiser.
+ */
 async function startIntro() {
   stopIntro();
 
   introAudio =
     new Audio(
-      "/Intro.mp3?v=7"
+      "/Intro.mp3?v=8"
     );
 
   introAudio.preload =
     "auto";
 
+  /*
+   * Vorher 100 %.
+   * Jetzt nur 28 %.
+   */
   introAudio.volume =
-    1;
-
-  return new Promise(resolve => {
-    let resolved = false;
-
-    const done = () => {
-      if (resolved) return;
-
-      resolved = true;
-      resolve();
-    };
+    INTRO_START_VOLUME;
 
 
-    const play = async () => {
-      try {
-        if (!introAudio) {
-          done();
+  return new Promise(
+    resolve => {
+
+      let resolved = false;
+
+
+      const done = () => {
+        if (resolved) {
           return;
         }
 
-        introAudio.currentTime =
-          INTRO_START;
+        resolved = true;
 
-        await introAudio.play();
+        resolve();
+      };
 
-        done();
 
-      } catch (error) {
-        console.error(
-          "Intro error:",
-          error
-        );
+      const play =
+        async () => {
 
-        done();
+          try {
+            if (!introAudio) {
+              done();
+              return;
+            }
+
+
+            introAudio.currentTime =
+              INTRO_START;
+
+
+            await introAudio.play();
+
+
+            done();
+
+          } catch (error) {
+            console.error(
+              "Intro error:",
+              error
+            );
+
+            done();
+          }
+        };
+
+
+      introAudio.addEventListener(
+        "loadedmetadata",
+        play,
+        {
+          once: true
+        }
+      );
+
+
+      introAudio.addEventListener(
+        "error",
+        done,
+        {
+          once: true
+        }
+      );
+
+
+      if (
+        introAudio.readyState >= 1
+      ) {
+        play();
       }
-    };
 
 
-    introAudio.addEventListener(
-      "loadedmetadata",
-      play,
-      {
-        once: true
-      }
-    );
-
-
-    introAudio.addEventListener(
-      "error",
-      done,
-      {
-        once: true
-      }
-    );
-
-
-    if (
-      introAudio.readyState >= 1
-    ) {
-      play();
+      introAudio.load();
     }
-
-
-    introAudio.load();
-  });
+  );
 }
 
 
@@ -447,6 +528,13 @@ async function startIntro() {
    INTRO DUCKING
    ========================================================= */
 
+/*
+ * Sobald JARVIS anfängt:
+ *
+ * Intro wird nicht plötzlich leise,
+ * sondern über 1,8 Sekunden weich
+ * abgesenkt.
+ */
 function duckIntro() {
   if (
     !introAudio ||
@@ -468,6 +556,7 @@ function duckIntro() {
   const original =
     introAudio.volume;
 
+
   const start =
     performance.now();
 
@@ -475,6 +564,7 @@ function duckIntro() {
   introFadeTimer =
     setInterval(
       () => {
+
         if (!introAudio) {
           clearInterval(
             introFadeTimer
@@ -497,6 +587,12 @@ function duckIntro() {
           );
 
 
+        /*
+         * Smoothstep.
+         *
+         * Dadurch wirkt das Ducking
+         * nicht wie ein harter Sprung.
+         */
         const smooth =
           progress *
           progress *
@@ -524,6 +620,7 @@ function duckIntro() {
 
           introFadeTimer = null;
 
+
           fadeIntroOut();
         }
 
@@ -537,6 +634,11 @@ function duckIntro() {
    INTRO LONG FADE
    ========================================================= */
 
+/*
+ * Nach dem Ducking läuft die Melodie
+ * noch sehr leise weiter und verschwindet
+ * über 15 Sekunden.
+ */
 function fadeIntroOut() {
   if (
     !introAudio ||
@@ -549,6 +651,7 @@ function fadeIntroOut() {
   const start =
     performance.now();
 
+
   const volume =
     INTRO_BACKGROUND_VOLUME;
 
@@ -556,6 +659,7 @@ function fadeIntroOut() {
   introFadeTimer =
     setInterval(
       () => {
+
         if (!introAudio) {
           clearInterval(
             introFadeTimer
@@ -578,6 +682,10 @@ function fadeIntroOut() {
           );
 
 
+        /*
+         * Etwas weichere exponentielle
+         * Ausblendung.
+         */
         introAudio.volume =
           Math.max(
             0,
@@ -618,41 +726,72 @@ function fadeIntroOut() {
    JARVIS AUDIO OUTPUT
    ========================================================= */
 
+/*
+ * Lautstärkeänderungen werden weich
+ * gefahren und nicht hart gesetzt.
+ */
 function setJarvisGain(value) {
-  if (!outputGain || !outputAudioContext) {
+  if (
+    !outputGain ||
+    !outputAudioContext
+  ) {
     return;
   }
 
-  const now = outputAudioContext.currentTime;
 
-  outputGain.gain.cancelScheduledValues(now);
-  outputGain.gain.setTargetAtTime(value, now, 0.05);
+  const now =
+    outputAudioContext.currentTime;
+
+
+  outputGain.gain
+    .cancelScheduledValues(
+      now
+    );
+
+
+  outputGain.gain
+    .setTargetAtTime(
+      value,
+      now,
+      0.05
+    );
 }
 
 
+/*
+ * Realtime-Audio von JARVIS.
+ *
+ * Gain + Compressor:
+ * JARVIS wird lauter,
+ * ohne bei Peaks unnötig zu verzerren.
+ */
 async function connectRemoteAudio(stream) {
   /*
-   * Gleicher Stream wie zuvor?
-   * Dann nichts neu verbinden (verhindert
-   * Aussetzer, falls ontrack mehrfach feuert).
+   * Doppelte WebRTC-ontrack-Events
+   * nicht erneut verbinden.
    */
-  if (stream === lastRemoteStream) {
+  if (
+    stream === lastRemoteStream
+  ) {
     return;
   }
 
-  lastRemoteStream = stream;
+
+  lastRemoteStream =
+    stream;
+
 
   remoteAudio.srcObject =
     stream;
 
-  /*
-   * HTML Audio selbst auf Maximum.
-   */
-  remoteAudio.volume = 1;
+
+  remoteAudio.volume =
+    1;
 
 
   try {
     await remoteAudio.play();
+
   } catch (error) {
     console.warn(
       "remoteAudio.play:",
@@ -662,10 +801,12 @@ async function connectRemoteAudio(stream) {
 
 
   try {
+
     if (!outputAudioContext) {
       const AudioContextClass =
         window.AudioContext ||
         window.webkitAudioContext;
+
 
       outputAudioContext =
         new AudioContextClass();
@@ -682,10 +823,10 @@ async function connectRemoteAudio(stream) {
 
     /*
      * MediaElementSource nur einmal
-     * für dieses Audio-Element erstellen.
+     * für remoteAudio erzeugen.
      */
-
     if (!outputSource) {
+
       outputSource =
         outputAudioContext
           .createMediaElementSource(
@@ -698,20 +839,47 @@ async function connectRemoteAudio(stream) {
           .createGain();
 
 
+      outputCompressor =
+        outputAudioContext
+          .createDynamicsCompressor();
+
+
+      /*
+       * Compressor verhindert,
+       * dass die stärkere Lautstärke
+       * unangenehm clippt.
+       */
+      outputCompressor
+        .threshold.value = -10;
+
+      outputCompressor
+        .knee.value = 12;
+
+      outputCompressor
+        .ratio.value = 8;
+
+      outputCompressor
+        .attack.value = 0.003;
+
+      outputCompressor
+        .release.value = 0.16;
+
+
       outputSource.connect(
         outputGain
       );
 
 
       outputGain.connect(
+        outputCompressor
+      );
+
+
+      outputCompressor.connect(
         outputAudioContext.destination
       );
     }
 
-
-    /*
-     * JARVIS deutlich verstärken.
-     */
 
     setJarvisGain(
       JARVIS_OUTPUT_GAIN
@@ -734,10 +902,11 @@ async function connectRemoteAudio(stream) {
 function requestStartupGreeting() {
   startupGreeting = true;
 
-  /*
-   * Mikro während der Begrüßung AUS.
-   */
 
+  /*
+   * Während der kompletten Begrüßung
+   * hört JARVIS NICHT zu.
+   */
   muteForAssistant();
 
 
@@ -746,6 +915,7 @@ function requestStartupGreeting() {
       "response.create",
 
     response: {
+
       output_modalities: [
         "audio"
       ],
@@ -765,6 +935,7 @@ Kein weiterer Satz.
 Danach schweigen.`
     }
   });
+
 
   armResponseWatchdog();
 }
@@ -789,6 +960,12 @@ async function runTool(event) {
     event.call_id
   );
 
+
+  /*
+   * Set begrenzen,
+   * damit lange Sessions nicht
+   * immer mehr Speicher sammeln.
+   */
   if (
     handledToolCalls.size >
     MAX_HANDLED_TOOL_CALLS
@@ -796,17 +973,20 @@ async function runTool(event) {
     const oldest =
       handledToolCalls
         .values()
-        .next().value;
+        .next()
+        .value;
 
-    handledToolCalls.delete(oldest);
+
+    handledToolCalls.delete(
+      oldest
+    );
   }
 
 
   /*
-   * Während Live-Daten geladen werden
-   * bleibt Mikro AUS.
+   * Während Live-Daten geladen werden:
+   * Mikro aus.
    */
-
   muteForAssistant();
 
 
@@ -826,29 +1006,40 @@ async function runTool(event) {
   }
 
 
-  let endpoint =
-    null;
+  let endpoint = null;
 
 
   switch (event.name) {
+
     case "get_shopify_summary":
+
       endpoint =
         "/api/shopify-summary";
+
       break;
+
 
     case "get_weather":
+
       endpoint =
         "/api/weather";
+
       break;
+
 
     case "get_important_emails":
+
       endpoint =
         "/api/important-emails";
+
       break;
 
+
     case "get_calendar_today":
+
       endpoint =
         "/api/calendar-today";
+
       break;
   }
 
@@ -869,6 +1060,7 @@ async function runTool(event) {
 
 
   try {
+
     const response =
       await fetch(
         endpoint,
@@ -895,7 +1087,9 @@ async function runTool(event) {
 
     try {
       result =
-        JSON.parse(raw);
+        JSON.parse(
+          raw
+        );
 
     } catch {
       result = {
@@ -912,6 +1106,7 @@ async function runTool(event) {
 
 
   } catch (error) {
+
     console.error(
       "Tool fetch error:",
       error
@@ -926,14 +1121,15 @@ async function runTool(event) {
 
 
   /*
-   * Tool-Ergebnis zurück an Realtime.
+   * Echtes Tool-Ergebnis zurück
+   * in die Realtime-Conversation.
    */
-
   safeSend({
     type:
       "conversation.item.create",
 
     item: {
+
       type:
         "function_call_output",
 
@@ -949,14 +1145,15 @@ async function runTool(event) {
 
 
   /*
-   * JARVIS soll das Ergebnis aussprechen.
+   * JARVIS beantwortet die Frage
+   * anhand des Tool-Ergebnisses.
    */
-
   safeSend({
     type:
       "response.create",
 
     response: {
+
       output_modalities: [
         "audio"
       ],
@@ -978,6 +1175,7 @@ Regeln:
     }
   });
 
+
   armResponseWatchdog();
 }
 
@@ -995,9 +1193,13 @@ async function startJarvis() {
   }
 
 
-  connecting = true;
+  connecting =
+    true;
 
-  button.disabled = true;
+
+  button.disabled =
+    true;
+
 
   handledToolCalls.clear();
 
@@ -1005,6 +1207,7 @@ async function startJarvis() {
   setStatus(
     "Verbinde …"
   );
+
 
   setJarvisState(
     "connecting"
@@ -1024,30 +1227,30 @@ async function startJarvis() {
   try {
 
     /*
-     * Intro starten.
+     * Erst Intro starten.
      */
-
     await startIntro();
 
 
     /*
      * WebRTC-Verbindung.
      */
-
     pc =
       new RTCPeerConnection();
 
 
     /*
-     * JARVIS Audio kommt hier an.
+     * Remote-Audio von OpenAI.
      */
-
     pc.ontrack =
       async event => {
+
         const stream =
           event.streams?.[0] ||
           new MediaStream(
-            [event.track]
+            [
+              event.track
+            ]
           );
 
 
@@ -1059,6 +1262,7 @@ async function startJarvis() {
 
     pc.onconnectionstatechange =
       () => {
+
         const state =
           pc?.connectionState;
 
@@ -1080,9 +1284,8 @@ async function startJarvis() {
 
 
     /*
-     * Realtime Event Channel.
+     * Realtime DataChannel.
      */
-
     dc =
       pc.createDataChannel(
         "oai-events"
@@ -1092,11 +1295,16 @@ async function startJarvis() {
     dc.onopen =
       async () => {
 
-        active = true;
+        active =
+          true;
 
-        connecting = false;
 
-        button.disabled = false;
+        connecting =
+          false;
+
+
+        button.disabled =
+          false;
 
 
         setStatus(
@@ -1105,9 +1313,8 @@ async function startJarvis() {
 
 
         /*
-         * Mikro beim Start AUS.
+         * Beim Intro bleibt Mikro aus.
          */
-
         setMicrophoneEnabled(
           false
         );
@@ -1119,9 +1326,8 @@ async function startJarvis() {
 
 
         /*
-         * Intro zunächst alleine.
+         * Intro nur kurz alleine.
          */
-
         await sleep(
           INTRO_VOICE_DELAY_MS
         );
@@ -1133,16 +1339,14 @@ async function startJarvis() {
 
 
         /*
-         * Intro stark absenken.
+         * Jetzt sanft runter.
          */
-
         duckIntro();
 
 
         /*
-         * Begrüßung starten.
+         * Begrüßung.
          */
-
         requestStartupGreeting();
       };
 
@@ -1197,9 +1401,9 @@ async function startJarvis() {
         );
 
 
-        /* =================================================
-           USER SPEECH START
-           ================================================= */
+        /* =============================================
+           USER STARTS SPEAKING
+           ============================================= */
 
         if (
           event.type ===
@@ -1210,9 +1414,11 @@ async function startJarvis() {
             !assistantSpeaking &&
             !waitingForAssistant
           ) {
+
             setJarvisState(
               "hearing"
             );
+
 
             setLog(
               "Ich höre zu …"
@@ -1221,9 +1427,9 @@ async function startJarvis() {
         }
 
 
-        /* =================================================
-           USER SPEECH STOP
-           ================================================= */
+        /* =============================================
+           USER STOPS SPEAKING
+           ============================================= */
 
         if (
           event.type ===
@@ -1231,9 +1437,9 @@ async function startJarvis() {
         ) {
 
           /*
-           * Sofort Mikro AUS.
+           * Sobald du fertig bist:
+           * Mikro aus.
            */
-
           muteForAssistant();
 
 
@@ -1243,9 +1449,9 @@ async function startJarvis() {
         }
 
 
-        /* =================================================
+        /* =============================================
            TRANSCRIPTION
-           ================================================= */
+           ============================================= */
 
         if (
           event.type ===
@@ -1274,9 +1480,9 @@ async function startJarvis() {
         }
 
 
-        /* =================================================
+        /* =============================================
            JARVIS STARTS SPEAKING
-           ================================================= */
+           ============================================= */
 
         if (
           event.type ===
@@ -1292,29 +1498,21 @@ async function startJarvis() {
           );
 
 
-          /*
-           * Audio ist tatsächlich da,
-           * Watchdog wird nicht mehr gebraucht.
-           */
-
           clearResponseWatchdog();
 
 
           /*
-           * Mikro garantiert AUS.
+           * Während JARVIS spricht:
+           * Mikro garantiert aus.
            */
-
           setMicrophoneEnabled(
             false
           );
 
 
           /*
-           * Sicherheit:
-           * JARVIS-Lautstärke wieder
-           * auf den gewünschten Gain setzen.
+           * Volle JARVIS-Lautstärke.
            */
-
           setJarvisGain(
             JARVIS_OUTPUT_GAIN
           );
@@ -1326,9 +1524,9 @@ async function startJarvis() {
         }
 
 
-        /* =================================================
-           JARVIS STOPS SPEAKING
-           ================================================= */
+        /* =============================================
+           JARVIS FINISHED SPEAKING
+           ============================================= */
 
         if (
           event.type ===
@@ -1338,16 +1536,19 @@ async function startJarvis() {
           assistantSpeaking =
             false;
 
+
           startupGreeting =
             false;
 
 
           /*
-           * Kurze Pause, damit Lautsprecher-
-           * Echo nicht direkt als neue Sprache
-           * erkannt wird.
+           * WICHTIG:
+           *
+           * Erst nachdem JARVIS wirklich
+           * komplett fertig ist + kurze
+           * Echo-Pause vergangen ist,
+           * darfst du sprechen.
            */
-
           setTimeout(
             () => {
 
@@ -1356,14 +1557,14 @@ async function startJarvis() {
               }
 
             },
-            350
+            LISTENING_RESUME_DELAY_MS
           );
         }
 
 
-        /* =================================================
+        /* =============================================
            TOOL CALL
-           ================================================= */
+           ============================================= */
 
         if (
           event.type ===
@@ -1376,9 +1577,9 @@ async function startJarvis() {
         }
 
 
-        /* =================================================
+        /* =============================================
            RESPONSE DONE
-           ================================================= */
+           ============================================= */
 
         if (
           event.type ===
@@ -1415,9 +1616,9 @@ async function startJarvis() {
         }
 
 
-        /* =================================================
+        /* =============================================
            ERROR
-           ================================================= */
+           ============================================= */
 
         if (
           event.type ===
@@ -1463,14 +1664,36 @@ async function startJarvis() {
         .getUserMedia({
           audio: {
 
+            /*
+             * Lautsprecherecho reduzieren.
+             */
             echoCancellation:
               true,
 
+
+            /*
+             * Browser-Rauschunterdrückung.
+             */
             noiseSuppression:
               true,
 
+
+            /*
+             * SEHR WICHTIG:
+             *
+             * Auto Gain Control AUS.
+             *
+             * Sonst versucht der Browser,
+             * leise Geräusche automatisch
+             * lauter zu machen.
+             *
+             * Genau das kann TV,
+             * entfernte Stimmen usw.
+             * unnötig verstärken.
+             */
             autoGainControl:
-              true,
+              false,
+
 
             channelCount:
               1
@@ -1479,9 +1702,8 @@ async function startJarvis() {
 
 
     /*
-     * Mikro bleibt zunächst stumm.
+     * Beim Start zunächst stumm.
      */
-
     setMicrophoneEnabled(
       false
     );
@@ -1531,7 +1753,6 @@ async function startJarvis() {
 
 
     if (!response.ok) {
-
       throw new Error(
         await response.text()
       );
@@ -1569,9 +1790,12 @@ async function startJarvis() {
 
   } finally {
 
-    connecting = false;
+    connecting =
+      false;
 
-    button.disabled = false;
+
+    button.disabled =
+      false;
   }
 }
 
@@ -1582,15 +1806,27 @@ async function startJarvis() {
 
 async function stopJarvis() {
 
-  active = false;
+  active =
+    false;
 
-  connecting = false;
 
-  assistantSpeaking = false;
+  connecting =
+    false;
 
-  waitingForAssistant = false;
 
-  startupGreeting = false;
+  assistantSpeaking =
+    false;
+
+
+  waitingForAssistant =
+    false;
+
+
+  startupGreeting =
+    false;
+
+
+  clearResponseWatchdog();
 
 
   stopIntro();
@@ -1604,7 +1840,8 @@ async function stopJarvis() {
   try {
     if (
       dc &&
-      dc.readyState === "open"
+      dc.readyState ===
+        "open"
     ) {
       dc.close();
     }
@@ -1619,32 +1856,48 @@ async function stopJarvis() {
 
 
   try {
+
     if (localStream) {
+
       for (
         const track of
         localStream.getTracks()
       ) {
+
         track.stop();
       }
     }
+
   } catch {}
 
 
-  localStream = null;
+  localStream =
+    null;
 
-  pc = null;
 
-  dc = null;
+  pc =
+    null;
+
+
+  dc =
+    null;
 
 
   handledToolCalls.clear();
 
 
+  lastRemoteStream =
+    null;
+
+
   try {
+
     remoteAudio.pause();
+
 
     remoteAudio.srcObject =
       null;
+
   } catch {}
 
 
@@ -1668,8 +1921,10 @@ async function stopJarvis() {
   );
 
 
-  button.disabled =
-    false;
+  if (button) {
+    button.disabled =
+      false;
+  }
 }
 
 
@@ -1677,9 +1932,13 @@ async function stopJarvis() {
    BUTTON
    ========================================================= */
 
-setJarvisState("offline");
+setJarvisState(
+  "offline"
+);
+
 
 if (button) {
+
   button.addEventListener(
     "click",
 
@@ -1701,7 +1960,9 @@ if (button) {
       await startJarvis();
     }
   );
+
 } else {
+
   console.error(
     "#toggle-Button nicht im DOM gefunden."
   );
