@@ -1,7 +1,25 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
-   V8.6 · NOTIZEN + GROSSE-BESTELLUNG-HINWEIS
-   (Basis: V8.5, überarbeitet am 15.08.2026)
+   V8.7 · ERINNERUNGEN + E-MAIL-ENTWÜRFE
+   (Basis: V8.6, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN IN V8.7:
+   25. Neu: Erinnerungen/Timer. "Jarvis, erinnere mich in 30 Minuten
+       an X" speichert eine Erinnerung (Shopify-Metafeld, Namespace
+       "jarvis", Key "reminders", gleiches Prinzip wie Notizen). Ein
+       neuer, leichtgewichtiger Endpunkt /api/jarvis-reminder-check
+       prüft (von app.js jede Minute aufgerufen, getrennt vom
+       20-Minuten-Business-Check) auf fällige Erinnerungen und meldet
+       sie automatisch. Die Zeitangabe ("in 30 Minuten", "um 15 Uhr")
+       wird über OpenAI Structured Outputs zuverlässig in Minuten
+       umgerechnet statt über einen selbstgeschriebenen Zeit-Parser.
+   26. Neu: E-Mail-Entwürfe diktieren. "Jarvis, schreib eine E-Mail
+       an..." lässt JARVIS einen vollständigen Betreff+Text-Entwurf
+       erstellen (ebenfalls Structured Outputs). Läuft NICHT über die
+       normale Sprachantwort, sondern wird zusätzlich als "draft"-Feld
+       zurückgegeben und im HUD angezeigt (neues Panel in index.html) -
+       JARVIS versendet nichts, Gmail ist ja nicht verbunden.
+       Angebots-PDF im Druckelite24-Stil bewusst zurückgestellt.
 
    ÄNDERUNGEN IN V8.6:
    23. Neu: Notizen/Ideen diktieren. "Jarvis, notiere: ..." speichert
@@ -486,6 +504,16 @@ ist, bestätige kurz und locker, dass du es dir gemerkt hast. Bei
 sag klar, dass noch keine da sind. Wenn beim Speichern oder Lesen
 ein Fehler steht, sag Mattl ehrlich, dass es gerade nicht geklappt hat.
 
+ERINNERUNGEN:
+Du kannst Erinnerungen/Timer für Mattl stellen - er sagt dir z.B.
+"erinnere mich in 30 Minuten an X", und du meldest dich später von
+selbst. Bei LIVE-DATEN vom Typ "reminder_set" bestätige kurz, woran
+und in wie vielen Minuten du erinnern wirst. Bei "reminders_list"
+lies die noch aktiven Erinnerungen vor, notfalls sag, dass gerade
+keine laufen. Kommt später eine automatische Erinnerungsmeldung
+(SYSTEM-HINWEIS), sprich Mattl direkt darauf an - das ist eine
+Erinnerung, die er sich selbst gestellt hat, kein Zufall.
+
 DRUCKELITE24:
 Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
 
@@ -808,7 +836,9 @@ Erfinde keine weiteren aktuellen Zahlen.`;
     liveData?.type === "shopify" ||
     liveData?.type === "weather" ||
     liveData?.type === "note_saved" ||
-    liveData?.type === "notes_list";
+    liveData?.type === "notes_list" ||
+    liveData?.type === "reminder_set" ||
+    liveData?.type === "reminders_list";
 
   const reasoningEffort = isFastPathQuestion ? "minimal" : "low";
   const needsWebSearch = !isFastPathQuestion;
@@ -1408,6 +1438,342 @@ function extractNoteContent(text) {
 
 
 /* =========================================================
+   ERINNERUNGEN / TIMER
+   =========================================================
+
+   Gleiches Speicher-Prinzip wie bei den Notizen: JSON in einem
+   Shopify-Metafeld (Namespace "jarvis", Key "reminders") - übersteht
+   Server-Neustarts. Der Check, ob eine Erinnerung fällig ist, läuft
+   in app.js über einen EIGENEN, häufigeren Timer (jede Minute) statt
+   über den normalen 20-Minuten-Business-Check - eine Erinnerung "in
+   30 Minuten" soll nicht bis zu 20 Minuten zu spät kommen.
+   ========================================================= */
+
+async function getReminders() {
+  const domain = process.env.SHOPIFY_STORE_DOMAIN;
+  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
+  const token = await getShopifyAccessToken();
+
+  const query = `
+    query JarvisReminders {
+      shop {
+        metafield(namespace: "jarvis", key: "reminders") {
+          value
+        }
+      }
+    }
+  `;
+
+  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token
+    },
+    body: JSON.stringify({ query }),
+    signal: timeoutSignal(10000)
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || data.errors) {
+    console.error("Shopify reminders read error:", data);
+    throw new Error("Erinnerungen konnten nicht gelesen werden.");
+  }
+
+  const raw = data.data?.shop?.metafield?.value;
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveReminders(reminders) {
+  const domain = process.env.SHOPIFY_STORE_DOMAIN;
+  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
+  const token = await getShopifyAccessToken();
+  const shopId = await getShopId();
+
+  const mutation = `
+    mutation JarvisSaveReminders($metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(metafields: $metafields) {
+        metafields { id }
+        userErrors { field message }
+      }
+    }
+  `;
+
+  const variables = {
+    metafields: [
+      {
+        ownerId: shopId,
+        namespace: "jarvis",
+        key: "reminders",
+        type: "json",
+        value: JSON.stringify(reminders)
+      }
+    ]
+  };
+
+  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token
+    },
+    body: JSON.stringify({ query: mutation, variables }),
+    signal: timeoutSignal(10000)
+  });
+
+  const data = await response.json();
+  const userErrors = data.data?.metafieldsSet?.userErrors;
+
+  if (!response.ok || data.errors || (userErrors && userErrors.length)) {
+    console.error("Shopify reminders save error:", data);
+    throw new Error("Erinnerungen konnten nicht gespeichert werden.");
+  }
+}
+
+/*
+ * Erkennt, ob Mattl eine neue Erinnerung stellen möchte.
+ */
+function isSetReminderIntent(text) {
+  const n = normalize(text);
+  return n.includes("erinnere mich") || n.includes("erinnerung") || n.includes("timer") || n.includes("wecker");
+}
+
+/*
+ * Erkennt, ob Mattl seine aktiven Erinnerungen hören möchte.
+ * Wichtig: MUSS vor isSetReminderIntent geprüft werden, sonst würde
+ * z.B. "welche Erinnerungen habe ich" fälschlich als neue Erinnerung
+ * interpretiert.
+ */
+function isListRemindersIntent(text) {
+  const n = normalize(text);
+  const mentionsReminder = n.includes("erinnerung") || n.includes("timer");
+  const asksToHear =
+    n.includes("welche") ||
+    n.includes("was habe ich") ||
+    n.includes("zeig mir") ||
+    n.includes("noch aktiv") ||
+    n.includes("laufen");
+  return mentionsReminder && asksToHear;
+}
+
+/*
+ * Lässt ChatGPT aus der gesprochenen Nachricht herauslesen, in wie
+ * vielen Minuten erinnert werden soll und woran - flexibler und
+ * zuverlässiger als ein selbst geschriebener Zeit-Parser für
+ * Formulierungen wie "in einer halben Stunde" oder "um viertel nach drei".
+ * Nutzt OpenAIs "Structured Outputs", damit garantiert gültiges JSON
+ * zurückkommt statt möglicherweise unbrauchbarem Freitext.
+ */
+async function extractReminderDetails(message) {
+  const nowBerlin = new Intl.DateTimeFormat("de-DE", {
+    timeZone: "Europe/Berlin",
+    dateStyle: "full",
+    timeStyle: "short"
+  }).format(new Date());
+
+  const body = {
+    model: process.env.OPENAI_TEXT_MODEL || "gpt-5-mini",
+    instructions:
+      `Du extrahierst aus einer gesprochenen deutschen Nachricht die Details für eine Erinnerung. ` +
+      `Aktuelle Zeit: ${nowBerlin} (Europe/Berlin). Berechne, in wie vielen Minuten ab jetzt erinnert ` +
+      `werden soll (ganze Zahl, mindestens 1). Wird eine Uhrzeit genannt (z.B. "um 15 Uhr"), rechne sie ` +
+      `in Minuten ab jetzt um - liegt die Uhrzeit schon in der Vergangenheit, nimm den nächsten Tag an. ` +
+      `Ist die Zeitangabe unklar, nimm 30 Minuten an. Fasse den Erinnerungstext kurz zusammen, ohne ` +
+      `"erinnere mich" oder ähnliche Auslöse-Phrasen.`,
+    input: message,
+    reasoning: { effort: "low" },
+    text: {
+      format: {
+        type: "json_schema",
+        name: "reminder_extraction",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            minutes_from_now: { type: "number" },
+            reminder_text: { type: "string" }
+          },
+          required: ["minutes_from_now", "reminder_text"],
+          additionalProperties: false
+        }
+      }
+    },
+    store: false
+  };
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body),
+    signal: timeoutSignal(15000)
+  });
+
+  const raw = await response.text();
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error("Ungültige Antwort bei der Erinnerungs-Erkennung.");
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message || `HTTP ${response.status}`);
+  }
+
+  const outputText = extractResponseText(data);
+  let parsed;
+  try {
+    parsed = JSON.parse(outputText);
+  } catch {
+    throw new Error("Erinnerung konnte nicht verstanden werden.");
+  }
+
+  const minutes = Math.max(1, Math.round(Number(parsed.minutes_from_now) || 30));
+  const text = String(parsed.reminder_text || "").trim() || "Erinnerung";
+
+  return { minutes, text };
+}
+
+/*
+ * Prüft, ob eine oder mehrere Erinnerungen fällig sind, markiert sie
+ * als ausgelöst und speichert zurück. Alte, schon ausgelöste
+ * Erinnerungen werden nach 24 Stunden aus der Liste entfernt, damit
+ * sie nicht unbegrenzt wächst.
+ */
+async function checkAndFireDueReminders() {
+  const reminders = await getReminders();
+  const now = Date.now();
+
+  const due = reminders.filter(r => !r.fired && new Date(r.due_at).getTime() <= now);
+  if (!due.length) return [];
+
+  const dueIds = new Set(due.map(r => r.id));
+  const kept = reminders
+    .map(r => (dueIds.has(r.id) ? { ...r, fired: true, fired_at: new Date().toISOString() } : r))
+    .filter(r => {
+      if (!r.fired) return true;
+      const firedAt = r.fired_at ? new Date(r.fired_at).getTime() : now;
+      return now - firedAt < 24 * 60 * 60 * 1000;
+    });
+
+  await saveReminders(kept);
+  return due;
+}
+
+
+/* =========================================================
+   E-MAIL-ENTWÜRFE
+   =========================================================
+
+   Anders als bei Notizen/Erinnerungen wird hier nicht der normale
+   LIVE-DATEN-Weg über createJarvisResponse genutzt: Ein vollständiger
+   E-Mail-Text (Betreff + Text) ist kein kurzer gesprochener Satz,
+   sondern etwas zum Anzeigen und Kopieren im HUD. Eigene, direkte
+   Anfrage mit "Structured Outputs" für zuverlässig getrennten
+   Betreff/Text statt Freitext-Geraten.
+
+   WICHTIG: JARVIS versendet hier NICHTS - Gmail ist nicht verbunden.
+   Der Entwurf erscheint im HUD zum manuellen Kopieren.
+   ========================================================= */
+
+function isEmailDraftIntent(text) {
+  const n = normalize(text);
+  return (
+    n.includes("email") ||
+    n.includes("e-mail") ||
+    n.includes("mail schreiben") ||
+    n.includes("mail an") ||
+    n.includes("mail entwurf")
+  );
+}
+
+async function generateEmailDraft(message) {
+  const body = {
+    model: process.env.OPENAI_TEXT_MODEL || "gpt-5-mini",
+    instructions:
+      JARVIS_INSTRUCTIONS +
+      `
+
+Schreibe jetzt einen vollständigen E-Mail-Entwurf auf Deutsch, basierend
+auf Mattls Anweisung. Professionell, klar, in Mattls Namen für
+Druckelite24. "subject" ist die Betreffzeile, "body" ist der komplette
+Text inklusive Anrede und Grußformel (mit "Mattl" als Absender, ohne
+Nachname/Firmendaten, die kennt Mattl selbst am besten und ergänzt sie
+notfalls).`,
+    input: message,
+    reasoning: { effort: "low" },
+    text: {
+      format: {
+        type: "json_schema",
+        name: "email_draft",
+        strict: true,
+        schema: {
+          type: "object",
+          properties: {
+            subject: { type: "string" },
+            body: { type: "string" }
+          },
+          required: ["subject", "body"],
+          additionalProperties: false
+        }
+      }
+    },
+    store: false
+  };
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body),
+    signal: timeoutSignal(30000)
+  });
+
+  const raw = await response.text();
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error("Ungültige Antwort beim Erstellen des E-Mail-Entwurfs.");
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message || `HTTP ${response.status}`);
+  }
+
+  const outputText = extractResponseText(data);
+  let parsed;
+  try {
+    parsed = JSON.parse(outputText);
+  } catch {
+    throw new Error("E-Mail-Entwurf konnte nicht erstellt werden.");
+  }
+
+  const subject = String(parsed.subject || "").trim() || "Ohne Betreff";
+  const draftBody = String(parsed.body || "").trim();
+
+  if (!draftBody) {
+    throw new Error("E-Mail-Entwurf war leer.");
+  }
+
+  return { subject, body: draftBody };
+}
+
+
+/* =========================================================
    PROAKTIVER HINTERGRUND-CHECK
    =========================================================
 
@@ -1652,6 +2018,47 @@ app.post("/api/jarvis-checkin", async (req, res) => {
 
 
 /* =========================================================
+   ERINNERUNGS-CHECK
+   =========================================================
+
+   Eigener, leichtgewichtiger Endpunkt - wird von app.js in einem
+   eigenen, häufigeren Rhythmus (jede Minute) aufgerufen, getrennt vom
+   schwereren 20-Minuten-Business-Check oben. Prüft nur, ob eine
+   gestellte Erinnerung fällig ist.
+   ========================================================= */
+
+app.post("/api/jarvis-reminder-check", async (req, res) => {
+  try {
+    const previousResponseId = String(req.body?.previous_response_id || "").trim() || null;
+
+    let due;
+    try {
+      due = await checkAndFireDueReminders();
+    } catch (error) {
+      console.error("Reminder check error:", error);
+      return res.json({ ok: true, hasNotice: false });
+    }
+
+    if (!due.length) {
+      return res.json({ ok: true, hasNotice: false });
+    }
+
+    const remindersText = due.map(r => r.text).join("; ");
+    const message =
+      `[SYSTEM-HINWEIS - nicht von Mattl gesprochen] Automatische Erinnerung, die Mattl sich selbst ` +
+      `gestellt hat, ist jetzt fällig: ${remindersText}. Sprich ihn kurz und klar darauf an.`;
+
+    const result = await createJarvisResponse({ message, previousResponseId });
+
+    return res.json({ ok: true, hasNotice: true, text: result.text, response_id: result.response_id });
+  } catch (error) {
+    console.error("Reminder check endpoint error:", error);
+    return res.json({ ok: true, hasNotice: false });
+  }
+});
+
+
+/* =========================================================
    WEATHER
    ========================================================= */
 
@@ -1807,9 +2214,53 @@ app.post("/api/jarvis-chat", async (req, res) => {
 
     console.log("JARVIS question:", message);
 
+    // E-MAIL-ENTWURF: eigener Weg, der createJarvisResponse komplett
+    // umgeht - ein vollständiger E-Mail-Text ist kein kurzer
+    // gesprochener Satz, sondern etwas zum Anzeigen/Kopieren im HUD.
+    if (isEmailDraftIntent(message)) {
+      try {
+        const draft = await generateEmailDraft(message);
+
+        console.log("JARVIS E-Mail-Entwurf erstellt:", draft.subject);
+
+        return res.json({
+          ok: true,
+          text: `Ich hab dir einen E-Mail-Entwurf geschrieben - Betreff: ${draft.subject}. Du findest den kompletten Text im HUD zum Kopieren.`,
+          response_id: previousResponseId,
+          draft: { type: "email", subject: draft.subject, body: draft.body }
+        });
+      } catch (error) {
+        console.error("E-Mail-Entwurf Fehler:", error);
+        return res.json({
+          ok: true,
+          text: "Der E-Mail-Entwurf hat gerade nicht geklappt. Magst du es nochmal versuchen?",
+          response_id: previousResponseId
+        });
+      }
+    }
+
     let liveData = null;
 
-    if (isSaveNoteIntent(message)) {
+    if (isListRemindersIntent(message)) {
+      try {
+        const reminders = await getReminders();
+        const activeReminders = reminders.filter(r => !r.fired);
+        liveData = { type: "reminders_list", data: { reminders: activeReminders } };
+      } catch (error) {
+        liveData = { type: "reminders_list", error: error.message || "Erinnerungen konnten nicht gelesen werden." };
+      }
+    } else if (isSetReminderIntent(message)) {
+      try {
+        const { minutes, text } = await extractReminderDetails(message);
+        const reminders = await getReminders();
+        const dueAt = new Date(Date.now() + minutes * 60000).toISOString();
+        reminders.push({ id: `${Date.now()}`, text, due_at: dueAt, fired: false });
+        await saveReminders(reminders);
+        liveData = { type: "reminder_set", data: { text, minutes, due_at: dueAt } };
+      } catch (error) {
+        liveData = { type: "reminder_set", error: error.message || "Erinnerung konnte nicht gespeichert werden." };
+      }
+    } else if (isSaveNoteIntent(message)) {
       try {
         const noteText = extractNoteContent(message);
         const notes = await getNotes();
