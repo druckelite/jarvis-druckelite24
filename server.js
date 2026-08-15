@@ -1,221 +1,13 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
-   V8.8 · GMAIL-ANBINDUNG
-   (Basis: V8.7, überarbeitet am 15.08.2026)
-
-   ÄNDERUNGEN IN V8.8:
-   27. Gmail angebunden (Lesezugriff, OAuth mit Refresh Token - siehe
-       Einrichtungsanleitung). Neue Funktionen: getNewEmails(),
-       isOfferInquiryEmail() (Stichwort-Erkennung für Angebots-/
-       Preisanfragen), isEmailCheckIntent() für "hab ich neue Mails?".
-   28. Proaktiver Check erweitert: neue/ungelesene Mails werden
-       automatisch gemeldet (Vorrang vor der großen-Bestellung- und
-       offene-Bestellungen-Meldung, da zeitkritischer), mit
-       besonderer Betonung, falls eine Mail nach einer Angebots-
-       anfrage klingt.
-   29. Morgen-Briefing um ungelesene E-Mails ergänzt, wie gewünscht.
-       Braucht in Render drei neue Variablen: GOOGLE_CLIENT_ID,
-       GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN - ohne die läuft
-       alles wie bisher, nur ohne Gmail-Teil.
-
-   ÄNDERUNGEN IN V8.7:
-   25. Neu: Erinnerungen/Timer. "Jarvis, erinnere mich in 30 Minuten
-       an X" speichert eine Erinnerung (Shopify-Metafeld, Namespace
-       "jarvis", Key "reminders", gleiches Prinzip wie Notizen). Ein
-       neuer, leichtgewichtiger Endpunkt /api/jarvis-reminder-check
-       prüft (von app.js jede Minute aufgerufen, getrennt vom
-       20-Minuten-Business-Check) auf fällige Erinnerungen und meldet
-       sie automatisch. Die Zeitangabe ("in 30 Minuten", "um 15 Uhr")
-       wird über OpenAI Structured Outputs zuverlässig in Minuten
-       umgerechnet statt über einen selbstgeschriebenen Zeit-Parser.
-   26. Neu: E-Mail-Entwürfe diktieren. "Jarvis, schreib eine E-Mail
-       an..." lässt JARVIS einen vollständigen Betreff+Text-Entwurf
-       erstellen (ebenfalls Structured Outputs). Läuft NICHT über die
-       normale Sprachantwort, sondern wird zusätzlich als "draft"-Feld
-       zurückgegeben und im HUD angezeigt (neues Panel in index.html) -
-       JARVIS versendet nichts, Gmail ist ja nicht verbunden.
-       Angebots-PDF im Druckelite24-Stil bewusst zurückgestellt.
-
-   ÄNDERUNGEN IN V8.6:
-   23. Neu: Notizen/Ideen diktieren. "Jarvis, notiere: ..." speichert
-       eine Notiz, "was habe ich notiert" liest sie vor. Gespeichert
-       als JSON in einem Shopify-Metafeld (Namespace "jarvis", Key
-       "notes") - nicht lokal auf dem Server, weil Render bei jedem
-       Neustart/Deploy alles lokal Gespeicherte löscht.
-   24. Neu: Proaktiver Hinweis bei ungewöhnlich großen Einzelbestellungen
-       (Schwelle über LARGE_ORDER_THRESHOLD_EUR in Render einstellbar,
-       Standard 300 Euro) - zusätzlich zum bisherigen Hinweis auf
-       offene/unbearbeitete Bestellungen.
-       Meta-Ads-Warnungen (Windsor.ai) sind noch nicht dabei - dafür
-       bräuchte der Server einen eigenen API-Zugang, den es noch
-       nicht gibt.
-
-   ÄNDERUNGEN IN V8.5:
-   22. Die Stichwort-Liste für die Websuche (V8.4) war grundsätzlich
-       der falsche Ansatz - jede Alltagsfrage außerhalb der Liste lief
-       ins Leere, egal wie oft man sie ergänzt. Jetzt umgekehrt:
-       Websuche ist IMMER verfügbar, außer bei Shopify-/Wetterfragen
-       (eigene schnelle Live-Datenquelle) und automatischen System-
-       Hinweisen (proaktive Meldungen, Morgen-Briefing). ChatGPT
-       entscheidet pro Frage selbst, ob es sucht. JARVIS-Anweisungen
-       ergänzt: soll sich auch über Alltägliches unterhalten, nicht
-       nur über Druckelite24.
-
-   ÄNDERUNGEN IN V8.4:
-   20. "Mattl" wurde als "Maddl" gesprochen - die Anweisung dazu in
-       JARVIS_INSTRUCTIONS wirkt nicht auf die tatsächliche Aussprache
-       (die steuert nur ChatGPTs Textverständnis, nicht ElevenLabs'
-       Stimme). Jetzt über PRONUNCIATION_FIXES korrigiert, wie schon
-       bei "Druckelite24".
-   21. Fußball/Sport-Begriffe zur Websuche-Erkennung ergänzt
-       (Bundesliga, Fußball, Tabellenstand etc.) - Fußballergebnisse
-       wurden bisher nicht gefunden, weil die Websuche dafür gar
-       nicht erst ausgelöst wurde.
-
-   ÄNDERUNGEN IN V8.3:
-   19. Shopify liefert Zahlen roh mit PUNKT als Dezimaltrennzeichen
-       (z.B. 1234.56). Die bisherige Euro-Korrektur hat nur nach
-       Komma gesucht - Punkt-Beträge (und Beträge mit ausgeschriebenem
-       Wort "Euro" statt Symbol) sind unkorrigiert durchgerutscht und
-       wurden komisch vorgelesen. Jetzt werden beide Schreibweisen
-       erkannt. Zusätzlich weiß ChatGPT jetzt explizit, dass Live-
-       Daten-Zahlen im Punkt-Format ankommen und wie es sie aussprechen
-       soll (z.B. 1234.56 -> "1234 Euro 56").
-
-   ÄNDERUNGEN IN V8.2:
-   18. OpenAI TTS (V8.1) wieder rückgängig gemacht - die Stimme klang
-       bei deutscher Sprache mit Akzent und teils falscher Aussprache
-       ("optimiert für Englisch", wie OpenAI selbst dokumentiert).
-       Zurück zu ElevenLabs, diesmal auf einem bezahlten Plan statt
-       dem kostenlosen Kontingent - löst gleichzeitig das Problem mit
-       den aufgebrauchten Gratis-Zeichen und der fehlenden
-       kommerziellen Nutzungserlaubnis. Braucht in Render wieder
-       ELEVENLABS_API_KEY und ELEVENLABS_VOICE_ID.
-
-   ÄNDERUNGEN IN V8.1 (rückgängig gemacht, nur zur Historie):
-   17. ElevenLabs komplett ersetzt durch OpenAI TTS - läuft über
-       denselben OPENAI_API_KEY, den JARVIS schon für Transkription
-       und ChatGPT nutzt. Kein neuer Account, kein separates Abo, nach
-       aktuellem Stand ungefähr ein Zehntel der ElevenLabs-Kosten.
-       Grund: die 10.000 kostenlosen ElevenLabs-Zeichen waren durch
-       das viele Testen aufgebraucht, und der kostenlose Plan hat
-       ohnehin kein kommerzielles Nutzungsrecht.
-       Standard-Modell: "tts-1" (schnell, ~0,5s). Alternative:
-       "gpt-4o-mini-tts" (steuerbarer Tonfall, aber variabler in der
-       Antwortzeit) - umstellbar über die Umgebungsvariable
-       OPENAI_TTS_MODEL in Render, ohne Code-Änderung.
-       Der Endpunkt-Pfad "/api/elevenlabs-tts" bleibt absichtlich
-       gleich, damit app.js unverändert bleiben kann - nur noch
-       historisch benannt, läuft technisch über OpenAI.
-       ELEVENLABS_API_KEY und ELEVENLABS_VOICE_ID werden nicht mehr
-       gebraucht - können in Render gelöscht werden, müssen aber nicht.
-
-   ÄNDERUNGEN IN V8.0:
-   16. KRITISCHER FIX: OpenAI lehnt reasoning.effort "minimal" zusammen
-       mit dem web_search-Tool grundsätzlich ab (API-Fehler "The
-       following tools cannot be used with reasoning.effort 'minimal':
-       web_search") - das hatte JARVIS komplett lahmgelegt, auch bei
-       ganz normalen Fragen. Websuche wird jetzt nur noch aktiviert,
-       wenn eine Heuristik (isWebSearchQuestion) erkennt, dass die
-       Frage tatsächlich aktuelle Infos von außen braucht - dann UND
-       nur dann auf reasoning "low" hochgestuft. Für alles andere
-       bleibt es beim schnellen "minimal" ohne das Tool.
-
-   ÄNDERUNGEN IN V7.9:
-   15. Zeitmessung eingebaut (Render-Logs, Zeilen mit "[TIMING]"):
-       Transkriptionsdauer, ChatGPT-Antwortdauer, ElevenLabs-Streaming-
-       dauer. Zweck: endlich sehen, WO die Zeit tatsächlich hängt,
-       statt weiter zu raten.
-
-   ÄNDERUNGEN IN V7.8:
-   13. JARVIS hat jetzt Zugriff auf eine Websuche (OpenAI web_search-
-       Tool) - für aktuelle Nachrichten, Ereignisse und allgemeine
-       Fragen, die er nicht sicher weiß. Entscheidet selbst, wann er
-       sie braucht; für Shopify/Wetter nutzt er weiterhin nur die
-       eigenen LIVE-DATEN. Rohe Links werden vor der Sprachausgabe
-       herausgefiltert.
-   14. Morgen-Briefing: Beim ersten Kontakt eines neuen Tages (5-11 Uhr)
-       gibt JARVIS über /api/jarvis-checkin automatisch eine kurze
-       Zusammenfassung (Umsatz gestern, offene Bestellungen, Wetter) -
-       höchstens einmal pro Tag.
-
-   ÄNDERUNGEN IN V7.7:
-   11. Neuer Endpunkt /api/jarvis-checkin: Wird periodisch von app.js
-       aufgerufen (nicht durch eine Frage von Mattl), prüft aktuell
-       offene/unbearbeitete Shopify-Bestellungen und lässt JARVIS sich
-       nur melden, wenn es wirklich etwas Neues oder Ungelöstes gibt -
-       mit 2 Stunden Cooldown, damit er nicht ständig dasselbe wiederholt.
-   12. "Druckelite24" wird jetzt exakt wie von Mattl vorgegeben
-       ausgesprochen: "Druck Elite24" - die Zahl bleibt als Zahl
-       stehen, wird nicht mehr als "vierundzwanzig" ausgeschrieben.
-
-   ÄNDERUNGEN IN V7.6:
-   10. "Jarvis" als bekannter Begriff für die Spracherkennung ergänzt -
-       wichtig, da der Name jetzt in app.js als Weckwort genutzt wird
-       und daher zuverlässig transkribiert werden muss.
-
-   ÄNDERUNGEN IN V7.5:
-   8. "Druckelite24" wird jetzt unabhängig von Leerzeichen, Bindestrich
-      oder ".de"-Endung korrekt erkannt und ausgesprochen.
-   9. Euro-Beträge mit Komma ("49,90 €") wurden vorher nur zu
-      "49,90 Euro" - das Komma blieb stehen und wurde falsch
-      vorgelesen. Jetzt: "49 Euro 90" (Centbetrag als eigene Zahl).
-
-   ÄNDERUNGEN IN V7.4 (Tempo + Aussprache von "Druckelite24"):
-   5. Eigenes Aussprache-Wörterbuch (PRONUNCIATION_FIXES) für
-      Kunstwörter wie "Druckelite24", die keine TTS-Stimme
-      zuverlässig richtig betont - einfach um weitere Wörter
-      erweiterbar, sobald welche auffallen.
-   6. ElevenLabs-Modell auf "eleven_turbo_v2_5" gestellt - der
-      Mittelweg zwischen dem schnellen, aber ungenauen
-      "eleven_flash_v2_5" und dem genauen, aber langsamen
-      "eleven_multilingual_v2".
-   7. ChatGPT-Reasoning-Aufwand von "low" auf "minimal" gesenkt -
-      für ein Sprachgespräch ausreichend und spürbar schneller.
-
-   =========================================================
-   ARCHITEKTUR
-   =========================================================
-
-   Browser-Mikrofon
-        ↓
-   MediaRecorder
-        ↓
-   POST /api/transcribe
-        ↓
-   OpenAI Audio Transcription
-        ↓
-   deutscher Text
-        ↓
-   POST /api/jarvis-chat
-        ↓
-   OpenAI Responses API
-        ↓
-   Antworttext
-        ↓
-   POST /api/elevenlabs-tts
-        ↓
-   ElevenLabs · einzige Stimme
-
-   ---------------------------------------------------------
-   KEIN OPENAI REALTIME
-   KEIN CEDAR
-   KEIN response.create
-   KEIN WEBRTC AUF DEM SERVER
-   =========================================================
-*/
+   V9.0 · OPENAI REALTIME / WEBRTC
+   ========================================================= */
 
 import express from "express";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// FIX: Vorher stand die Versionsnummer an drei Stellen im Code (Kommentar
-// oben, /health-Endpunkt, Start-Meldung) - beim Aktualisieren wurden die
-// beiden letzten wiederholt vergessen, wodurch /health eine veraltete
-// Nummer zeigte, obwohl der Code längst aktuell war. Jetzt genau EINE
-// Stelle, die überall referenziert wird.
-const JARVIS_VERSION = "V8.8";
+const JARVIS_VERSION = "V9.0";
 
 
 /* =========================================================
@@ -236,13 +28,6 @@ app.get("/:file", (req, res, next) => {
 
 
 /* =========================================================
-   JSON
-   ========================================================= */
-
-app.use(express.json({ limit: "2mb" }));
-
-
-/* =========================================================
    HELPERS
    ========================================================= */
 
@@ -256,118 +41,15 @@ function normalize(text) {
 
 function timeoutSignal(ms) {
   try {
-    if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+    if (
+      typeof AbortSignal !== "undefined" &&
+      typeof AbortSignal.timeout === "function"
+    ) {
       return AbortSignal.timeout(ms);
     }
   } catch {}
+
   return undefined;
-}
-
-
-/* =========================================================
-   TEXT-BEREINIGUNG FÜR DIE SPRACHAUSGABE
-   ========================================================= */
-
-/*
- * Bekannte Wörter, die die TTS-Stimme falsch ausspricht - hier einfach
- * ergänzbar. "Druckelite24" ist ein Kunstwort, keine TTS-Stimme kann
- * die Betonung zuverlässig erraten. Mattl hat die gewünschte Aussprache
- * explizit vorgegeben: "Druck Elite24" - also nur die Wortgrenze zwischen
- * "Druck" und "Elite" einfügen, die "24" bleibt als Zahl stehen statt
- * ausgeschrieben zu werden. Das Muster erkennt "Druckelite24",
- * "Druckelite 24", "Druckelite-24" und "Druckelite24.de" gleichermaßen.
- * Reihenfolge wichtig: speziellere Muster (mit "24") zuerst, sonst
- * greift das kürzere zuerst.
- *
- * Neue Problemwörter einfach als weitere Zeile ergänzen.
- */
-const PRONUNCIATION_FIXES = [
-  {
-    pattern: /Druckelite\s*-?\s*24(\.de)?/gi,
-    replacement: (match, deSuffix) => (deSuffix ? "Druck Elite24 Punkt de" : "Druck Elite24")
-  },
-  { pattern: /Druckelite/gi, replacement: "Druck Elite" },
-
-  // FIX: "Mattl" wurde von ElevenLabs als "Maddl" gesprochen (weiches D
-  // statt klarem T). Die Anweisung dazu in JARVIS_INSTRUCTIONS wirkt
-  // nicht auf die Aussprache - die steuert nur, WIE ChatGPT den Namen
-  // gedanklich behandelt, nicht wie die Stimme ihn ausspricht. Der
-  // Bindestrich erzwingt hier eine klare Silbentrennung.
-  { pattern: /\bMattl\b/g, replacement: "Matt-l" }
-];
-
-/*
- * Wandelt Symbole und Abkürzungen, die TTS-Stimmen erfahrungsgemäß
- * falsch oder unnatürlich vorlesen, in ausgeschriebene Wörter um.
- * Läuft als zusätzliches Sicherheitsnetz, falls ChatGPT trotz
- * Anweisung mal ein Sonderzeichen stehen lässt.
- */
-function sanitizeForSpeech(text) {
-  let result = String(text || "");
-
-  for (const fix of PRONUNCIATION_FIXES) {
-    result = result.replace(fix.pattern, fix.replacement);
-  }
-
-  return result
-    // übrig gebliebene Markdown-Reste
-    .replace(/\*\*/g, "")
-    .replace(/[*_`#]/g, "")
-    // FIX: Sicherheitsnetz gegen rohe Links, z.B. aus Websuche-Ergebnissen -
-    // ein vorgelesener Link klingt immer schlecht, egal woher er kommt.
-    .replace(/https?:\/\/\S+/gi, "")
-    .replace(/\bwww\.\S+/gi, "")
-    // gängige Abkürzungen ausschreiben
-    .replace(/z\.\s?B\./gi, "zum Beispiel")
-    .replace(/u\.\s?a\./gi, "unter anderem")
-    .replace(/u\.\s?U\./gi, "unter Umständen")
-    .replace(/usw\./gi, "und so weiter")
-    .replace(/ca\./gi, "circa")
-    .replace(/inkl\./gi, "inklusive")
-    .replace(/exkl\./gi, "exklusive")
-    // Symbole in Wörter umwandeln
-    .replace(/&/g, " und ")
-    .replace(/(\d+)\s?%/g, "$1 Prozent")
-    // FIX: Centbeträge als eigene Zahl aussprechen - "49,90 €" wurde
-    // vorher nur zu "49,90 Euro" (das Komma blieb stehen). Jetzt:
-    // "49,90 €" -> "49 Euro 90". Wichtig: Shopify liefert Zahlen roh
-    // mit PUNKT statt Komma (z.B. "1234.56"), und ChatGPT gibt das beim
-    // Vorlesen der Live-Daten manchmal unverändert so wieder - das
-    // Komma-Muster allein hat solche Fälle bisher nicht erfasst. Jetzt
-    // werden Punkt UND Komma als Dezimaltrennzeichen erkannt, egal ob
-    // mit €-Symbol oder ausgeschriebenem Wort "Euro".
-    .replace(/(\d+)[.,](\d{2})\s?(?:€|Euro)\b/gi, "$1 Euro $2")
-    .replace(/€\s?(\d+)[.,](\d{2})/g, "$1 Euro $2")
-    // Ganze Euro-Beträge ohne Nachkommastellen.
-    .replace(/(\d+)\s?€/g, "$1 Euro")
-    .replace(/€\s?(\d+)/g, "$1 Euro")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/*
- * Schneidet Text auf eine Maximallänge, aber an der letzten
- * Satz- oder Wortgrenze - nie mehr mitten im Wort.
- */
-function truncateForSpeech(text, maxLength) {
-  const value = String(text || "");
-  if (value.length <= maxLength) return value;
-
-  const cut = value.slice(0, maxLength);
-
-  const lastBoundary = Math.max(
-    cut.lastIndexOf(". "),
-    cut.lastIndexOf("! "),
-    cut.lastIndexOf("? "),
-    cut.lastIndexOf(" ")
-  );
-
-  // Nur an der Grenze abschneiden, wenn sie nicht viel zu früh liegt.
-  if (lastBoundary > maxLength * 0.5) {
-    return cut.slice(0, lastBoundary + 1).trim();
-  }
-
-  return cut.trim();
 }
 
 
@@ -393,6 +75,7 @@ function getBerlinHour(date = new Date()) {
 
   const hourPart = parts.find(part => part.type === "hour");
   const hour = Number(hourPart?.value);
+
   return Number.isNaN(hour) ? date.getHours() : hour;
 }
 
@@ -408,20 +91,29 @@ function berlinUtcOffsetMinutes(date) {
     timeZoneName: "shortOffset"
   }).formatToParts(date);
 
-  const offsetLabel = parts.find(part => part.type === "timeZoneName")?.value || "GMT+0";
+  const offsetLabel =
+    parts.find(part => part.type === "timeZoneName")?.value || "GMT+0";
+
   const match = offsetLabel.match(/GMT([+-]\d+)(?::(\d+))?/);
+
   if (!match) return 0;
 
   const hours = Number(match[1]);
   const minutes = Number(match[2] || 0);
 
-  return hours >= 0 ? hours * 60 + minutes : hours * 60 - minutes;
+  return hours >= 0
+    ? hours * 60 + minutes
+    : hours * 60 - minutes;
 }
 
 function berlinMidnightUtcIso(dateString) {
   const noonGuess = new Date(`${dateString}T12:00:00Z`);
   const offsetMinutes = berlinUtcOffsetMinutes(noonGuess);
-  const utcMillis = Date.parse(`${dateString}T00:00:00Z`) - offsetMinutes * 60000;
+
+  const utcMillis =
+    Date.parse(`${dateString}T00:00:00Z`) -
+    offsetMinutes * 60000;
+
   return new Date(utcMillis).toISOString();
 }
 
@@ -431,6 +123,7 @@ function getPeriodDates(period) {
   if (period === "yesterday") {
     const date = new Date(`${today}T12:00:00Z`);
     date.setUTCDate(date.getUTCDate() - 1);
+
     const yesterday = date.toISOString().slice(0, 10);
 
     return {
@@ -455,15 +148,13 @@ Du bist JARVIS, der persönliche Assistent und Business-Sparringspartner von Mat
 
 SPRACHE:
 - Antworte ausschließlich auf Deutsch.
-- Wechsle niemals selbstständig auf Spanisch, Englisch oder eine andere Sprache.
-- Nur wenn Mattl ausdrücklich eine andere Sprache verlangt, darfst du wechseln.
 - Natürliches, klares Hochdeutsch.
+- Wechsle nur dann in eine andere Sprache, wenn Mattl es ausdrücklich verlangt.
 
 NAME:
 - Der Benutzer heißt Mattl.
-- Aussprache ungefähr: Mat-tl.
-- Das T muss hörbar bleiben.
-- Nicht "Maddl".
+- Sprich den Namen mit hörbarem T aus: Mat-tl.
+- Nicht Maddl.
 
 CHARAKTER:
 - intelligent
@@ -478,78 +169,35 @@ CHARAKTER:
 - kein Callcenter
 - kein künstliches Dauerlob
 
-GESPRÄCH:
-- Beantworte exakt Mattls Frage.
-- Standardmäßig kurz bis mittellang.
-- Keine unnötigen Monologe.
-- Nicht nach jeder Antwort eine Rückfrage stellen.
-- Berücksichtige den Gesprächskontext.
-- Formuliere ausschließlich Text, der anschließend natürlich gesprochen werden kann.
+SPRACHGESPRÄCH:
+- Du befindest dich in einem direkten Sprachgespräch mit Mattl.
+- Antworte natürlich gesprochen.
+- Beginne möglichst schnell mit der eigentlichen Antwort.
+- Kurze Fragen bekommen kurze Antworten.
+- Keine unnötigen Einleitungen.
+- Keine langen Monologe, wenn sie nicht nötig sind.
+- Standardmäßig ungefähr 1 bis 5 gesprochene Sätze.
+- Wenn Mattl ausführliche Informationen verlangt, darfst du ausführlicher antworten.
+- Stelle nicht nach jeder Antwort eine Gegenfrage.
+- Wenn Mattl dich unterbricht, akzeptiere die Unterbrechung und reagiere auf seine neue Aussage.
 - Keine Markdown-Tabellen.
-- Keine komplizierten Aufzählungszeichen in gesprochenen Antworten.
-- Keine Meta-Erklärungen über das technische System.
-- Beginne direkt mit der eigentlichen Antwort.
-- Antworte möglichst innerhalb von 2 bis 6 gesprochenen Sätzen, sofern Mattl nicht mehr Details verlangt.
+- Keine technischen Erklärungen über interne APIs, sofern Mattl nicht ausdrücklich danach fragt.
 
-WICHTIG ZUR STIMME:
-- Deine Antwort wird von einer Text-zu-Sprache-Stimme vorgelesen.
-- Du selbst erzeugst keinen Audiostream.
-- Schreibe deshalb natürlich gesprochenes Deutsch.
-- Zahlen sollen sich gut vorlesen lassen.
-- Schreibe Prozent- und Währungsangaben aus, zum Beispiel "20 Prozent" statt "20%" und "50 Euro" statt "50€".
-- Schreibe Centbeträge als eigene Zahl aus, zum Beispiel "49 Euro 90" statt "49,90 Euro" oder "49,90€".
-- Schreibe Abkürzungen wie "z.B.", "u.a." oder "usw." aus statt sie abzukürzen.
-- Vermeide unnötige Sonderzeichen.
-- Nenne niemals rohe Links oder URLs - fasse Informationen aus der Websuche natürlich in eigenen Worten zusammen.
+ZAHLEN:
+- Geldbeträge natürlich auf Deutsch aussprechen.
+- 1234.56 EUR bedeutet 1234 Euro 56.
+- Prozentwerte natürlich aussprechen.
+- Vermeide rohe URLs.
 
-INTERNETZUGRIFF:
-Du hast eine Websuche als Werkzeug zur Verfügung - für Alltagsfragen,
-Wissen, Nachrichten, Sport, allgemeine Unterhaltung, einfach alles.
-Nutze sie, wenn du etwas nicht sicher weißt oder es aktuell sein
-könnte. Für Fragen zu Druckelite24, Shopify, Bestellungen oder Wetter
-nutze NICHT die Websuche, sondern ausschließlich die LIVE-DATEN, falls
-welche mitgegeben wurden - die Websuche würde hier ohnehin nichts
-Sinnvolles finden und nur unnötig Zeit kosten.
-
-GESPRÄCH ÜBER ALLES:
-Mattl will sich auch ganz normal mit dir unterhalten können - nicht
-nur über sein Geschäft. Beantworte Alltagsfragen, plaudere mit, hab
-eine Meinung, mach Witze, sei einfach ein guter Gesprächspartner.
-Du bist nicht auf Druckelite24-Themen beschränkt.
-
-NOTIZEN:
-Du kannst Notizen und Ideen für Mattl speichern und sie ihm auf
-Wunsch wieder vorlesen - das funktioniert bereits technisch, ist
-keine Zukunftsfunktion. Wenn LIVE-DATEN vom Typ "note_saved" dabei
-ist, bestätige kurz und locker, dass du es dir gemerkt hast. Bei
-"notes_list" lies die vorhandenen Notizen natürlich vor, notfalls
-sag klar, dass noch keine da sind. Wenn beim Speichern oder Lesen
-ein Fehler steht, sag Mattl ehrlich, dass es gerade nicht geklappt hat.
-
-ERINNERUNGEN:
-Du kannst Erinnerungen/Timer für Mattl stellen - er sagt dir z.B.
-"erinnere mich in 30 Minuten an X", und du meldest dich später von
-selbst. Bei LIVE-DATEN vom Typ "reminder_set" bestätige kurz, woran
-und in wie vielen Minuten du erinnern wirst. Bei "reminders_list"
-lies die noch aktiven Erinnerungen vor, notfalls sag, dass gerade
-keine laufen. Kommt später eine automatische Erinnerungsmeldung
-(SYSTEM-HINWEIS), sprich Mattl direkt darauf an - das ist eine
-Erinnerung, die er sich selbst gestellt hat, kein Zufall.
-
-E-MAILS:
-Du hast Lesezugriff auf Mattls Gmail-Postfach (nur lesen, du sendest
-oder löschst nie etwas). Bei LIVE-DATEN vom Typ "emails_list" fasse
-neue/ungelesene Mails kurz zusammen (Absender, Betreff) - bei vielen
-nicht jede einzeln aufzählen, sondern sinnvoll zusammenfassen. Klingt
-eine Mail nach einer Angebots- oder Preisanfrage, weise Mattl darauf
-besonders hin, das ist wichtig für ihn. Gibt es keine neuen Mails,
-sag das kurz und klar. Bei einem Fehler sag ehrlich, dass der
-Postfach-Zugriff gerade nicht geklappt hat.
+AKTUELLE INFORMATIONEN:
+- Erfinde niemals aktuelle Zahlen.
+- Shopify-, E-Mail-, Wetter- und Business-Zahlen dürfen nur verwendet werden, wenn echte Live-Daten bereitgestellt wurden.
+- Wenn aktuelle Daten fehlen, sag das ehrlich.
 
 DRUCKELITE24:
 Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
 
-Relevante Bereiche:
+Bereiche:
 - Firmenbekleidung
 - Vereinsbekleidung
 - Teamsport
@@ -568,170 +216,155 @@ SHOPIFY:
 Es gibt genau einen verbundenen Shopify-Shop:
 Druckelite24.
 
-Wenn Mattl sagt:
-- mein Shop
-- unser Shop
+Wenn Mattl von
+- meinem Shop
+- unserem Shop
 - Shopify
 - Bestellungen
 - Umsatz
-- Verkäufe
-- Bestellwert
-
-ist immer Druckelite24 gemeint.
-
-Frage niemals nach, welchen Shop er meint.
-
-LIVE-DATEN:
-Wenn dem Prompt ein Abschnitt LIVE-DATEN beigefügt ist,
-sind ausschließlich diese Werte für aktuelle Zahlen maßgeblich.
-
-Erfinde niemals aktuelle:
-- Umsätze
-- Bestellungen
-- Wetterwerte
-- Bestellwerte
-- sonstige Live-Daten
-
-Die Zahlen in LIVE-DATEN stehen im rohen Rechen-Format mit Punkt als
-Dezimaltrennzeichen (zum Beispiel 1234.56). Gib solche Beträge beim
-Sprechen NIEMALS mit Punkt wieder. Wandle sie um in die Form
-"1234 Euro 56" (ganze Euro, dann "Euro", dann die Cent als eigene
-Zahl) - also zum Beispiel aus 1234.56 wird "1234 Euro 56", nicht
-"1234,56 Euro" und nicht "1234 Punkt 56".
+- Verkäufen
+spricht, ist Druckelite24 gemeint.
 
 BUSINESS:
-Bei passenden Themen darfst du zusätzlich wie ein
-Geschäftsführer, E-Commerce-Manager, Verkaufsleiter,
-Performance-Marketer und Datenanalyst denken.
+Bei passenden Themen darfst du wie ein
+Geschäftsführer,
+E-Commerce-Manager,
+Verkaufsleiter,
+Performance-Marketer
+und Datenanalyst denken.
 
 SICHERHEIT:
-Vor kritischen Aktionen braucht Mattl ausdrückliche Zustimmung,
-zum Beispiel:
+Vor kritischen Aktionen braucht Mattl ausdrückliche Zustimmung:
 - Geld ausgeben
 - Preise ändern
 - Kampagnen ändern
 - Bestellungen stornieren
 - Rückerstattungen
-- Nachrichten oder E-Mails senden
+- Nachrichten versenden
+- E-Mails versenden
 - Daten löschen
 
 PROAKTIVE HINWEISE:
-Manchmal bekommst du eine Nachricht, die mit "[SYSTEM-HINWEIS" beginnt.
-Das kommt nicht von Mattl - das ist ein automatischer Hintergrund-Check,
-der dich bittet, Mattl von dir aus auf etwas hinzuweisen, ohne dass er
-dich gefragt hat. Sprich ihn in diesem Fall direkt und kurz an (1-2
-Sätze), in deinem gewohnten Stil - ruhig auch mal sarkastisch oder mit
-"Ja, Meister" o.ä., wenn es passt. Tu nicht so, als hätte Mattl etwas
-gefragt oder gesagt - du meldest dich von dir aus.
+Wenn du von selbst einen Business-Hinweis oder eine Erinnerung ausgibst:
+- sprich Mattl direkt an
+- halte dich kurz
+- tu nicht so, als hätte Mattl gerade etwas gefragt
+- trockener Humor ist erlaubt
 `;
 
 
 /* =========================================================
-   OPENAI TRANSCRIPTION
+   OPENAI REALTIME · WEBRTC
+   MUSS VOR express.json() STEHEN
    ========================================================= */
 
 app.post(
-  "/api/transcribe",
-  express.raw({
-    type: [
-      "audio/webm",
-      "audio/ogg",
-      "audio/mp4",
-      "audio/mpeg",
-      "audio/wav",
-      "application/octet-stream"
-    ],
-    limit: "20mb"
+  "/api/realtime-session",
+  express.text({
+    type: ["application/sdp", "text/plain"],
+    limit: "1mb"
   }),
   async (req, res) => {
     try {
       if (!process.env.OPENAI_API_KEY) {
-        return res.status(500).json({ ok: false, error: "OPENAI_API_KEY fehlt." });
+        return res.status(500).send("OPENAI_API_KEY fehlt.");
       }
 
-      if (!req.body || !Buffer.isBuffer(req.body) || req.body.length === 0) {
-        return res.status(400).json({ ok: false, error: "Keine Audiodaten empfangen." });
+      const sdp = String(req.body || "").trim();
+
+      if (!sdp) {
+        return res.status(400).send("SDP fehlt.");
       }
 
-      const incomingType = String(req.headers["content-type"] || "audio/webm")
-        .split(";")[0]
-        .trim();
+      const realtimeModel =
+        process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1";
 
-      let extension = "webm";
-      if (incomingType.includes("ogg")) extension = "ogg";
-      else if (incomingType.includes("mp4")) extension = "mp4";
-      else if (incomingType.includes("mpeg")) extension = "mp3";
-      else if (incomingType.includes("wav")) extension = "wav";
+      const realtimeVoice =
+        process.env.OPENAI_REALTIME_VOICE || "cedar";
 
-      const audioBlob = new Blob([req.body], { type: incomingType });
+      const sessionConfig = {
+        type: "realtime",
+        model: realtimeModel,
+        instructions: JARVIS_INSTRUCTIONS,
+
+        output_modalities: ["audio"],
+
+        audio: {
+          input: {
+            turn_detection: {
+              type: "server_vad"
+            }
+          },
+          output: {
+            voice: realtimeVoice
+          }
+        }
+      };
 
       const form = new FormData();
-      form.append("file", audioBlob, `jarvis-input.${extension}`);
-      form.append("model", process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe");
-      form.append("language", "de");
-      form.append("response_format", "json");
 
-      // FIX: Der Parameter "threshold" existiert bei diesem OpenAI-Endpunkt
-      // nicht - er wurde bisher stillschweigend ignoriert und hatte nie
-      // eine Wirkung. Entfernt, um keine falsche Sicherheit vorzutäuschen.
-      // Echte Rauschtoleranz kommt über den Prompt unten sowie über die
-      // Sprachpegel-Erkennung im Browser (app.js).
+      form.set("sdp", sdp);
+      form.set("session", JSON.stringify(sessionConfig));
 
-      form.append(
-        "prompt",
-        "Deutsche Sprache. Transkribiere nur tatsächlich gesprochene Wörter. Ignoriere Hintergrundgeräusche, Musik, Fernseher, Lüfter, Tastatur und unverständliche Nebengeräusche. Der Benutzer heißt Mattl, der Assistent heißt Jarvis. Begriffe: Jarvis, Druckelite24, Shopify, Umsatz, Bestellungen, Verkäufe, Bestellwert, DTF, Textildruck, E-Commerce, Ludwigshafen am Rhein."
+      console.log(
+        `Realtime Session startet: ${realtimeModel} / ${realtimeVoice}`
       );
 
-      console.log(`Transcription input: ${req.body.length} Bytes`);
+      const startedAt = Date.now();
 
-      const transcribeStart = Date.now();
+      const response = await fetch(
+        "https://api.openai.com/v1/realtime/calls",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
+          },
+          body: form,
+          signal: timeoutSignal(20000)
+        }
+      );
 
-      const response = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-        body: form,
-        signal: timeoutSignal(30000)
-      });
+      const answerSdp = await response.text();
 
-      console.log(`[TIMING] Transkription (OpenAI): ${Date.now() - transcribeStart}ms`);
-
-      const raw = await response.text();
-      let data;
-      try {
-        data = JSON.parse(raw);
-      } catch {
-        console.error("Transcription raw response:", raw);
-        throw new Error("OpenAI hat keine gültige Transkriptionsantwort geliefert.");
-      }
+      console.log(
+        `[TIMING] Realtime Session: ${Date.now() - startedAt}ms`
+      );
 
       if (!response.ok) {
-        console.error("OpenAI transcription error:", response.status, data);
-        return res.status(response.status).json({
-          ok: false,
-          error: data?.error?.message || "Spracherkennung fehlgeschlagen."
-        });
+        console.error(
+          "Realtime OpenAI Fehler:",
+          response.status,
+          answerSdp
+        );
+
+        return res
+          .status(response.status)
+          .send(answerSdp || "Realtime-Verbindung fehlgeschlagen.");
       }
 
-      const text = String(data.text || "").trim();
-      if (!text) {
-        return res.status(422).json({ ok: false, error: "Keine verständliche Sprache erkannt." });
-      }
+      res.status(200);
+      res.setHeader("Content-Type", "application/sdp");
 
-      console.log("Transkript:", text);
+      return res.send(answerSdp);
 
-      return res.json({ ok: true, text });
     } catch (error) {
-      console.error("Transcription endpoint error:", error);
-      return res.status(500).json({
-        ok: false,
-        error:
-          error.name === "TimeoutError"
-            ? "Die Spracherkennung hat zu lange gebraucht."
-            : error.message || "Spracherkennung fehlgeschlagen."
-      });
+      console.error("Realtime session error:", error);
+
+      return res.status(500).send(
+        error.name === "TimeoutError"
+          ? "Realtime-Verbindung hat zu lange gebraucht."
+          : error.message || "Realtime-Verbindung fehlgeschlagen."
+      );
     }
   }
 );
+
+
+/* =========================================================
+   JSON
+   ========================================================= */
+
+app.use(express.json({ limit: "2mb" }));
 
 
 /* =========================================================
@@ -745,10 +378,15 @@ function extractResponseText(data) {
   if (direct) return direct;
 
   const pieces = [];
+
   for (const item of data.output || []) {
     if (item?.type !== "message") continue;
+
     for (const content of item.content || []) {
-      if (content?.type === "output_text" && content?.text) {
+      if (
+        content?.type === "output_text" &&
+        content?.text
+      ) {
         pieces.push(content.text);
       }
     }
@@ -758,86 +396,108 @@ function extractResponseText(data) {
 }
 
 
-/* =========================================================
-   ONE RESPONSES API REQUEST
-   ========================================================= */
-
 async function requestOpenAIResponse({
   inputText,
   previousResponseId,
-  maxOutputTokens,
-  reasoningEffort,
-  enableWebSearch
+  maxOutputTokens = 1200,
+  reasoningEffort = "minimal",
+  enableWebSearch = false
 }) {
   const body = {
-    model: process.env.OPENAI_TEXT_MODEL || "gpt-5-mini",
-    instructions: JARVIS_INSTRUCTIONS,
-    input: inputText,
-    // GPT-5: sichtbare Ausgabe UND Reasoning teilen sich dieses Limit.
-    max_output_tokens: maxOutputTokens,
-    reasoning: { effort: reasoningEffort },
-    text: { format: { type: "text" } },
+    model:
+      process.env.OPENAI_TEXT_MODEL ||
+      "gpt-5-mini",
+
+    instructions:
+      JARVIS_INSTRUCTIONS,
+
+    input:
+      inputText,
+
+    max_output_tokens:
+      maxOutputTokens,
+
+    reasoning: {
+      effort:
+        reasoningEffort
+    },
+
+    text: {
+      format: {
+        type: "text"
+      }
+    },
+
     store: true
   };
 
-  // FIX: OpenAI lehnt reasoning.effort "minimal" zusammen mit dem
-  // web_search-Tool grundsätzlich ab (harter API-Fehler, hat JARVIS
-  // komplett lahmgelegt - auch bei ganz normalen Fragen ohne Websuche-
-  // Bedarf, weil das Tool bisher immer mitgeschickt wurde). Jetzt wird
-  // die Websuche nur noch eingebunden, wenn sie laut Heuristik
-  // tatsächlich gebraucht wird - dann UND nur dann auf "low" hochstufen.
   if (enableWebSearch) {
-    body.tools = [{ type: "web_search" }];
+    body.tools = [
+      {
+        type: "web_search"
+      }
+    ];
   }
 
   if (previousResponseId) {
-    body.previous_response_id = previousResponseId;
+    body.previous_response_id =
+      previousResponseId;
   }
 
-  const gptStart = Date.now();
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body),
-    signal: timeoutSignal(45000)
-  });
-
-  console.log(`[TIMING] ChatGPT-Antwort (reasoning: ${reasoningEffort}): ${Date.now() - gptStart}ms`);
+  const response = await fetch(
+    "https://api.openai.com/v1/responses",
+    {
+      method: "POST",
+      headers: {
+        Authorization:
+          `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type":
+          "application/json"
+      },
+      body: JSON.stringify(body),
+      signal: timeoutSignal(45000)
+    }
+  );
 
   const raw = await response.text();
+
   let data;
+
   try {
     data = JSON.parse(raw);
   } catch {
-    console.error("Responses raw response:", raw);
-    throw new Error("OpenAI hat keine gültige JSON-Antwort geliefert.");
+    throw new Error(
+      "OpenAI hat keine gültige JSON-Antwort geliefert."
+    );
   }
 
   if (!response.ok) {
-    console.error("OpenAI Responses HTTP error:", response.status, data);
-    throw new Error(data?.error?.message || `OpenAI HTTP ${response.status}`);
+    throw new Error(
+      data?.error?.message ||
+      `OpenAI HTTP ${response.status}`
+    );
   }
 
   return data;
 }
 
 
-/* =========================================================
-   OPENAI TEXT RESPONSE
-   ========================================================= */
-
-async function createJarvisResponse({ message, previousResponseId = null, liveData = null }) {
+async function createJarvisResponse({
+  message,
+  previousResponseId = null,
+  liveData = null
+}) {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OPENAI_API_KEY fehlt.");
   }
 
-  let inputText = String(message || "").trim();
+  let inputText =
+    String(message || "").trim();
+
   if (!inputText) {
-    throw new Error("Leere Benutzernachricht.");
+    throw new Error(
+      "Leere Benutzernachricht."
+    );
   }
 
   if (liveData) {
@@ -846,114 +506,71 @@ async function createJarvisResponse({ message, previousResponseId = null, liveDa
 LIVE-DATEN:
 ${JSON.stringify(liveData, null, 2)}
 
-Beantworte Mattls ursprüngliche Frage jetzt kurz und konkret anhand dieser Live-Daten.
-Für aktuelle Werte sind ausschließlich die LIVE-DATEN maßgeblich.
+Nutze ausschließlich diese Live-Daten für aktuelle Werte.
 Erfinde keine weiteren aktuellen Zahlen.`;
   }
 
-  // FIX: Vorher gab es eine Liste von Stichwörtern, bei denen die
-  // Websuche ansprang (Nachrichten, Fußball, Wahlen, ...) - das war
-  // grundsätzlich zu eng, jede Alltagsfrage außerhalb der Liste lief
-  // ins Leere. Jetzt umgekehrt: Websuche ist IMMER verfügbar, außer
-  // bei Shopify- und Wetterfragen (die haben schon ihre eigene,
-  // schnelle Live-Datenquelle und brauchen sie nicht) sowie bei
-  // automatischen System-Hinweisen (proaktive Meldungen, Morgen-
-  // Briefing - die haben ihre Fakten schon im Text, keine Suche nötig).
-  // Websuche und reasoning.effort "minimal" vertragen sich laut OpenAI
-  // nicht (harter API-Fehler) - deshalb im schnellen Fall "minimal"
-  // ohne Websuche, sonst "low" mit Websuche verfügbar. ChatGPT
-  // entscheidet dann selbst pro Frage, ob es die Websuche nutzt.
-  const isFastPathQuestion =
+  const fastPath =
     inputText.startsWith("[SYSTEM-HINWEIS") ||
-    liveData?.type === "shopify" ||
-    liveData?.type === "weather" ||
-    liveData?.type === "note_saved" ||
-    liveData?.type === "notes_list" ||
-    liveData?.type === "reminder_set" ||
-    liveData?.type === "reminders_list" ||
-    liveData?.type === "emails_list";
+    [
+      "shopify",
+      "weather",
+      "note_saved",
+      "notes_list",
+      "reminder_set",
+      "reminders_list",
+      "emails_list"
+    ].includes(liveData?.type);
 
-  const reasoningEffort = isFastPathQuestion ? "minimal" : "low";
-  const needsWebSearch = !isFastPathQuestion;
+  const reasoningEffort =
+    fastPath ? "minimal" : "low";
 
-  // ERSTER VERSUCH: minimaler Reasoning-Aufwand - für ein Sprachgespräch
-  // reicht das völlig aus und spart spürbar Antwortzeit gegenüber "low".
-  let data = await requestOpenAIResponse({
-    inputText,
-    previousResponseId,
-    maxOutputTokens: 1200,
-    reasoningEffort,
-    enableWebSearch: needsWebSearch
-  });
+  const enableWebSearch =
+    !fastPath;
 
-  let outputText = extractResponseText(data);
-
-  console.log("OpenAI response status:", data.status);
-  console.log("OpenAI response id:", data.id);
-  console.log("OpenAI output tokens:", data.usage?.output_tokens);
-  console.log("OpenAI reasoning tokens:", data.usage?.output_tokens_details?.reasoning_tokens);
-  console.log("OpenAI web search used:", needsWebSearch);
-
-  // FALLBACK: Falls GPT-5 das komplette Tokenbudget fürs Reasoning
-  // verbraucht hat oder die Antwort sonst unvollständig ist,
-  // automatisch einmal neu versuchen. Wir verwenden hierbei NICHT
-  // die incomplete response als previous_response_id, sondern gehen
-  // wieder vom letzten erfolgreichen Gesprächszustand aus.
-  if (!outputText || data.status === "incomplete") {
-    console.warn("OpenAI Antwort unvollständig.", {
-      status: data.status,
-      incomplete_reason: data.incomplete_details?.reason,
-      output_items: data.output?.length || 0
-    });
-
-    data = await requestOpenAIResponse({
-      inputText: `${inputText}
-
-WICHTIG:
-Gib jetzt direkt eine kurze sichtbare Antwort auf Deutsch aus.
-Keine lange interne Analyse.
-Die Antwort soll für eine Sprachausgabe geeignet sein.`,
+  let data =
+    await requestOpenAIResponse({
+      inputText,
       previousResponseId,
-      maxOutputTokens: 2400,
+      maxOutputTokens: 1200,
       reasoningEffort,
-      enableWebSearch: needsWebSearch
+      enableWebSearch
     });
 
-    outputText = extractResponseText(data);
+  let outputText =
+    extractResponseText(data);
 
-    console.log("OpenAI fallback status:", data.status);
-    console.log("OpenAI fallback reasoning tokens:", data.usage?.output_tokens_details?.reasoning_tokens);
+  if (
+    !outputText ||
+    data.status === "incomplete"
+  ) {
+    data =
+      await requestOpenAIResponse({
+        inputText:
+          `${inputText}
+
+Antworte jetzt direkt und kurz auf Deutsch.`,
+
+        previousResponseId,
+        maxOutputTokens: 2400,
+        reasoningEffort,
+        enableWebSearch
+      });
+
+    outputText =
+      extractResponseText(data);
   }
 
   if (!outputText) {
-    const incompleteReason = data.incomplete_details?.reason;
-
-    console.error(
-      "OpenAI lieferte keinen sichtbaren Text:",
-      JSON.stringify(
-        {
-          id: data.id,
-          status: data.status,
-          incomplete_details: data.incomplete_details,
-          usage: data.usage,
-          output: data.output
-        },
-        null,
-        2
-      )
+    throw new Error(
+      "OpenAI hat keinen Antworttext geliefert."
     );
-
-    if (incompleteReason === "max_output_tokens") {
-      throw new Error("OpenAI hat das Antwortlimit erreicht, bevor sichtbarer Text erzeugt wurde.");
-    }
-    if (incompleteReason === "max_tokens") {
-      throw new Error("OpenAI hat das Tokenlimit erreicht, bevor sichtbarer Text erzeugt wurde.");
-    }
-
-    throw new Error(`OpenAI hat keinen Antworttext geliefert. Status: ${data.status || "unbekannt"}.`);
   }
 
-  return { text: outputText, response_id: data.id || null };
+  return {
+    text: outputText,
+    response_id: data.id || null
+  };
 }
 
 
@@ -961,204 +578,90 @@ Die Antwort soll für eine Sprachausgabe geeignet sein.`,
    SHOPIFY AUTH
    ========================================================= */
 
-let shopifyTokenCache = { token: null, expiresAt: 0 };
+let shopifyTokenCache = {
+  token: null,
+  expiresAt: 0
+};
 
 async function getShopifyAccessToken() {
-  if (shopifyTokenCache.token && Date.now() < shopifyTokenCache.expiresAt - 5 * 60 * 1000) {
+  if (
+    shopifyTokenCache.token &&
+    Date.now() <
+      shopifyTokenCache.expiresAt -
+        5 * 60 * 1000
+  ) {
     return shopifyTokenCache.token;
   }
 
-  const domain = process.env.SHOPIFY_STORE_DOMAIN;
-  const clientId = process.env.SHOPIFY_CLIENT_ID;
-  const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
+  const domain =
+    process.env.SHOPIFY_STORE_DOMAIN;
 
-  if (!domain || !clientId || !clientSecret) {
-    throw new Error("Shopify ist nicht vollständig konfiguriert.");
+  const clientId =
+    process.env.SHOPIFY_CLIENT_ID;
+
+  const clientSecret =
+    process.env.SHOPIFY_CLIENT_SECRET;
+
+  if (
+    !domain ||
+    !clientId ||
+    !clientSecret
+  ) {
+    throw new Error(
+      "Shopify ist nicht vollständig konfiguriert."
+    );
   }
 
-  const params = new URLSearchParams({
-    grant_type: "client_credentials",
-    client_id: clientId,
-    client_secret: clientSecret
-  });
+  const params =
+    new URLSearchParams({
+      grant_type:
+        "client_credentials",
+      client_id:
+        clientId,
+      client_secret:
+        clientSecret
+    });
 
-  const response = await fetch(`https://${domain}/admin/oauth/access_token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params,
-    signal: timeoutSignal(10000)
-  });
-
-  const raw = await response.text();
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    console.error("Shopify token raw:", raw);
-    throw new Error("Shopify hat keine gültige Token-Antwort geliefert.");
-  }
-
-  if (!response.ok || !data.access_token) {
-    console.error("Shopify token error:", data);
-    throw new Error("Shopify-Authentifizierung fehlgeschlagen.");
-  }
-
-  const expiresIn = Number(data.expires_in || 86399);
-  shopifyTokenCache = { token: data.access_token, expiresAt: Date.now() + expiresIn * 1000 };
-
-  console.log("Shopify access token refreshed.");
-  return data.access_token;
-}
-
-
-/* =========================================================
-   GMAIL
-   =========================================================
-
-   Nutzt einen einmalig erzeugten Refresh Token (siehe Einrichtungs-
-   Anleitung), um sich bei Bedarf neue, kurzlebige Access Tokens zu
-   holen - genau wie bei Shopify, nur mit Googles OAuth-Endpunkt statt
-   Shopifys eigenem. Nur Lesezugriff (gmail.readonly) - JARVIS liest
-   mit, versendet oder löscht nichts.
-   ========================================================= */
-
-let gmailTokenCache = { token: null, expiresAt: 0 };
-
-function isGmailConfigured() {
-  return Boolean(
-    process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN
-  );
-}
-
-async function getGmailAccessToken() {
-  if (gmailTokenCache.token && Date.now() < gmailTokenCache.expiresAt - 5 * 60 * 1000) {
-    return gmailTokenCache.token;
-  }
-
-  if (!isGmailConfigured()) {
-    throw new Error("Gmail ist nicht vollständig konfiguriert.");
-  }
-
-  const params = new URLSearchParams({
-    client_id: process.env.GOOGLE_CLIENT_ID,
-    client_secret: process.env.GOOGLE_CLIENT_SECRET,
-    refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
-    grant_type: "refresh_token"
-  });
-
-  const response = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params,
-    signal: timeoutSignal(10000)
-  });
-
-  const data = await response.json();
-
-  if (!response.ok || !data.access_token) {
-    console.error("Gmail token error:", data);
-    throw new Error("Gmail-Authentifizierung fehlgeschlagen.");
-  }
-
-  gmailTokenCache = {
-    token: data.access_token,
-    expiresAt: Date.now() + Number(data.expires_in || 3600) * 1000
-  };
-
-  return data.access_token;
-}
-
-/*
- * Holt die zuletzt ungelesenen E-Mails (Betreff, Absender, kurzer
- * Ausschnitt) - bewusst nur Metadaten, nicht der volle Mailtext, das
- * reicht für die Erkennung und ist schneller.
- */
-async function getNewEmails() {
-  const token = await getGmailAccessToken();
-
-  const listResponse = await fetch(
-    "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread&maxResults=10",
+  const response = await fetch(
+    `https://${domain}/admin/oauth/access_token`,
     {
-      headers: { Authorization: `Bearer ${token}` },
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/x-www-form-urlencoded"
+      },
+      body: params,
       signal: timeoutSignal(10000)
     }
   );
 
-  const listData = await listResponse.json();
+  const data =
+    await response.json();
 
-  if (!listResponse.ok) {
-    console.error("Gmail list error:", listData);
-    throw new Error("E-Mails konnten nicht gelesen werden.");
+  if (
+    !response.ok ||
+    !data.access_token
+  ) {
+    throw new Error(
+      "Shopify-Authentifizierung fehlgeschlagen."
+    );
   }
 
-  const refs = listData.messages || [];
-  if (!refs.length) return [];
+  const expiresIn =
+    Number(
+      data.expires_in ||
+      86399
+    );
 
-  const emails = [];
+  shopifyTokenCache = {
+    token:
+      data.access_token,
+    expiresAt:
+      Date.now() +
+      expiresIn * 1000
+  };
 
-  for (const ref of refs) {
-    try {
-      const msgResponse = await fetch(
-        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${ref.id}` +
-          `?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-          signal: timeoutSignal(10000)
-        }
-      );
-
-      const msgData = await msgResponse.json();
-      if (!msgResponse.ok) continue;
-
-      const headers = msgData.payload?.headers || [];
-      const subject = headers.find(h => h.name === "Subject")?.value || "(kein Betreff)";
-      const from = headers.find(h => h.name === "From")?.value || "unbekannt";
-
-      emails.push({
-        id: ref.id,
-        subject,
-        from,
-        snippet: msgData.snippet || ""
-      });
-    } catch (error) {
-      console.warn("Gmail Einzelmail-Fehler:", error);
-    }
-  }
-
-  return emails;
-}
-
-/*
- * Grobe Erkennung, ob eine Mail nach einer Angebotsanfrage klingt -
- * Stichwort-Heuristik wie bei den anderen Erkennungen. Neue Begriffe
- * einfach ergänzen, falls eine echte Anfrage durchrutscht.
- */
-function isOfferInquiryEmail(email) {
-  const text = normalize(`${email.subject} ${email.snippet}`);
-  const keywords = [
-    "angebot",
-    "anfrage",
-    "kostenvoranschlag",
-    "preisanfrage",
-    "was kostet",
-    "wieviel kostet",
-    "wie viel kostet",
-    "anbieten",
-    "quote",
-    "offer"
-  ];
-  return keywords.some(word => text.includes(word));
-}
-
-/*
- * Erkennt, ob Mattl im Gespräch nach neuen E-Mails fragt.
- */
-function isEmailCheckIntent(text) {
-  const n = normalize(text);
-  const mentionsMail = n.includes("mail") || n.includes("email") || n.includes("e-mail");
-  const asksAboutNew =
-    n.includes("neu") || n.includes("posteingang") || n.includes("bekommen") || n.includes("hab ich");
-  return mentionsMail && asksAboutNew;
+  return data.access_token;
 }
 
 
@@ -1167,12 +670,24 @@ function isEmailCheckIntent(text) {
    ========================================================= */
 
 async function getShopifySummary(period = "today") {
-  const domain = process.env.SHOPIFY_STORE_DOMAIN;
-  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
-  const token = await getShopifyAccessToken();
-  const { start, end } = getPeriodDates(period);
-  const startDate = new Date(start);
-  const endDate = new Date(end);
+  const domain =
+    process.env.SHOPIFY_STORE_DOMAIN;
+
+  const apiVersion =
+    process.env.SHOPIFY_API_VERSION ||
+    "2026-07";
+
+  const token =
+    await getShopifyAccessToken();
+
+  const { start, end } =
+    getPeriodDates(period);
+
+  const startDate =
+    new Date(start);
+
+  const endDate =
+    new Date(end);
 
   const query = `
     query JarvisOrders {
@@ -1185,7 +700,6 @@ async function getShopifySummary(period = "today") {
           name
           createdAt
           cancelledAt
-          displayFinancialStatus
 
           currentTotalPriceSet {
             shopMoney {
@@ -1198,194 +712,143 @@ async function getShopifySummary(period = "today") {
     }
   `;
 
-  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
-    },
-    body: JSON.stringify({ query }),
-    signal: timeoutSignal(10000)
-  });
-
-  const data = await response.json();
-
-  if (!response.ok || data.errors) {
-    console.error("Shopify GraphQL error:", data);
-    throw new Error("Shopify-Daten konnten nicht gelesen werden.");
-  }
-
-  const orders = data.data?.orders?.nodes || [];
-
-  const inRange = orders.filter(order => {
-    const created = new Date(order.createdAt);
-    return created >= startDate && created < endDate;
-  });
-
-  const valid = inRange.filter(order => !order.cancelledAt);
-
-  const revenue = valid.reduce(
-    (total, order) => total + Number(order.currentTotalPriceSet?.shopMoney?.amount || 0),
-    0
+  const response = await fetch(
+    `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json",
+        "X-Shopify-Access-Token":
+          token
+      },
+      body: JSON.stringify({ query }),
+      signal: timeoutSignal(10000)
+    }
   );
 
-  const currency = valid[0]?.currentTotalPriceSet?.shopMoney?.currencyCode || "EUR";
-  const average = valid.length ? revenue / valid.length : 0;
+  const data =
+    await response.json();
+
+  if (
+    !response.ok ||
+    data.errors
+  ) {
+    throw new Error(
+      "Shopify-Daten konnten nicht gelesen werden."
+    );
+  }
+
+  const orders =
+    data.data?.orders?.nodes ||
+    [];
+
+  const valid =
+    orders.filter(order => {
+      if (order.cancelledAt) {
+        return false;
+      }
+
+      const created =
+        new Date(order.createdAt);
+
+      return (
+        created >= startDate &&
+        created < endDate
+      );
+    });
+
+  const revenue =
+    valid.reduce(
+      (total, order) =>
+        total +
+        Number(
+          order
+            .currentTotalPriceSet
+            ?.shopMoney
+            ?.amount ||
+          0
+        ),
+      0
+    );
+
+  const currency =
+    valid[0]
+      ?.currentTotalPriceSet
+      ?.shopMoney
+      ?.currencyCode ||
+    "EUR";
+
+  const average =
+    valid.length
+      ? revenue /
+        valid.length
+      : 0;
 
   return {
     configured: true,
     shop: "Druckelite24",
-    shop_domain: domain,
     period,
     orders: valid.length,
-    revenue: Number(revenue.toFixed(2)),
-    average_order_value: Number(average.toFixed(2)),
+    revenue: Number(
+      revenue.toFixed(2)
+    ),
+    average_order_value:
+      Number(
+        average.toFixed(2)
+      ),
     currency,
     source: "Shopify"
   };
 }
 
 
-/* =========================================================
-   SHOPIFY SUMMARY ENDPOINT
-   ========================================================= */
+app.post(
+  "/api/shopify-summary",
+  async (req, res) => {
+    try {
+      const period =
+        req.body?.period ===
+        "yesterday"
+          ? "yesterday"
+          : "today";
 
-app.post("/api/shopify-summary", async (req, res) => {
-  try {
-    const period = req.body?.period === "yesterday" ? "yesterday" : "today";
-    const data = await getShopifySummary(period);
-    return res.json(data);
-  } catch (error) {
-    console.error("Shopify summary error:", error);
-    return res.status(500).json({
-      configured: false,
-      shop: "Druckelite24",
-      error: error.message || "Shopify-Abfrage fehlgeschlagen."
-    });
-  }
-});
+      return res.json(
+        await getShopifySummary(
+          period
+        )
+      );
 
-
-/* =========================================================
-   SHOPIFY WEEK
-   ========================================================= */
-
-function berlinDayOf(isoTimestamp) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Berlin",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).format(new Date(isoTimestamp));
-}
-
-async function getShopifyWeek() {
-  const domain = process.env.SHOPIFY_STORE_DOMAIN;
-  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
-  const token = await getShopifyAccessToken();
-
-  const query = `
-    query JarvisWeek {
-      orders(
-        first: 250,
-        sortKey: CREATED_AT,
-        reverse: true
-      ) {
-        nodes {
-          createdAt
-          cancelledAt
-
-          currentTotalPriceSet {
-            shopMoney {
-              amount
-              currencyCode
-            }
-          }
-        }
-      }
+    } catch (error) {
+      return res
+        .status(500)
+        .json({
+          configured: false,
+          shop: "Druckelite24",
+          error:
+            error.message ||
+            "Shopify-Abfrage fehlgeschlagen."
+        });
     }
-  `;
-
-  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
-    },
-    body: JSON.stringify({ query }),
-    signal: timeoutSignal(10000)
-  });
-
-  const data = await response.json();
-
-  if (!response.ok || data.errors) {
-    console.error("Shopify week error:", data);
-    throw new Error("Shopify-Wochendaten konnten nicht gelesen werden.");
   }
-
-  const orders = data.data?.orders?.nodes || [];
-  const weekdayNames = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
-  const days = [];
-  const buckets = {};
-  const today = berlinDate();
-
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(`${today}T12:00:00Z`);
-    d.setUTCDate(d.getUTCDate() - i);
-    const dayString = d.toISOString().slice(0, 10);
-
-    const entry = {
-      date: dayString,
-      label: weekdayNames[d.getUTCDay()],
-      orders: 0,
-      revenue: 0
-    };
-
-    days.push(entry);
-    buckets[dayString] = entry;
-  }
-
-  for (const order of orders) {
-    if (order.cancelledAt) continue;
-
-    const day = berlinDayOf(order.createdAt);
-    const bucket = buckets[day];
-    if (!bucket) continue;
-
-    bucket.orders += 1;
-    bucket.revenue += Number(order.currentTotalPriceSet?.shopMoney?.amount || 0);
-  }
-
-  for (const entry of days) {
-    entry.revenue = Number(entry.revenue.toFixed(2));
-  }
-
-  return { days, currency: "EUR", source: "Shopify" };
-}
-
-app.post("/api/shopify-week", async (req, res) => {
-  try {
-    return res.json(await getShopifyWeek());
-  } catch (error) {
-    console.error("Shopify week endpoint error:", error);
-    return res.status(500).json({ error: error.message || "Wochendaten fehlgeschlagen." });
-  }
-});
+);
 
 
 /* =========================================================
-   SHOPIFY OFFENE BESTELLUNGEN
-   (Grundlage für den proaktiven Hinweis, siehe /api/jarvis-checkin)
+   OPEN ORDERS
    ========================================================= */
 
 async function getShopifyOpenOrders() {
-  const domain = process.env.SHOPIFY_STORE_DOMAIN;
-  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
-  const token = await getShopifyAccessToken();
+  const domain =
+    process.env.SHOPIFY_STORE_DOMAIN;
 
-  // Shopify filtert das direkt serverseitig über die Suchsyntax -
-  // effizienter und vollständiger als alle Bestellungen zu laden und
-  // client-seitig zu filtern (verpasst sonst ältere unbearbeitete).
+  const apiVersion =
+    process.env.SHOPIFY_API_VERSION ||
+    "2026-07";
+
+  const token =
+    await getShopifyAccessToken();
+
   const query = `
     query JarvisOpenOrders {
       orders(
@@ -1398,131 +861,215 @@ async function getShopifyOpenOrders() {
           name
           createdAt
           cancelledAt
-          displayFulfillmentStatus
         }
       }
     }
   `;
 
-  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
-    },
-    body: JSON.stringify({ query }),
-    signal: timeoutSignal(10000)
-  });
+  const response = await fetch(
+    `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json",
+        "X-Shopify-Access-Token":
+          token
+      },
+      body: JSON.stringify({ query }),
+      signal: timeoutSignal(10000)
+    }
+  );
 
-  const data = await response.json();
+  const data =
+    await response.json();
 
-  if (!response.ok || data.errors) {
-    console.error("Shopify open orders error:", data);
-    throw new Error("Offene Bestellungen konnten nicht gelesen werden.");
+  if (
+    !response.ok ||
+    data.errors
+  ) {
+    throw new Error(
+      "Offene Bestellungen konnten nicht gelesen werden."
+    );
   }
 
-  const orders = (data.data?.orders?.nodes || []).filter(order => !order.cancelledAt);
-  const oldest = orders.length ? orders[0] : null;
+  const orders =
+    (
+      data.data?.orders?.nodes ||
+      []
+    ).filter(
+      order =>
+        !order.cancelledAt
+    );
+
+  const oldest =
+    orders.length
+      ? orders[0]
+      : null;
 
   return {
     count: orders.length,
-    oldest_order_name: oldest ? oldest.name : null,
-    oldest_order_created_at: oldest ? oldest.createdAt : null
+    oldest_order_name:
+      oldest?.name || null,
+    oldest_order_created_at:
+      oldest?.createdAt || null
   };
 }
 
 
 /* =========================================================
-   NOTIZEN · GESPEICHERT ALS SHOPIFY-METAFELD
-   =========================================================
-
-   Render löscht bei jedem Neustart/Deploy alles lokal auf dem Server
-   Gespeicherte ("ephemeres Dateisystem") - eine Notizen-Datei würde
-   also ständig verloren gehen. Stattdessen wird die Notizenliste als
-   JSON in einem Shopify-Metafeld am Shop selbst abgelegt (Namespace
-   "jarvis", Key "notes") - das übersteht Server-Neustarts, weil es
-   auf Shopifys Servern liegt, nicht auf Render.
+   SHOP ID / METAFIELDS
    ========================================================= */
 
 async function getShopId() {
-  const domain = process.env.SHOPIFY_STORE_DOMAIN;
-  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
-  const token = await getShopifyAccessToken();
+  const domain =
+    process.env.SHOPIFY_STORE_DOMAIN;
 
-  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
-    },
-    body: JSON.stringify({ query: "query { shop { id } }" }),
-    signal: timeoutSignal(10000)
-  });
+  const apiVersion =
+    process.env.SHOPIFY_API_VERSION ||
+    "2026-07";
 
-  const data = await response.json();
+  const token =
+    await getShopifyAccessToken();
 
-  if (!response.ok || data.errors || !data.data?.shop?.id) {
-    console.error("Shopify shop id error:", data);
-    throw new Error("Shop-ID konnte nicht ermittelt werden.");
+  const response = await fetch(
+    `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json",
+        "X-Shopify-Access-Token":
+          token
+      },
+      body: JSON.stringify({
+        query:
+          "query { shop { id } }"
+      }),
+      signal: timeoutSignal(10000)
+    }
+  );
+
+  const data =
+    await response.json();
+
+  if (
+    !response.ok ||
+    data.errors ||
+    !data.data?.shop?.id
+  ) {
+    throw new Error(
+      "Shop-ID konnte nicht ermittelt werden."
+    );
   }
 
   return data.data.shop.id;
 }
 
-async function getNotes() {
-  const domain = process.env.SHOPIFY_STORE_DOMAIN;
-  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
-  const token = await getShopifyAccessToken();
+
+async function getJarvisMetafield(key) {
+  const domain =
+    process.env.SHOPIFY_STORE_DOMAIN;
+
+  const apiVersion =
+    process.env.SHOPIFY_API_VERSION ||
+    "2026-07";
+
+  const token =
+    await getShopifyAccessToken();
 
   const query = `
-    query JarvisNotes {
+    query JarvisMeta {
       shop {
-        metafield(namespace: "jarvis", key: "notes") {
+        metafield(
+          namespace: "jarvis",
+          key: "${key}"
+        ) {
           value
         }
       }
     }
   `;
 
-  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
-    },
-    body: JSON.stringify({ query }),
-    signal: timeoutSignal(10000)
-  });
+  const response = await fetch(
+    `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json",
+        "X-Shopify-Access-Token":
+          token
+      },
+      body: JSON.stringify({ query }),
+      signal: timeoutSignal(10000)
+    }
+  );
 
-  const data = await response.json();
+  const data =
+    await response.json();
 
-  if (!response.ok || data.errors) {
-    console.error("Shopify notes read error:", data);
-    throw new Error("Notizen konnten nicht gelesen werden.");
+  if (
+    !response.ok ||
+    data.errors
+  ) {
+    throw new Error(
+      `${key} konnte nicht gelesen werden.`
+    );
   }
 
-  const raw = data.data?.shop?.metafield?.value;
+  const raw =
+    data.data?.shop
+      ?.metafield?.value;
+
   if (!raw) return [];
 
   try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed =
+      JSON.parse(raw);
+
+    return Array.isArray(parsed)
+      ? parsed
+      : [];
+
   } catch {
     return [];
   }
 }
 
-async function saveNotes(notes) {
-  const domain = process.env.SHOPIFY_STORE_DOMAIN;
-  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
-  const token = await getShopifyAccessToken();
-  const shopId = await getShopId();
+
+async function saveJarvisMetafield(
+  key,
+  value
+) {
+  const domain =
+    process.env.SHOPIFY_STORE_DOMAIN;
+
+  const apiVersion =
+    process.env.SHOPIFY_API_VERSION ||
+    "2026-07";
+
+  const token =
+    await getShopifyAccessToken();
+
+  const shopId =
+    await getShopId();
 
   const mutation = `
-    mutation JarvisSaveNotes($metafields: [MetafieldsSetInput!]!) {
-      metafieldsSet(metafields: $metafields) {
-        metafields { id }
-        userErrors { field message }
+    mutation JarvisSaveMeta(
+      $metafields: [MetafieldsSetInput!]!
+    ) {
+      metafieldsSet(
+        metafields: $metafields
+      ) {
+        metafields {
+          id
+        }
+
+        userErrors {
+          field
+          message
+        }
       }
     }
   `;
@@ -1532,1197 +1079,700 @@ async function saveNotes(notes) {
       {
         ownerId: shopId,
         namespace: "jarvis",
-        key: "notes",
+        key,
         type: "json",
-        value: JSON.stringify(notes)
+        value:
+          JSON.stringify(value)
       }
     ]
   };
 
-  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
-    },
-    body: JSON.stringify({ query: mutation, variables }),
-    signal: timeoutSignal(10000)
-  });
-
-  const data = await response.json();
-  const userErrors = data.data?.metafieldsSet?.userErrors;
-
-  if (!response.ok || data.errors || (userErrors && userErrors.length)) {
-    console.error("Shopify notes save error:", data);
-    throw new Error("Notizen konnten nicht gespeichert werden.");
-  }
-}
-
-/*
- * Erkennt, ob Mattl etwas notiert haben möchte.
- */
-function isSaveNoteIntent(text) {
-  const n = normalize(text);
-  return (
-    n.includes("notiere") ||
-    n.includes("notiz") ||
-    n.includes("merk dir") ||
-    n.includes("merke dir") ||
-    n.includes("schreib das auf") ||
-    n.includes("halte fest")
-  );
-}
-
-/*
- * Erkennt, ob Mattl seine bisherigen Notizen hören möchte.
- */
-function isReadNotesIntent(text) {
-  const n = normalize(text);
-  const mentionsNotes = n.includes("notiz") || n.includes("idee") || n.includes("notiert");
-  const asksToHear =
-    n.includes("was habe ich") ||
-    n.includes("zeig mir") ||
-    n.includes("welche") ||
-    n.includes("lies") ||
-    n.includes("vorlesen") ||
-    n.includes("hatte ich");
-  return mentionsNotes && asksToHear;
-}
-
-/*
- * Entfernt gängige Auslöse-Phrasen ("notiere dir:", "Jarvis, ...") vom
- * Anfang, damit nur der eigentliche Inhalt gespeichert wird. Nicht
- * perfekt bei ungewöhnlichen Formulierungen, aber ein guter Normalfall.
- */
-function extractNoteContent(text) {
-  let cleaned = String(text || "").trim();
-
-  const triggers = [
-    /^(hey\s+)?jarvis[,:]?\s*/i,
-    /^notiere\s*(dir)?\s*[:,]?\s*/i,
-    /^merke?\s*dir\s*[:,]?\s*/i,
-    /^schreib\s*das\s*auf\s*[:,]?\s*/i,
-    /^halte\s*fest\s*[:,]?\s*/i
-  ];
-
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const trigger of triggers) {
-      const stripped = cleaned.replace(trigger, "");
-      if (stripped !== cleaned) {
-        cleaned = stripped.trim();
-        changed = true;
-      }
+  const response = await fetch(
+    `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/json",
+        "X-Shopify-Access-Token":
+          token
+      },
+      body: JSON.stringify({
+        query: mutation,
+        variables
+      }),
+      signal: timeoutSignal(10000)
     }
-  }
+  );
 
-  return cleaned || text;
+  const data =
+    await response.json();
+
+  const errors =
+    data.data
+      ?.metafieldsSet
+      ?.userErrors;
+
+  if (
+    !response.ok ||
+    data.errors ||
+    (
+      errors &&
+      errors.length
+    )
+  ) {
+    throw new Error(
+      `${key} konnte nicht gespeichert werden.`
+    );
+  }
 }
 
 
 /* =========================================================
-   ERINNERUNGEN / TIMER
-   =========================================================
+   NOTES
+   ========================================================= */
 
-   Gleiches Speicher-Prinzip wie bei den Notizen: JSON in einem
-   Shopify-Metafeld (Namespace "jarvis", Key "reminders") - übersteht
-   Server-Neustarts. Der Check, ob eine Erinnerung fällig ist, läuft
-   in app.js über einen EIGENEN, häufigeren Timer (jede Minute) statt
-   über den normalen 20-Minuten-Business-Check - eine Erinnerung "in
-   30 Minuten" soll nicht bis zu 20 Minuten zu spät kommen.
+async function getNotes() {
+  return getJarvisMetafield(
+    "notes"
+  );
+}
+
+async function saveNotes(notes) {
+  return saveJarvisMetafield(
+    "notes",
+    notes
+  );
+}
+
+
+/* =========================================================
+   REMINDERS
    ========================================================= */
 
 async function getReminders() {
-  const domain = process.env.SHOPIFY_STORE_DOMAIN;
-  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
-  const token = await getShopifyAccessToken();
-
-  const query = `
-    query JarvisReminders {
-      shop {
-        metafield(namespace: "jarvis", key: "reminders") {
-          value
-        }
-      }
-    }
-  `;
-
-  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
-    },
-    body: JSON.stringify({ query }),
-    signal: timeoutSignal(10000)
-  });
-
-  const data = await response.json();
-
-  if (!response.ok || data.errors) {
-    console.error("Shopify reminders read error:", data);
-    throw new Error("Erinnerungen konnten nicht gelesen werden.");
-  }
-
-  const raw = data.data?.shop?.metafield?.value;
-  if (!raw) return [];
-
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  return getJarvisMetafield(
+    "reminders"
+  );
 }
 
 async function saveReminders(reminders) {
-  const domain = process.env.SHOPIFY_STORE_DOMAIN;
-  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
-  const token = await getShopifyAccessToken();
-  const shopId = await getShopId();
-
-  const mutation = `
-    mutation JarvisSaveReminders($metafields: [MetafieldsSetInput!]!) {
-      metafieldsSet(metafields: $metafields) {
-        metafields { id }
-        userErrors { field message }
-      }
-    }
-  `;
-
-  const variables = {
-    metafields: [
-      {
-        ownerId: shopId,
-        namespace: "jarvis",
-        key: "reminders",
-        type: "json",
-        value: JSON.stringify(reminders)
-      }
-    ]
-  };
-
-  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
-    },
-    body: JSON.stringify({ query: mutation, variables }),
-    signal: timeoutSignal(10000)
-  });
-
-  const data = await response.json();
-  const userErrors = data.data?.metafieldsSet?.userErrors;
-
-  if (!response.ok || data.errors || (userErrors && userErrors.length)) {
-    console.error("Shopify reminders save error:", data);
-    throw new Error("Erinnerungen konnten nicht gespeichert werden.");
-  }
+  return saveJarvisMetafield(
+    "reminders",
+    reminders
+  );
 }
 
-/*
- * Erkennt, ob Mattl eine neue Erinnerung stellen möchte.
- */
-function isSetReminderIntent(text) {
-  const n = normalize(text);
-  return n.includes("erinnere mich") || n.includes("erinnerung") || n.includes("timer") || n.includes("wecker");
-}
-
-/*
- * Erkennt, ob Mattl seine aktiven Erinnerungen hören möchte.
- * Wichtig: MUSS vor isSetReminderIntent geprüft werden, sonst würde
- * z.B. "welche Erinnerungen habe ich" fälschlich als neue Erinnerung
- * interpretiert.
- */
-function isListRemindersIntent(text) {
-  const n = normalize(text);
-  const mentionsReminder = n.includes("erinnerung") || n.includes("timer");
-  const asksToHear =
-    n.includes("welche") ||
-    n.includes("was habe ich") ||
-    n.includes("zeig mir") ||
-    n.includes("noch aktiv") ||
-    n.includes("laufen");
-  return mentionsReminder && asksToHear;
-}
-
-/*
- * Lässt ChatGPT aus der gesprochenen Nachricht herauslesen, in wie
- * vielen Minuten erinnert werden soll und woran - flexibler und
- * zuverlässiger als ein selbst geschriebener Zeit-Parser für
- * Formulierungen wie "in einer halben Stunde" oder "um viertel nach drei".
- * Nutzt OpenAIs "Structured Outputs", damit garantiert gültiges JSON
- * zurückkommt statt möglicherweise unbrauchbarem Freitext.
- */
-async function extractReminderDetails(message) {
-  const nowBerlin = new Intl.DateTimeFormat("de-DE", {
-    timeZone: "Europe/Berlin",
-    dateStyle: "full",
-    timeStyle: "short"
-  }).format(new Date());
-
-  const body = {
-    model: process.env.OPENAI_TEXT_MODEL || "gpt-5-mini",
-    instructions:
-      `Du extrahierst aus einer gesprochenen deutschen Nachricht die Details für eine Erinnerung. ` +
-      `Aktuelle Zeit: ${nowBerlin} (Europe/Berlin). Berechne, in wie vielen Minuten ab jetzt erinnert ` +
-      `werden soll (ganze Zahl, mindestens 1). Wird eine Uhrzeit genannt (z.B. "um 15 Uhr"), rechne sie ` +
-      `in Minuten ab jetzt um - liegt die Uhrzeit schon in der Vergangenheit, nimm den nächsten Tag an. ` +
-      `Ist die Zeitangabe unklar, nimm 30 Minuten an. Fasse den Erinnerungstext kurz zusammen, ohne ` +
-      `"erinnere mich" oder ähnliche Auslöse-Phrasen.`,
-    input: message,
-    reasoning: { effort: "low" },
-    text: {
-      format: {
-        type: "json_schema",
-        name: "reminder_extraction",
-        strict: true,
-        schema: {
-          type: "object",
-          properties: {
-            minutes_from_now: { type: "number" },
-            reminder_text: { type: "string" }
-          },
-          required: ["minutes_from_now", "reminder_text"],
-          additionalProperties: false
-        }
-      }
-    },
-    store: false
-  };
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body),
-    signal: timeoutSignal(15000)
-  });
-
-  const raw = await response.text();
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    throw new Error("Ungültige Antwort bei der Erinnerungs-Erkennung.");
-  }
-
-  if (!response.ok) {
-    throw new Error(data?.error?.message || `HTTP ${response.status}`);
-  }
-
-  const outputText = extractResponseText(data);
-  let parsed;
-  try {
-    parsed = JSON.parse(outputText);
-  } catch {
-    throw new Error("Erinnerung konnte nicht verstanden werden.");
-  }
-
-  const minutes = Math.max(1, Math.round(Number(parsed.minutes_from_now) || 30));
-  const text = String(parsed.reminder_text || "").trim() || "Erinnerung";
-
-  return { minutes, text };
-}
-
-/*
- * Prüft, ob eine oder mehrere Erinnerungen fällig sind, markiert sie
- * als ausgelöst und speichert zurück. Alte, schon ausgelöste
- * Erinnerungen werden nach 24 Stunden aus der Liste entfernt, damit
- * sie nicht unbegrenzt wächst.
- */
 async function checkAndFireDueReminders() {
-  const reminders = await getReminders();
-  const now = Date.now();
+  const reminders =
+    await getReminders();
 
-  const due = reminders.filter(r => !r.fired && new Date(r.due_at).getTime() <= now);
-  if (!due.length) return [];
+  const now =
+    Date.now();
 
-  const dueIds = new Set(due.map(r => r.id));
-  const kept = reminders
-    .map(r => (dueIds.has(r.id) ? { ...r, fired: true, fired_at: new Date().toISOString() } : r))
-    .filter(r => {
-      if (!r.fired) return true;
-      const firedAt = r.fired_at ? new Date(r.fired_at).getTime() : now;
-      return now - firedAt < 24 * 60 * 60 * 1000;
-    });
+  const due =
+    reminders.filter(
+      reminder =>
+        !reminder.fired &&
+        new Date(
+          reminder.due_at
+        ).getTime() <= now
+    );
+
+  if (!due.length) {
+    return [];
+  }
+
+  const dueIds =
+    new Set(
+      due.map(
+        reminder =>
+          reminder.id
+      )
+    );
+
+  const kept =
+    reminders
+      .map(reminder =>
+        dueIds.has(
+          reminder.id
+        )
+          ? {
+              ...reminder,
+              fired: true,
+              fired_at:
+                new Date()
+                  .toISOString()
+            }
+          : reminder
+      )
+      .filter(reminder => {
+        if (!reminder.fired) {
+          return true;
+        }
+
+        const firedAt =
+          reminder.fired_at
+            ? new Date(
+                reminder.fired_at
+              ).getTime()
+            : now;
+
+        return (
+          now - firedAt <
+          24 *
+            60 *
+            60 *
+            1000
+        );
+      });
 
   await saveReminders(kept);
+
   return due;
 }
 
 
 /* =========================================================
-   E-MAIL-ENTWÜRFE
-   =========================================================
-
-   Anders als bei Notizen/Erinnerungen wird hier nicht der normale
-   LIVE-DATEN-Weg über createJarvisResponse genutzt: Ein vollständiger
-   E-Mail-Text (Betreff + Text) ist kein kurzer gesprochener Satz,
-   sondern etwas zum Anzeigen und Kopieren im HUD. Eigene, direkte
-   Anfrage mit "Structured Outputs" für zuverlässig getrennten
-   Betreff/Text statt Freitext-Geraten.
-
-   WICHTIG: JARVIS versendet hier NICHTS - Gmail ist nicht verbunden.
-   Der Entwurf erscheint im HUD zum manuellen Kopieren.
+   REMINDER CHECK
    ========================================================= */
 
-function isEmailDraftIntent(text) {
-  const n = normalize(text);
-  return (
-    n.includes("email") ||
-    n.includes("e-mail") ||
-    n.includes("mail schreiben") ||
-    n.includes("mail an") ||
-    n.includes("mail entwurf")
+app.post(
+  "/api/jarvis-reminder-check",
+  async (req, res) => {
+    try {
+      const due =
+        await checkAndFireDueReminders();
+
+      if (!due.length) {
+        return res.json({
+          ok: true,
+          hasNotice: false
+        });
+      }
+
+      const text =
+        due
+          .map(
+            reminder =>
+              reminder.text
+          )
+          .join("; ");
+
+      return res.json({
+        ok: true,
+        hasNotice: true,
+        text:
+          `Mattl, Erinnerung: ${text}.`
+      });
+
+    } catch (error) {
+      console.error(
+        "Reminder check:",
+        error
+      );
+
+      return res.json({
+        ok: true,
+        hasNotice: false
+      });
+    }
+  }
+);
+
+
+/* =========================================================
+   GMAIL
+   ========================================================= */
+
+let gmailTokenCache = {
+  token: null,
+  expiresAt: 0
+};
+
+function isGmailConfigured() {
+  return Boolean(
+    process.env.GOOGLE_CLIENT_ID &&
+    process.env.GOOGLE_CLIENT_SECRET &&
+    process.env.GOOGLE_REFRESH_TOKEN
   );
 }
 
-async function generateEmailDraft(message) {
-  const body = {
-    model: process.env.OPENAI_TEXT_MODEL || "gpt-5-mini",
-    instructions:
-      JARVIS_INSTRUCTIONS +
-      `
+async function getGmailAccessToken() {
+  if (
+    gmailTokenCache.token &&
+    Date.now() <
+      gmailTokenCache.expiresAt -
+        5 * 60 * 1000
+  ) {
+    return gmailTokenCache.token;
+  }
 
-Schreibe jetzt einen vollständigen E-Mail-Entwurf auf Deutsch, basierend
-auf Mattls Anweisung. Professionell, klar, in Mattls Namen für
-Druckelite24. "subject" ist die Betreffzeile, "body" ist der komplette
-Text inklusive Anrede und Grußformel (mit "Mattl" als Absender, ohne
-Nachname/Firmendaten, die kennt Mattl selbst am besten und ergänzt sie
-notfalls).`,
-    input: message,
-    reasoning: { effort: "low" },
-    text: {
-      format: {
-        type: "json_schema",
-        name: "email_draft",
-        strict: true,
-        schema: {
-          type: "object",
-          properties: {
-            subject: { type: "string" },
-            body: { type: "string" }
-          },
-          required: ["subject", "body"],
-          additionalProperties: false
-        }
-      }
-    },
-    store: false
+  if (!isGmailConfigured()) {
+    throw new Error(
+      "Gmail ist nicht vollständig konfiguriert."
+    );
+  }
+
+  const params =
+    new URLSearchParams({
+      client_id:
+        process.env.GOOGLE_CLIENT_ID,
+      client_secret:
+        process.env.GOOGLE_CLIENT_SECRET,
+      refresh_token:
+        process.env.GOOGLE_REFRESH_TOKEN,
+      grant_type:
+        "refresh_token"
+    });
+
+  const response = await fetch(
+    "https://oauth2.googleapis.com/token",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type":
+          "application/x-www-form-urlencoded"
+      },
+      body: params,
+      signal: timeoutSignal(10000)
+    }
+  );
+
+  const data =
+    await response.json();
+
+  if (
+    !response.ok ||
+    !data.access_token
+  ) {
+    throw new Error(
+      "Gmail-Authentifizierung fehlgeschlagen."
+    );
+  }
+
+  gmailTokenCache = {
+    token:
+      data.access_token,
+    expiresAt:
+      Date.now() +
+      Number(
+        data.expires_in ||
+        3600
+      ) *
+        1000
   };
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body),
-    signal: timeoutSignal(30000)
-  });
+  return data.access_token;
+}
 
-  const raw = await response.text();
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    throw new Error("Ungültige Antwort beim Erstellen des E-Mail-Entwurfs.");
+
+async function getNewEmails() {
+  const token =
+    await getGmailAccessToken();
+
+  const listResponse =
+    await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread&maxResults=10",
+      {
+        headers: {
+          Authorization:
+            `Bearer ${token}`
+        },
+        signal:
+          timeoutSignal(10000)
+      }
+    );
+
+  const listData =
+    await listResponse.json();
+
+  if (!listResponse.ok) {
+    throw new Error(
+      "E-Mails konnten nicht gelesen werden."
+    );
   }
 
-  if (!response.ok) {
-    throw new Error(data?.error?.message || `HTTP ${response.status}`);
+  const refs =
+    listData.messages || [];
+
+  if (!refs.length) {
+    return [];
   }
 
-  const outputText = extractResponseText(data);
-  let parsed;
-  try {
-    parsed = JSON.parse(outputText);
-  } catch {
-    throw new Error("E-Mail-Entwurf konnte nicht erstellt werden.");
+  const emails = [];
+
+  for (const ref of refs) {
+    try {
+      const response =
+        await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${ref.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`
+            },
+            signal:
+              timeoutSignal(10000)
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const headers =
+        data.payload?.headers ||
+        [];
+
+      const subject =
+        headers.find(
+          h =>
+            h.name === "Subject"
+        )?.value ||
+        "(kein Betreff)";
+
+      const from =
+        headers.find(
+          h =>
+            h.name === "From"
+        )?.value ||
+        "unbekannt";
+
+      emails.push({
+        id: ref.id,
+        subject,
+        from,
+        snippet:
+          data.snippet || ""
+      });
+
+    } catch (error) {
+      console.warn(
+        "Gmail Einzelmail:",
+        error
+      );
+    }
   }
 
-  const subject = String(parsed.subject || "").trim() || "Ohne Betreff";
-  const draftBody = String(parsed.body || "").trim();
-
-  if (!draftBody) {
-    throw new Error("E-Mail-Entwurf war leer.");
-  }
-
-  return { subject, body: draftBody };
+  return emails;
 }
 
 
 /* =========================================================
-   PROAKTIVER HINTERGRUND-CHECK
-   =========================================================
-
-   Wird periodisch von app.js aufgerufen (nicht durch eine Frage von
-   Mattl ausgelöst). Meldet nur dann etwas zurück, wenn es tatsächlich
-   etwas Neues oder Ungelöstes gibt - sonst würde JARVIS bei jedem
-   Check dieselbe Sache wiederholen, was schnell nervt.
-
-   Aktuell geprüft: unbearbeitete Shopify-Bestellungen und ungewöhnlich
-   große Einzelbestellungen. E-Mails und Meta-Ads-Warnungen können hier
-   noch nicht mit rein - Gmail ist bei Mattl noch nicht verbunden
-   (Phase 2, OAuth fehlt noch), und für Meta-Ads/Windsor.ai bräuchte
-   der Server einen eigenen API-Zugang. Sobald das steht, kann hier
-   einfach ein weiterer Check ergänzt werden.
+   PROACTIVE CHECK
    ========================================================= */
 
-let lastProactiveNotice = { unfulfilledCount: null, notifiedAt: 0 };
-
-// Wie lange JARVIS nach einer Meldung wartet, bevor er dieselbe Anzahl
-// noch einmal erwähnt - auch wenn sie sich nicht geändert hat.
-const PROACTIVE_REMINDER_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 Stunden
-
-/*
- * Merkt sich, an welchem Tag zuletzt ein Morgen-Briefing gegeben wurde -
- * so gibt es davon höchstens eines pro Tag, unabhängig davon, wie oft
- * der Hintergrund-Check in der Zeit läuft.
- */
 let lastBriefingDate = null;
 
-// Ab diesem Betrag gilt eine einzelne Bestellung als "groß genug", um
-// von sich aus erwähnt zu werden. Über die Umgebungsvariable
-// LARGE_ORDER_THRESHOLD_EUR in Render anpassbar, ohne Code-Änderung.
-const LARGE_ORDER_THRESHOLD_EUR = Number(process.env.LARGE_ORDER_THRESHOLD_EUR || 300);
+let lastProactiveNotice = {
+  unfulfilledCount: null,
+  notifiedAt: 0
+};
 
-// Merkt sich, welche großen Bestellungen schon gemeldet wurden, damit
-// dieselbe nicht bei jedem Check erneut erwähnt wird.
-const notifiedLargeOrders = new Set();
+const PROACTIVE_REMINDER_COOLDOWN_MS =
+  2 * 60 * 60 * 1000;
 
-// Merkt sich, welche E-Mails schon gemeldet wurden, damit dieselbe
-// nicht bei jedem Check erneut erwähnt wird.
-const notifiedEmailIds = new Set();
+const notifiedEmailIds =
+  new Set();
 
-async function getLargestOrderToday() {
-  const domain = process.env.SHOPIFY_STORE_DOMAIN;
-  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
-  const token = await getShopifyAccessToken();
-  const { start, end } = getPeriodDates("today");
-  const startDate = new Date(start);
-  const endDate = new Date(end);
 
-  const query = `
-    query JarvisTodayOrdersForLargest {
-      orders(first: 100, sortKey: CREATED_AT, reverse: true) {
-        nodes {
-          name
-          createdAt
-          cancelledAt
-          currentTotalPriceSet { shopMoney { amount currencyCode } }
-        }
-      }
-    }
-  `;
+app.post(
+  "/api/jarvis-checkin",
+  async (req, res) => {
+    try {
+      const today =
+        berlinDate();
 
-  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token
-    },
-    body: JSON.stringify({ query }),
-    signal: timeoutSignal(10000)
-  });
+      const hour =
+        getBerlinHour();
 
-  const data = await response.json();
+      const morning =
+        hour >= 5 &&
+        hour < 11;
 
-  if (!response.ok || data.errors) {
-    console.error("Shopify largest order error:", data);
-    throw new Error("Bestellungen konnten nicht gelesen werden.");
-  }
 
-  const orders = (data.data?.orders?.nodes || []).filter(order => {
-    if (order.cancelledAt) return false;
-    const created = new Date(order.createdAt);
-    return created >= startDate && created < endDate;
-  });
+      /* MORNING BRIEFING */
 
-  let largest = null;
-  for (const order of orders) {
-    const amount = Number(order.currentTotalPriceSet?.shopMoney?.amount || 0);
-    if (!largest || amount > largest.amount) {
-      largest = {
-        name: order.name,
-        amount,
-        currency: order.currentTotalPriceSet?.shopMoney?.currencyCode || "EUR"
-      };
-    }
-  }
+      if (
+        today !==
+          lastBriefingDate &&
+        morning
+      ) {
+        try {
+          const yesterday =
+            await getShopifySummary(
+              "yesterday"
+            );
 
-  return largest;
-}
+          const openOrders =
+            await getShopifyOpenOrders();
 
-async function buildMorningBriefingFacts() {
-  const [yesterday, openOrders, weather, emails] = await Promise.allSettled([
-    getShopifySummary("yesterday"),
-    getShopifyOpenOrders(),
-    getWeatherData("Ludwigshafen am Rhein", "today"),
-    isGmailConfigured() ? getNewEmails() : Promise.resolve([])
-  ]);
+          const message =
+            `[SYSTEM-HINWEIS] Morgen-Briefing: Gestern ${yesterday.revenue} ${yesterday.currency} Umsatz bei ${yesterday.orders} Bestellungen. Aktuell ${openOrders.count} unbearbeitete Bestellungen. Gib Mattl ein kurzes Morgen-Briefing.`;
 
-  const facts = [];
+          const result =
+            await createJarvisResponse({
+              message
+            });
 
-  if (yesterday.status === "fulfilled") {
-    facts.push(
-      `Umsatz gestern: ${yesterday.value.revenue} ${yesterday.value.currency} bei ${yesterday.value.orders} Bestellungen.`
-    );
-  }
-
-  if (openOrders.status === "fulfilled") {
-    facts.push(`Aktuell unbearbeitete Bestellungen: ${openOrders.value.count}.`);
-  }
-
-  if (weather.status === "fulfilled" && weather.value?.current) {
-    facts.push(
-      `Wetter heute in Ludwigshafen: aktuell ${Math.round(weather.value.current.temperature_2m)} Grad, ` +
-      `Höchstwert ${Math.round(weather.value.forecast?.max_temperature ?? weather.value.current.temperature_2m)} Grad.`
-    );
-  }
-
-  if (emails.status === "fulfilled" && emails.value.length) {
-    // Direkt hier schon als gemeldet markieren, damit der normale
-    // Mail-Check danach nicht dieselben Mails nochmal erwähnt.
-    for (const e of emails.value) notifiedEmailIds.add(e.id);
-
-    const offerCount = emails.value.filter(isOfferInquiryEmail).length;
-    facts.push(
-      `Ungelesene E-Mails: ${emails.value.length}` +
-      (offerCount ? `, davon ${offerCount} klingt/klingen nach Angebots-/Preisanfragen.` : ".")
-    );
-  }
-
-  return facts;
-}
-
-app.post("/api/jarvis-checkin", async (req, res) => {
-  try {
-    const previousResponseId = String(req.body?.previous_response_id || "").trim() || null;
-
-    // MORGEN-BRIEFING: höchstens einmal pro Tag, nur im Zeitfenster
-    // 5-11 Uhr - der erste Kontakt an einem neuen Tag.
-    const today = berlinDate();
-    const hour = getBerlinHour();
-    const isMorningWindow = hour >= 5 && hour < 11;
-
-    if (today !== lastBriefingDate && isMorningWindow) {
-      lastBriefingDate = today;
-
-      const facts = await buildMorningBriefingFacts();
-
-      if (facts.length) {
-        const briefingMessage =
-          `[SYSTEM-HINWEIS - nicht von Mattl gesprochen] Es ist der erste Kontakt heute Morgen. ` +
-          `Gib Mattl ein kurzes Morgen-Briefing (2-4 Sätze, locker, in deinem gewohnten Stil) ` +
-          `basierend auf diesen Fakten: ${facts.join(" ")}`;
-
-        const briefingResult = await createJarvisResponse({
-          message: briefingMessage,
-          previousResponseId
-        });
-
-        return res.json({
-          ok: true,
-          hasNotice: true,
-          text: briefingResult.text,
-          response_id: briefingResult.response_id
-        });
-      }
-    }
-
-    // NEUE E-MAILS: einmalig pro Mail melden, mit besonderer Betonung
-    // bei Angebots-/Preisanfragen. Vorrang vor der großen Bestellung
-    // und der Bestellungs-Erinnerung weiter unten, weil eine Kunden-
-    // anfrage per Mail oft zeitkritisch ist. Läuft komplett ins Leere
-    // (kein Fehler), solange Gmail nicht konfiguriert ist.
-    if (isGmailConfigured()) {
-      try {
-        const emails = await getNewEmails();
-        const unnotified = emails.filter(e => !notifiedEmailIds.has(e.id));
-
-        if (unnotified.length) {
-          for (const e of unnotified) notifiedEmailIds.add(e.id);
-
-          const offerInquiries = unnotified.filter(isOfferInquiryEmail);
-          const emailList = unnotified.map(e => `von ${e.from} mit Betreff "${e.subject}"`).join("; ");
-
-          const emailMessage =
-            `[SYSTEM-HINWEIS - nicht von Mattl gesprochen] Automatischer Hintergrund-Check: ` +
-            `${unnotified.length} neue E-Mail(s) sind angekommen: ${emailList}. ` +
-            (offerInquiries.length
-              ? `Wichtig: ${offerInquiries.length} davon klingt/klingen nach einer Angebots- oder ` +
-                `Preisanfrage - weise Mattl besonders darauf hin. `
-              : "") +
-            `Sprich Mattl von dir aus kurz darauf an.`;
-
-          const emailResult = await createJarvisResponse({ message: emailMessage, previousResponseId });
+          lastBriefingDate =
+            today;
 
           return res.json({
             ok: true,
             hasNotice: true,
-            text: emailResult.text,
-            response_id: emailResult.response_id
+            text: result.text
           });
-        }
-      } catch (error) {
-        console.error("Proaktiver Check - Gmail-Fehler:", error);
-        // still bleiben, nicht mit einer Fehlermeldung stören.
-      }
-    }
 
-    // GROSSE BESTELLUNG: einmalig pro Bestellung melden, sobald sie
-    // den Schwellenwert überschreitet - Vorrang vor der routinemäßigen
-    // Erinnerung an offene Bestellungen weiter unten, weil das die
-    // interessantere Nachricht ist.
-    try {
-      const largest = await getLargestOrderToday();
+        } catch (error) {
+          console.error(
+            "Morning Briefing:",
+            error
+          );
+        }
+      }
+
+
+      /* EMAILS */
+
+      if (isGmailConfigured()) {
+        try {
+          const emails =
+            await getNewEmails();
+
+          const newEmails =
+            emails.filter(
+              email =>
+                !notifiedEmailIds.has(
+                  email.id
+                )
+            );
+
+          if (newEmails.length) {
+            for (
+              const email of
+              newEmails
+            ) {
+              notifiedEmailIds.add(
+                email.id
+              );
+            }
+
+            const list =
+              newEmails
+                .map(
+                  email =>
+                    `${email.from}, Betreff ${email.subject}`
+                )
+                .join("; ");
+
+            const result =
+              await createJarvisResponse({
+                message:
+                  `[SYSTEM-HINWEIS] Es gibt ${newEmails.length} neue ungelesene E-Mails: ${list}. Weise Mattl kurz darauf hin.`
+              });
+
+            return res.json({
+              ok: true,
+              hasNotice: true,
+              text: result.text
+            });
+          }
+
+        } catch (error) {
+          console.error(
+            "Gmail check:",
+            error
+          );
+        }
+      }
+
+
+      /* OPEN ORDERS */
+
+      const openOrders =
+        await getShopifyOpenOrders();
+
+      if (!openOrders.count) {
+        lastProactiveNotice = {
+          unfulfilledCount: 0,
+          notifiedAt:
+            Date.now()
+        };
+
+        return res.json({
+          ok: true,
+          hasNotice: false
+        });
+      }
+
+      const changed =
+        lastProactiveNotice
+          .unfulfilledCount !==
+        openOrders.count;
+
+      const cooldownElapsed =
+        Date.now() -
+          lastProactiveNotice
+            .notifiedAt >
+        PROACTIVE_REMINDER_COOLDOWN_MS;
 
       if (
-        largest &&
-        largest.amount >= LARGE_ORDER_THRESHOLD_EUR &&
-        !notifiedLargeOrders.has(largest.name)
+        !changed &&
+        !cooldownElapsed
       ) {
-        notifiedLargeOrders.add(largest.name);
-
-        const largeOrderMessage =
-          `[SYSTEM-HINWEIS - nicht von Mattl gesprochen] Automatischer Hintergrund-Check: ` +
-          `Es ist gerade eine ungewöhnlich große Bestellung reingekommen - ${largest.name} über ` +
-          `${largest.amount} ${largest.currency}. Sprich Mattl von dir aus kurz und locker darauf ` +
-          `an, das ist eine gute Nachricht.`;
-
-        const largeOrderResult = await createJarvisResponse({
-          message: largeOrderMessage,
-          previousResponseId
-        });
-
         return res.json({
           ok: true,
-          hasNotice: true,
-          text: largeOrderResult.text,
-          response_id: largeOrderResult.response_id
+          hasNotice: false
         });
       }
-    } catch (error) {
-      console.error("Proaktiver Check - große Bestellung Fehler:", error);
-      // Dieser Check schlägt fehl -> einfach weiter zum nächsten Check,
-      // nicht mit einer Fehlermeldung stören.
-    }
 
-    // NORMALER CHECK: offene/unbearbeitete Bestellungen.
-    let openOrders;
-    try {
-      openOrders = await getShopifyOpenOrders();
-    } catch (error) {
-      console.error("Proaktiver Check - Shopify-Fehler:", error);
-      // Hintergrund-Check schlägt fehl -> einfach still bleiben,
-      // nicht mit einer Fehlermeldung stören.
-      return res.json({ ok: true, hasNotice: false });
-    }
+      lastProactiveNotice = {
+        unfulfilledCount:
+          openOrders.count,
+        notifiedAt:
+          Date.now()
+      };
 
-    if (!openOrders.count) {
-      lastProactiveNotice = { unfulfilledCount: 0, notifiedAt: Date.now() };
-      return res.json({ ok: true, hasNotice: false });
-    }
-
-    const countChanged = lastProactiveNotice.unfulfilledCount !== openOrders.count;
-    const cooldownElapsed = Date.now() - lastProactiveNotice.notifiedAt > PROACTIVE_REMINDER_COOLDOWN_MS;
-
-    if (!countChanged && !cooldownElapsed) {
-      return res.json({ ok: true, hasNotice: false });
-    }
-
-    lastProactiveNotice = { unfulfilledCount: openOrders.count, notifiedAt: Date.now() };
-
-    const oldestInfo = openOrders.oldest_order_created_at
-      ? `, die älteste (${openOrders.oldest_order_name}) vom ${new Date(openOrders.oldest_order_created_at).toLocaleDateString("de-DE")}`
-      : "";
-
-    const proactiveMessage =
-      `[SYSTEM-HINWEIS - nicht von Mattl gesprochen] Automatischer Hintergrund-Check: ` +
-      `Aktuell gibt es ${openOrders.count} unbearbeitete Bestellungen bei Druckelite24${oldestInfo}. ` +
-      `Sprich Mattl von dir aus kurz darauf an.`;
-
-    const result = await createJarvisResponse({ message: proactiveMessage, previousResponseId });
-
-    return res.json({ ok: true, hasNotice: true, text: result.text, response_id: result.response_id });
-  } catch (error) {
-    console.error("Proactive checkin error:", error);
-    return res.json({ ok: true, hasNotice: false });
-  }
-});
-
-
-/* =========================================================
-   ERINNERUNGS-CHECK
-   =========================================================
-
-   Eigener, leichtgewichtiger Endpunkt - wird von app.js in einem
-   eigenen, häufigeren Rhythmus (jede Minute) aufgerufen, getrennt vom
-   schwereren 20-Minuten-Business-Check oben. Prüft nur, ob eine
-   gestellte Erinnerung fällig ist.
-   ========================================================= */
-
-app.post("/api/jarvis-reminder-check", async (req, res) => {
-  try {
-    const previousResponseId = String(req.body?.previous_response_id || "").trim() || null;
-
-    let due;
-    try {
-      due = await checkAndFireDueReminders();
-    } catch (error) {
-      console.error("Reminder check error:", error);
-      return res.json({ ok: true, hasNotice: false });
-    }
-
-    if (!due.length) {
-      return res.json({ ok: true, hasNotice: false });
-    }
-
-    const remindersText = due.map(r => r.text).join("; ");
-    const message =
-      `[SYSTEM-HINWEIS - nicht von Mattl gesprochen] Automatische Erinnerung, die Mattl sich selbst ` +
-      `gestellt hat, ist jetzt fällig: ${remindersText}. Sprich ihn kurz und klar darauf an.`;
-
-    const result = await createJarvisResponse({ message, previousResponseId });
-
-    return res.json({ ok: true, hasNotice: true, text: result.text, response_id: result.response_id });
-  } catch (error) {
-    console.error("Reminder check endpoint error:", error);
-    return res.json({ ok: true, hasNotice: false });
-  }
-});
-
-
-/* =========================================================
-   WEATHER
-   ========================================================= */
-
-async function getWeatherData(location, day = "today") {
-  let placeName = String(location || "").trim();
-  if (!placeName) placeName = "Ludwigshafen am Rhein";
-
-  if (normalize(placeName).includes("ludwigshafen")) {
-    placeName = "Ludwigshafen am Rhein";
-  }
-
-  const geo = new URL("https://geocoding-api.open-meteo.com/v1/search");
-  geo.searchParams.set("name", placeName);
-  geo.searchParams.set("count", "5");
-  geo.searchParams.set("language", "de");
-  geo.searchParams.set("format", "json");
-
-  const geoResponse = await fetch(geo, { signal: timeoutSignal(8000) });
-  if (!geoResponse.ok) {
-    throw new Error("Geocoding-Dienst ist nicht erreichbar.");
-  }
-
-  const geoData = await geoResponse.json();
-  const candidates = geoData.results || [];
-
-  if (!candidates.length) {
-    throw new Error(`Ort ${placeName} wurde nicht gefunden.`);
-  }
-
-  let place = null;
-
-  if (normalize(placeName).includes("ludwigshafen")) {
-    place = candidates.find(
-      item => item.country_code === "DE" && String(item.admin1 || "").toLowerCase().includes("rheinland")
-    );
-  }
-
-  place = place || candidates.find(item => item.country_code === "DE") || candidates[0];
-
-  const weather = new URL("https://api.open-meteo.com/v1/forecast");
-  weather.searchParams.set("latitude", String(place.latitude));
-  weather.searchParams.set("longitude", String(place.longitude));
-  weather.searchParams.set(
-    "current",
-    "temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m"
-  );
-  weather.searchParams.set(
-    "daily",
-    "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
-  );
-  weather.searchParams.set("timezone", "auto");
-  weather.searchParams.set("forecast_days", "2");
-
-  const response = await fetch(weather, { signal: timeoutSignal(8000) });
-  if (!response.ok) {
-    throw new Error("Wetterdienst ist nicht erreichbar.");
-  }
-
-  const data = await response.json();
-  const index = day === "tomorrow" ? 1 : 0;
-
-  return {
-    source: "Open-Meteo",
-    requested_day: day,
-    location: {
-      name: place.name,
-      region: place.admin1 || "",
-      country: place.country || ""
-    },
-    current: day === "today" ? data.current : null,
-    forecast: {
-      date: data.daily?.time?.[index],
-      weather_code: data.daily?.weather_code?.[index],
-      max_temperature: data.daily?.temperature_2m_max?.[index],
-      min_temperature: data.daily?.temperature_2m_min?.[index],
-      precipitation_probability: data.daily?.precipitation_probability_max?.[index]
-    }
-  };
-}
-
-app.post("/api/weather", async (req, res) => {
-  try {
-    const location = String(req.body?.location || "Ludwigshafen am Rhein");
-    const day = req.body?.day === "tomorrow" ? "tomorrow" : "today";
-    return res.json(await getWeatherData(location, day));
-  } catch (error) {
-    console.error("Weather error:", error);
-    return res.status(500).json({ error: error.message || "Wetterabfrage fehlgeschlagen." });
-  }
-});
-
-
-/* =========================================================
-   LIVE-DATA INTENT HELPERS
-   ========================================================= */
-
-function isShopifyQuestion(text) {
-  const n = normalize(text);
-  const keywords = [
-    "shopify",
-    "mein shop",
-    "unser shop",
-    "druckelite24",
-    "bestellung",
-    "bestellungen",
-    "umsatz",
-    "verkauf",
-    "verkäufe",
-    "bestellwert"
-  ];
-  return keywords.some(word => n.includes(word));
-}
-
-function isWeatherQuestion(text) {
-  const n = normalize(text);
-  return (
-    n.includes("wetter") ||
-    n.includes("temperatur") ||
-    n.includes("regen") ||
-    n.includes("regnet") ||
-    n.includes("wind")
-  );
-}
-
-/*
- * Websuche-Steuerung läuft jetzt umgekehrt direkt in
- * createJarvisResponse (isFastPathQuestion) - Websuche ist immer
- * verfügbar, außer bei Shopify/Wetter/System-Hinweisen. Diese
- * Stichwort-Liste wurde dadurch überflüssig und entfernt.
- */
-
-function getShopifyPeriodFromText(text) {
-  return normalize(text).includes("gestern") ? "yesterday" : "today";
-}
-
-function getWeatherDayFromText(text) {
-  return normalize(text).includes("morgen") ? "tomorrow" : "today";
-}
-
-
-/* =========================================================
-   JARVIS CHAT ENDPOINT
-   ========================================================= */
-
-app.post("/api/jarvis-chat", async (req, res) => {
-  try {
-    const message = String(req.body?.message || "").trim();
-    const previousResponseId = String(req.body?.previous_response_id || "").trim() || null;
-
-    if (!message) {
-      return res.status(400).json({ ok: false, error: "Nachricht fehlt." });
-    }
-
-    console.log("JARVIS question:", message);
-
-    // E-MAIL-ENTWURF: eigener Weg, der createJarvisResponse komplett
-    // umgeht - ein vollständiger E-Mail-Text ist kein kurzer
-    // gesprochener Satz, sondern etwas zum Anzeigen/Kopieren im HUD.
-    if (isEmailDraftIntent(message)) {
-      try {
-        const draft = await generateEmailDraft(message);
-
-        console.log("JARVIS E-Mail-Entwurf erstellt:", draft.subject);
-
-        return res.json({
-          ok: true,
-          text: `Ich hab dir einen E-Mail-Entwurf geschrieben - Betreff: ${draft.subject}. Du findest den kompletten Text im HUD zum Kopieren.`,
-          response_id: previousResponseId,
-          draft: { type: "email", subject: draft.subject, body: draft.body }
+      const result =
+        await createJarvisResponse({
+          message:
+            `[SYSTEM-HINWEIS] Bei Druckelite24 gibt es aktuell ${openOrders.count} unbearbeitete Bestellungen. Sprich Mattl kurz darauf an.`
         });
-      } catch (error) {
-        console.error("E-Mail-Entwurf Fehler:", error);
-        return res.json({
-          ok: true,
-          text: "Der E-Mail-Entwurf hat gerade nicht geklappt. Magst du es nochmal versuchen?",
-          response_id: previousResponseId
-        });
-      }
-    }
 
-    let liveData = null;
+      return res.json({
+        ok: true,
+        hasNotice: true,
+        text: result.text
+      });
 
-    if (isEmailCheckIntent(message)) {
-      try {
-        const emails = await getNewEmails();
-        liveData = { type: "emails_list", data: { emails } };
-      } catch (error) {
-        liveData = { type: "emails_list", error: error.message || "E-Mails konnten nicht gelesen werden." };
-      }
-    } else if (isListRemindersIntent(message)) {
-      try {
-        const reminders = await getReminders();
-        const activeReminders = reminders.filter(r => !r.fired);
-        liveData = { type: "reminders_list", data: { reminders: activeReminders } };
-      } catch (error) {
-        liveData = { type: "reminders_list", error: error.message || "Erinnerungen konnten nicht gelesen werden." };
-      }
-    } else if (isSetReminderIntent(message)) {
-      try {
-        const { minutes, text } = await extractReminderDetails(message);
-        const reminders = await getReminders();
-        const dueAt = new Date(Date.now() + minutes * 60000).toISOString();
-        reminders.push({ id: `${Date.now()}`, text, due_at: dueAt, fired: false });
-        await saveReminders(reminders);
-        liveData = { type: "reminder_set", data: { text, minutes, due_at: dueAt } };
-      } catch (error) {
-        liveData = { type: "reminder_set", error: error.message || "Erinnerung konnte nicht gespeichert werden." };
-      }
-    } else if (isSaveNoteIntent(message)) {
-      try {
-        const noteText = extractNoteContent(message);
-        const notes = await getNotes();
-        notes.push({ text: noteText, created_at: new Date().toISOString() });
-        await saveNotes(notes);
-        liveData = { type: "note_saved", data: { text: noteText, total_notes: notes.length } };
-      } catch (error) {
-        liveData = { type: "note_saved", error: error.message || "Notiz konnte nicht gespeichert werden." };
-      }
-    } else if (isReadNotesIntent(message)) {
-      try {
-        const notes = await getNotes();
-        liveData = { type: "notes_list", data: { notes } };
-      } catch (error) {
-        liveData = { type: "notes_list", error: error.message || "Notizen konnten nicht gelesen werden." };
-      }
-    } else if (isShopifyQuestion(message)) {
-      try {
-        const period = getShopifyPeriodFromText(message);
-        liveData = { type: "shopify", data: await getShopifySummary(period) };
-      } catch (error) {
-        liveData = { type: "shopify", error: error.message || "Shopify-Daten konnten nicht geladen werden." };
-      }
-    } else if (isWeatherQuestion(message)) {
-      try {
-        const day = getWeatherDayFromText(message);
-        liveData = { type: "weather", data: await getWeatherData("Ludwigshafen am Rhein", day) };
-      } catch (error) {
-        liveData = { type: "weather", error: error.message || "Wetterdaten konnten nicht geladen werden." };
-      }
-    }
+    } catch (error) {
+      console.error(
+        "Proactive check:",
+        error
+      );
 
-    const result = await createJarvisResponse({ message, previousResponseId, liveData });
-
-    console.log("JARVIS answer:", result.text);
-
-    return res.json({ ok: true, text: result.text, response_id: result.response_id });
-  } catch (error) {
-    console.error("JARVIS chat error:", error);
-    return res.status(500).json({
-      ok: false,
-      error:
-        error.name === "TimeoutError"
-          ? "Die Antwort hat zu lange gedauert."
-          : error.message || "JARVIS konnte nicht antworten."
-    });
-  }
-});
-
-
-/* =========================================================
-   SPRACHAUSGABE · ELEVENLABS
-   =========================================================
-
-   Kurzer Ausflug zu OpenAI TTS gemacht (V8.1), um Kosten zu sparen -
-   aber die Stimme klang bei deutscher Sprache mit Akzent und teils
-   falscher Aussprache, nicht akzeptabel für den Alltagseinsatz.
-   Zurück zu ElevenLabs (V8.2), diesmal auf einem bezahlten Plan
-   (Starter, ca. 5-6 €/Monat) statt dem kostenlosen Kontingent - damit
-   ist auch das Problem mit den aufgebrauchten Gratis-Zeichen und die
-   fehlende kommerzielle Nutzungserlaubnis gelöst.
-
-   Braucht in Render wieder die zwei Umgebungsvariablen:
-   ELEVENLABS_API_KEY und ELEVENLABS_VOICE_ID.
-   ========================================================= */
-
-app.post("/api/elevenlabs-tts", async (req, res) => {
-  try {
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    const voiceId = process.env.ELEVENLABS_VOICE_ID;
-
-    if (!apiKey || !voiceId) {
-      return res.status(500).json({ error: "ElevenLabs ist nicht vollständig konfiguriert." });
-    }
-
-    const text = String(req.body?.text || "").trim();
-    if (!text) {
-      return res.status(400).json({ error: "Text fehlt." });
-    }
-
-    // FIX: erst bereinigen (Symbole/Abkürzungen ausschreiben),
-    // dann erst an einer Wortgrenze abschneiden - nie mehr
-    // stur mitten im Wort.
-    const safeText = truncateForSpeech(sanitizeForSpeech(text), 3000);
-
-    const elevenUrl = new URL(
-      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream`
-    );
-    elevenUrl.searchParams.set("output_format", "mp3_44100_128");
-
-    const ttsStart = Date.now();
-
-    const response = await fetch(elevenUrl, {
-      method: "POST",
-      headers: {
-        "xi-api-key": apiKey,
-        "Content-Type": "application/json",
-        Accept: "audio/mpeg"
-      },
-      body: JSON.stringify({
-        text: safeText,
-
-        // "eleven_turbo_v2_5": guter Mittelweg zwischen Tempo und
-        // sauberer deutscher Aussprache. Bekannte Problemwörter (z.B.
-        // Druckelite24) werden zusätzlich über PRONUNCIATION_FIXES
-        // oben korrigiert.
-        model_id: "eleven_turbo_v2_5",
-
-        voice_settings: {
-          stability: 0.58,
-          similarity_boost: 0.84,
-          style: 0.12,
-          use_speaker_boost: true,
-          speed: 0.96
-        }
-      }),
-      signal: timeoutSignal(25000)
-    });
-
-    console.log(`[TIMING] ElevenLabs - Zeit bis Antwort-Header (${safeText.length} Zeichen): ${Date.now() - ttsStart}ms`);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("ElevenLabs error:", response.status, errorText);
-      return res.status(response.status).json({ error: "ElevenLabs konnte die Stimme nicht erzeugen." });
-    }
-
-    if (!response.body) {
-      return res.status(502).json({ error: "ElevenLabs hat keinen Audiostream geliefert." });
-    }
-
-    res.status(200);
-    res.setHeader("Content-Type", response.headers.get("content-type") || "audio/mpeg");
-    res.setHeader("Cache-Control", "no-store");
-
-    const reader = response.body.getReader();
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (value) res.write(Buffer.from(value));
-      }
-      res.end();
-      console.log(`[TIMING] ElevenLabs - komplett fertig gestreamt: ${Date.now() - ttsStart}ms`);
-    } catch (streamError) {
-      console.error("ElevenLabs stream error:", streamError);
-      try { res.end(); } catch {}
-    }
-  } catch (error) {
-    console.error("ElevenLabs endpoint error:", error);
-
-    if (!res.headersSent) {
-      return res.status(500).json({
-        error:
-          error.name === "TimeoutError"
-            ? "ElevenLabs hat zu lange gebraucht."
-            : "ElevenLabs TTS konnte nicht gestartet werden."
+      return res.json({
+        ok: true,
+        hasNotice: false
       });
     }
-
-    try { res.end(); } catch {}
   }
-});
+);
 
 
 /* =========================================================
-   GMAIL PLACEHOLDER
+   LEGACY CHAT
+   Bleibt noch vorhanden.
    ========================================================= */
 
-app.post("/api/important-emails", (req, res) => {
-  return res.status(503).json({ configured: false, message: "Mattl, Gmail ist noch nicht verbunden." });
-});
+app.post(
+  "/api/jarvis-chat",
+  async (req, res) => {
+    try {
+      const message =
+        String(
+          req.body?.message ||
+          ""
+        ).trim();
 
+      if (!message) {
+        return res
+          .status(400)
+          .json({
+            ok: false,
+            error:
+              "Nachricht fehlt."
+          });
+      }
 
-/* =========================================================
-   CALENDAR PLACEHOLDER
-   ========================================================= */
+      const result =
+        await createJarvisResponse({
+          message
+        });
 
-app.post("/api/calendar-today", (req, res) => {
-  return res.status(503).json({
-    configured: false,
-    message: "Mattl, Google Kalender ist noch nicht verbunden."
-  });
-});
+      return res.json({
+        ok: true,
+        text: result.text,
+        response_id:
+          result.response_id
+      });
+
+    } catch (error) {
+      console.error(
+        "Legacy chat:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          ok: false,
+          error:
+            error.message ||
+            "JARVIS konnte nicht antworten."
+        });
+    }
+  }
+);
 
 
 /* =========================================================
    HEALTH
    ========================================================= */
 
-app.get("/health", (req, res) => {
-  return res.json({
-    ok: true,
-    version: `JARVIS ${JARVIS_VERSION}`,
-    architecture: "mediarecorder -> transcription -> responses -> elevenlabs",
-    realtime: false,
-    cedar: false,
-    transcription_model: process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe",
-    text_model: process.env.OPENAI_TEXT_MODEL || "gpt-5-mini",
-    reasoning_effort: "minimal (low bei Websuche)",
-    max_output_tokens: 1200,
-    speech_output: "elevenlabs",
-    elevenlabs_model: "eleven_turbo_v2_5",
-    language: "de",
-    connected_shop: "Druckelite24",
-    openai_configured: Boolean(process.env.OPENAI_API_KEY),
-    elevenlabs_configured: Boolean(process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID),
-    gmail_configured: isGmailConfigured(),
-    shopify_configured: Boolean(
-      process.env.SHOPIFY_STORE_DOMAIN && process.env.SHOPIFY_CLIENT_ID && process.env.SHOPIFY_CLIENT_SECRET
-    )
-  });
-});
+app.get(
+  "/health",
+  (req, res) => {
+    return res.json({
+      ok: true,
+
+      version:
+        `JARVIS ${JARVIS_VERSION}`,
+
+      architecture:
+        "browser -> webrtc -> openai realtime",
+
+      realtime: true,
+
+      realtime_model:
+        process.env.OPENAI_REALTIME_MODEL ||
+        "gpt-realtime-2.1",
+
+      realtime_voice:
+        process.env.OPENAI_REALTIME_VOICE ||
+        "cedar",
+
+      transport:
+        "WebRTC",
+
+      language:
+        "de",
+
+      connected_shop:
+        "Druckelite24",
+
+      openai_configured:
+        Boolean(
+          process.env.OPENAI_API_KEY
+        ),
+
+      gmail_configured:
+        isGmailConfigured(),
+
+      shopify_configured:
+        Boolean(
+          process.env.SHOPIFY_STORE_DOMAIN &&
+          process.env.SHOPIFY_CLIENT_ID &&
+          process.env.SHOPIFY_CLIENT_SECRET
+        )
+    });
+  }
+);
 
 
 /* =========================================================
@@ -2730,7 +1780,10 @@ app.get("/health", (req, res) => {
    ========================================================= */
 
 app.get("/", (req, res) => {
-  return res.sendFile("index.html", { root: "." });
+  return res.sendFile(
+    "index.html",
+    { root: "." }
+  );
 });
 
 
@@ -2738,14 +1791,52 @@ app.get("/", (req, res) => {
    START
    ========================================================= */
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`JARVIS ${JARVIS_VERSION} läuft auf Port ${PORT}`);
-  console.log("Realtime: DEAKTIVIERT");
-  console.log("Mikrofon: Browser MediaRecorder");
-  console.log("Transkription: OpenAI Audio API");
-  console.log("Antwort: OpenAI Responses API");
-  console.log("Reasoning: minimal (low bei Websuche)");
-  console.log("Antwortlimit: 1200 Tokens + automatischer Fallback");
-  console.log("Stimme: ElevenLabs · eleven_turbo_v2_5");
-  console.log(`Gmail: ${isGmailConfigured() ? "verbunden" : "nicht verbunden"}`);
-});
+app.listen(
+  PORT,
+  "0.0.0.0",
+  () => {
+    console.log(
+      `JARVIS ${JARVIS_VERSION} läuft auf Port ${PORT}`
+    );
+
+    console.log(
+      "Realtime: AKTIVIERT"
+    );
+
+    console.log(
+      `Realtime Modell: ${
+        process.env.OPENAI_REALTIME_MODEL ||
+        "gpt-realtime-2.1"
+      }`
+    );
+
+    console.log(
+      `Realtime Stimme: ${
+        process.env.OPENAI_REALTIME_VOICE ||
+        "cedar"
+      }`
+    );
+
+    console.log(
+      "Transport: WebRTC"
+    );
+
+    console.log(
+      `Shopify: ${
+        process.env.SHOPIFY_STORE_DOMAIN &&
+        process.env.SHOPIFY_CLIENT_ID &&
+        process.env.SHOPIFY_CLIENT_SECRET
+          ? "verbunden"
+          : "nicht verbunden"
+      }`
+    );
+
+    console.log(
+      `Gmail: ${
+        isGmailConfigured()
+          ? "verbunden"
+          : "nicht verbunden"
+      }`
+    );
+  }
+);
