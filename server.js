@@ -1166,6 +1166,160 @@ app.post(
 
 
 /* =========================================================
+   SHOPIFY WOCHENDATEN (für das HUD-Chart)
+   ========================================================= */
+
+function berlinDayOf(isoTimestamp) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Berlin",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date(isoTimestamp));
+}
+
+async function getShopifyWeek() {
+  const domain =
+    process.env.SHOPIFY_STORE_DOMAIN;
+
+  const apiVersion =
+    process.env.SHOPIFY_API_VERSION ||
+    "2026-07";
+
+  const token =
+    await getShopifyAccessToken();
+
+  const query = `
+    query JarvisWeek {
+      orders(
+        first: 250,
+        sortKey: CREATED_AT,
+        reverse: true
+      ) {
+        nodes {
+          createdAt
+          cancelledAt
+          currentTotalPriceSet {
+            shopMoney {
+              amount
+              currencyCode
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const response =
+    await fetch(
+      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": token
+        },
+        body: JSON.stringify({ query }),
+        signal: timeoutSignal(10000)
+      }
+    );
+
+  const data =
+    await response.json();
+
+  if (!response.ok || data.errors) {
+    console.error("Shopify week error:", data);
+    throw new Error(
+      "Shopify-Wochendaten konnten nicht gelesen werden."
+    );
+  }
+
+  const orders =
+    data.data?.orders?.nodes || [];
+
+  // Die letzten 7 Berlin-Kalendertage aufbauen (älteste zuerst)
+  const weekdayNames =
+    ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+
+  const days = [];
+  const buckets = {};
+  const today = berlinDate();
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(`${today}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - i);
+
+    const dayString =
+      d.toISOString().slice(0, 10);
+
+    const entry = {
+      date: dayString,
+      label: weekdayNames[d.getUTCDay()],
+      orders: 0,
+      revenue: 0
+    };
+
+    days.push(entry);
+    buckets[dayString] = entry;
+  }
+
+  for (const order of orders) {
+    if (order.cancelledAt) continue;
+
+    const day =
+      berlinDayOf(order.createdAt);
+
+    const bucket = buckets[day];
+    if (!bucket) continue;
+
+    bucket.orders += 1;
+    bucket.revenue += Number(
+      order.currentTotalPriceSet
+        ?.shopMoney?.amount || 0
+    );
+  }
+
+  for (const entry of days) {
+    entry.revenue =
+      Number(entry.revenue.toFixed(2));
+  }
+
+  return {
+    days,
+    currency: "EUR",
+    source: "Shopify"
+  };
+}
+
+app.post(
+  "/api/shopify-week",
+
+  async (req, res) => {
+    try {
+      const data =
+        await getShopifyWeek();
+
+      return res.json(data);
+
+    } catch (error) {
+      console.error(
+        "Shopify week endpoint error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          error:
+            error.message ||
+            "Wochendaten fehlgeschlagen."
+        });
+    }
+  }
+);
+
+
+/* =========================================================
    WEATHER
    ========================================================= */
 
