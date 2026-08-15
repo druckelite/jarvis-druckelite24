@@ -1,7 +1,21 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
-   V8.5 · WEBSUCHE FÜR ALLTAGSFRAGEN
-   (Basis: V8.4, überarbeitet am 15.08.2026)
+   V8.6 · NOTIZEN + GROSSE-BESTELLUNG-HINWEIS
+   (Basis: V8.5, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN IN V8.6:
+   23. Neu: Notizen/Ideen diktieren. "Jarvis, notiere: ..." speichert
+       eine Notiz, "was habe ich notiert" liest sie vor. Gespeichert
+       als JSON in einem Shopify-Metafeld (Namespace "jarvis", Key
+       "notes") - nicht lokal auf dem Server, weil Render bei jedem
+       Neustart/Deploy alles lokal Gespeicherte löscht.
+   24. Neu: Proaktiver Hinweis bei ungewöhnlich großen Einzelbestellungen
+       (Schwelle über LARGE_ORDER_THRESHOLD_EUR in Render einstellbar,
+       Standard 300 Euro) - zusätzlich zum bisherigen Hinweis auf
+       offene/unbearbeitete Bestellungen.
+       Meta-Ads-Warnungen (Windsor.ai) sind noch nicht dabei - dafür
+       bräuchte der Server einen eigenen API-Zugang, den es noch
+       nicht gibt.
 
    ÄNDERUNGEN IN V8.5:
    22. Die Stichwort-Liste für die Websuche (V8.4) war grundsätzlich
@@ -463,6 +477,15 @@ nur über sein Geschäft. Beantworte Alltagsfragen, plaudere mit, hab
 eine Meinung, mach Witze, sei einfach ein guter Gesprächspartner.
 Du bist nicht auf Druckelite24-Themen beschränkt.
 
+NOTIZEN:
+Du kannst Notizen und Ideen für Mattl speichern und sie ihm auf
+Wunsch wieder vorlesen - das funktioniert bereits technisch, ist
+keine Zukunftsfunktion. Wenn LIVE-DATEN vom Typ "note_saved" dabei
+ist, bestätige kurz und locker, dass du es dir gemerkt hast. Bei
+"notes_list" lies die vorhandenen Notizen natürlich vor, notfalls
+sag klar, dass noch keine da sind. Wenn beim Speichern oder Lesen
+ein Fehler steht, sag Mattl ehrlich, dass es gerade nicht geklappt hat.
+
 DRUCKELITE24:
 Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
 
@@ -783,7 +806,9 @@ Erfinde keine weiteren aktuellen Zahlen.`;
   const isFastPathQuestion =
     inputText.startsWith("[SYSTEM-HINWEIS") ||
     liveData?.type === "shopify" ||
-    liveData?.type === "weather";
+    liveData?.type === "weather" ||
+    liveData?.type === "note_saved" ||
+    liveData?.type === "notes_list";
 
   const reasoningEffort = isFastPathQuestion ? "minimal" : "low";
   const needsWebSearch = !isFastPathQuestion;
@@ -1194,6 +1219,195 @@ async function getShopifyOpenOrders() {
 
 
 /* =========================================================
+   NOTIZEN · GESPEICHERT ALS SHOPIFY-METAFELD
+   =========================================================
+
+   Render löscht bei jedem Neustart/Deploy alles lokal auf dem Server
+   Gespeicherte ("ephemeres Dateisystem") - eine Notizen-Datei würde
+   also ständig verloren gehen. Stattdessen wird die Notizenliste als
+   JSON in einem Shopify-Metafeld am Shop selbst abgelegt (Namespace
+   "jarvis", Key "notes") - das übersteht Server-Neustarts, weil es
+   auf Shopifys Servern liegt, nicht auf Render.
+   ========================================================= */
+
+async function getShopId() {
+  const domain = process.env.SHOPIFY_STORE_DOMAIN;
+  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
+  const token = await getShopifyAccessToken();
+
+  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token
+    },
+    body: JSON.stringify({ query: "query { shop { id } }" }),
+    signal: timeoutSignal(10000)
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || data.errors || !data.data?.shop?.id) {
+    console.error("Shopify shop id error:", data);
+    throw new Error("Shop-ID konnte nicht ermittelt werden.");
+  }
+
+  return data.data.shop.id;
+}
+
+async function getNotes() {
+  const domain = process.env.SHOPIFY_STORE_DOMAIN;
+  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
+  const token = await getShopifyAccessToken();
+
+  const query = `
+    query JarvisNotes {
+      shop {
+        metafield(namespace: "jarvis", key: "notes") {
+          value
+        }
+      }
+    }
+  `;
+
+  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token
+    },
+    body: JSON.stringify({ query }),
+    signal: timeoutSignal(10000)
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || data.errors) {
+    console.error("Shopify notes read error:", data);
+    throw new Error("Notizen konnten nicht gelesen werden.");
+  }
+
+  const raw = data.data?.shop?.metafield?.value;
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveNotes(notes) {
+  const domain = process.env.SHOPIFY_STORE_DOMAIN;
+  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
+  const token = await getShopifyAccessToken();
+  const shopId = await getShopId();
+
+  const mutation = `
+    mutation JarvisSaveNotes($metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(metafields: $metafields) {
+        metafields { id }
+        userErrors { field message }
+      }
+    }
+  `;
+
+  const variables = {
+    metafields: [
+      {
+        ownerId: shopId,
+        namespace: "jarvis",
+        key: "notes",
+        type: "json",
+        value: JSON.stringify(notes)
+      }
+    ]
+  };
+
+  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token
+    },
+    body: JSON.stringify({ query: mutation, variables }),
+    signal: timeoutSignal(10000)
+  });
+
+  const data = await response.json();
+  const userErrors = data.data?.metafieldsSet?.userErrors;
+
+  if (!response.ok || data.errors || (userErrors && userErrors.length)) {
+    console.error("Shopify notes save error:", data);
+    throw new Error("Notizen konnten nicht gespeichert werden.");
+  }
+}
+
+/*
+ * Erkennt, ob Mattl etwas notiert haben möchte.
+ */
+function isSaveNoteIntent(text) {
+  const n = normalize(text);
+  return (
+    n.includes("notiere") ||
+    n.includes("notiz") ||
+    n.includes("merk dir") ||
+    n.includes("merke dir") ||
+    n.includes("schreib das auf") ||
+    n.includes("halte fest")
+  );
+}
+
+/*
+ * Erkennt, ob Mattl seine bisherigen Notizen hören möchte.
+ */
+function isReadNotesIntent(text) {
+  const n = normalize(text);
+  const mentionsNotes = n.includes("notiz") || n.includes("idee") || n.includes("notiert");
+  const asksToHear =
+    n.includes("was habe ich") ||
+    n.includes("zeig mir") ||
+    n.includes("welche") ||
+    n.includes("lies") ||
+    n.includes("vorlesen") ||
+    n.includes("hatte ich");
+  return mentionsNotes && asksToHear;
+}
+
+/*
+ * Entfernt gängige Auslöse-Phrasen ("notiere dir:", "Jarvis, ...") vom
+ * Anfang, damit nur der eigentliche Inhalt gespeichert wird. Nicht
+ * perfekt bei ungewöhnlichen Formulierungen, aber ein guter Normalfall.
+ */
+function extractNoteContent(text) {
+  let cleaned = String(text || "").trim();
+
+  const triggers = [
+    /^(hey\s+)?jarvis[,:]?\s*/i,
+    /^notiere\s*(dir)?\s*[:,]?\s*/i,
+    /^merke?\s*dir\s*[:,]?\s*/i,
+    /^schreib\s*das\s*auf\s*[:,]?\s*/i,
+    /^halte\s*fest\s*[:,]?\s*/i
+  ];
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const trigger of triggers) {
+      const stripped = cleaned.replace(trigger, "");
+      if (stripped !== cleaned) {
+        cleaned = stripped.trim();
+        changed = true;
+      }
+    }
+  }
+
+  return cleaned || text;
+}
+
+
+/* =========================================================
    PROAKTIVER HINTERGRUND-CHECK
    =========================================================
 
@@ -1202,10 +1416,12 @@ async function getShopifyOpenOrders() {
    etwas Neues oder Ungelöstes gibt - sonst würde JARVIS bei jedem
    Check dieselbe Sache wiederholen, was schnell nervt.
 
-   Aktuell geprüft: unbearbeitete Shopify-Bestellungen. E-Mails können
-   hier noch nicht mit rein - Gmail ist bei Mattl noch nicht verbunden
-   (Phase 2, OAuth fehlt noch). Sobald das steht, kann hier einfach
-   ein weiterer Check ergänzt werden.
+   Aktuell geprüft: unbearbeitete Shopify-Bestellungen und ungewöhnlich
+   große Einzelbestellungen. E-Mails und Meta-Ads-Warnungen können hier
+   noch nicht mit rein - Gmail ist bei Mattl noch nicht verbunden
+   (Phase 2, OAuth fehlt noch), und für Meta-Ads/Windsor.ai bräuchte
+   der Server einen eigenen API-Zugang. Sobald das steht, kann hier
+   einfach ein weiterer Check ergänzt werden.
    ========================================================= */
 
 let lastProactiveNotice = { unfulfilledCount: null, notifiedAt: 0 };
@@ -1220,6 +1436,74 @@ const PROACTIVE_REMINDER_COOLDOWN_MS = 2 * 60 * 60 * 1000; // 2 Stunden
  * der Hintergrund-Check in der Zeit läuft.
  */
 let lastBriefingDate = null;
+
+// Ab diesem Betrag gilt eine einzelne Bestellung als "groß genug", um
+// von sich aus erwähnt zu werden. Über die Umgebungsvariable
+// LARGE_ORDER_THRESHOLD_EUR in Render anpassbar, ohne Code-Änderung.
+const LARGE_ORDER_THRESHOLD_EUR = Number(process.env.LARGE_ORDER_THRESHOLD_EUR || 300);
+
+// Merkt sich, welche großen Bestellungen schon gemeldet wurden, damit
+// dieselbe nicht bei jedem Check erneut erwähnt wird.
+const notifiedLargeOrders = new Set();
+
+async function getLargestOrderToday() {
+  const domain = process.env.SHOPIFY_STORE_DOMAIN;
+  const apiVersion = process.env.SHOPIFY_API_VERSION || "2026-07";
+  const token = await getShopifyAccessToken();
+  const { start, end } = getPeriodDates("today");
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+
+  const query = `
+    query JarvisTodayOrdersForLargest {
+      orders(first: 100, sortKey: CREATED_AT, reverse: true) {
+        nodes {
+          name
+          createdAt
+          cancelledAt
+          currentTotalPriceSet { shopMoney { amount currencyCode } }
+        }
+      }
+    }
+  `;
+
+  const response = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token
+    },
+    body: JSON.stringify({ query }),
+    signal: timeoutSignal(10000)
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || data.errors) {
+    console.error("Shopify largest order error:", data);
+    throw new Error("Bestellungen konnten nicht gelesen werden.");
+  }
+
+  const orders = (data.data?.orders?.nodes || []).filter(order => {
+    if (order.cancelledAt) return false;
+    const created = new Date(order.createdAt);
+    return created >= startDate && created < endDate;
+  });
+
+  let largest = null;
+  for (const order of orders) {
+    const amount = Number(order.currentTotalPriceSet?.shopMoney?.amount || 0);
+    if (!largest || amount > largest.amount) {
+      largest = {
+        name: order.name,
+        amount,
+        currency: order.currentTotalPriceSet?.shopMoney?.currencyCode || "EUR"
+      };
+    }
+  }
+
+  return largest;
+}
 
 async function buildMorningBriefingFacts() {
   const [yesterday, openOrders, weather] = await Promise.allSettled([
@@ -1283,6 +1567,44 @@ app.post("/api/jarvis-checkin", async (req, res) => {
           response_id: briefingResult.response_id
         });
       }
+    }
+
+    // GROSSE BESTELLUNG: einmalig pro Bestellung melden, sobald sie
+    // den Schwellenwert überschreitet - Vorrang vor der routinemäßigen
+    // Erinnerung an offene Bestellungen weiter unten, weil das die
+    // interessantere Nachricht ist.
+    try {
+      const largest = await getLargestOrderToday();
+
+      if (
+        largest &&
+        largest.amount >= LARGE_ORDER_THRESHOLD_EUR &&
+        !notifiedLargeOrders.has(largest.name)
+      ) {
+        notifiedLargeOrders.add(largest.name);
+
+        const largeOrderMessage =
+          `[SYSTEM-HINWEIS - nicht von Mattl gesprochen] Automatischer Hintergrund-Check: ` +
+          `Es ist gerade eine ungewöhnlich große Bestellung reingekommen - ${largest.name} über ` +
+          `${largest.amount} ${largest.currency}. Sprich Mattl von dir aus kurz und locker darauf ` +
+          `an, das ist eine gute Nachricht.`;
+
+        const largeOrderResult = await createJarvisResponse({
+          message: largeOrderMessage,
+          previousResponseId
+        });
+
+        return res.json({
+          ok: true,
+          hasNotice: true,
+          text: largeOrderResult.text,
+          response_id: largeOrderResult.response_id
+        });
+      }
+    } catch (error) {
+      console.error("Proaktiver Check - große Bestellung Fehler:", error);
+      // Dieser Check schlägt fehl -> einfach weiter zum nächsten Check,
+      // nicht mit einer Fehlermeldung stören.
     }
 
     // NORMALER CHECK: offene/unbearbeitete Bestellungen.
@@ -1487,7 +1809,24 @@ app.post("/api/jarvis-chat", async (req, res) => {
 
     let liveData = null;
 
-    if (isShopifyQuestion(message)) {
+    if (isSaveNoteIntent(message)) {
+      try {
+        const noteText = extractNoteContent(message);
+        const notes = await getNotes();
+        notes.push({ text: noteText, created_at: new Date().toISOString() });
+        await saveNotes(notes);
+        liveData = { type: "note_saved", data: { text: noteText, total_notes: notes.length } };
+      } catch (error) {
+        liveData = { type: "note_saved", error: error.message || "Notiz konnte nicht gespeichert werden." };
+      }
+    } else if (isReadNotesIntent(message)) {
+      try {
+        const notes = await getNotes();
+        liveData = { type: "notes_list", data: { notes } };
+      } catch (error) {
+        liveData = { type: "notes_list", error: error.message || "Notizen konnten nicht gelesen werden." };
+      }
+    } else if (isShopifyQuestion(message)) {
       try {
         const period = getShopifyPeriodFromText(message);
         liveData = { type: "shopify", data: await getShopifySummary(period) };
