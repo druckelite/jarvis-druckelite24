@@ -12,15 +12,29 @@
     content="Druckelite24 JARVIS Business Voice Assistant"
   />
   <title>Druckelite24 · JARVIS</title>
-
   <style>
 /* =========================================================
    DRUCKELITE24 · JARVIS V5
    Cockpit-HUD · Vollbild-Edition
+   =========================================================
+
+   Aufbau: dichtes 3-Spalten-Cockpit wie im Film -
+   links und rechts Telemetrie-Panels (echte Shopify- und
+   Wetterdaten!), in der Mitte der Reaktor mit Dreieckskern.
+
+   Zustände (data-jarvis-state am <body>):
+   offline / connecting / listening / hearing /
+   thinking / speaking
+
+   Marke: Magenta #E70779 / Anthrazit / Weiß
    ========================================================= */
 
 @import url("https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Barlow:wght@400;500;600;700&display=swap");
 
+
+/* =========================================================
+   TOKENS
+   ========================================================= */
 
 :root {
   --magenta: #e70779;
@@ -55,111 +69,71 @@
 }
 
 
-* {
-  box-sizing: border-box;
-}
+/* =========================================================
+   BASIS
+   ========================================================= */
 
-html {
-  color-scheme: dark;
-}
+* { box-sizing: border-box; }
+
+html { color-scheme: dark; }
 
 body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(
-      ellipse 70% 50% at 50% 42%,
-      rgba(231, 7, 121, 0.10),
-      transparent 60%
-    ),
-    radial-gradient(
-      ellipse 90% 55% at 50% -12%,
-      rgba(231, 7, 121, 0.12),
-      transparent 55%
-    ),
+    radial-gradient(ellipse 70% 50% at 50% 42%, rgba(231, 7, 121, 0.10), transparent 60%),
+    radial-gradient(ellipse 90% 55% at 50% -12%, rgba(231, 7, 121, 0.12), transparent 55%),
     var(--void);
-
   color: var(--text);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
 
-h1,
-p {
-  margin: 0;
-}
+h1, p { margin: 0; }
 
-button {
-  font: inherit;
-  color: inherit;
-}
+button { font: inherit; color: inherit; }
 
 :focus-visible {
   outline: 2px solid var(--magenta);
   outline-offset: 3px;
 }
 
-
+/* Feines Hintergrund-Grid über die ganze Fläche */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 0;
-
   background-image:
-    linear-gradient(
-      to right,
-      rgba(231, 7, 121, 0.05) 1px,
-      transparent 1px
-    ),
-    linear-gradient(
-      to bottom,
-      rgba(231, 7, 121, 0.05) 1px,
-      transparent 1px
-    );
-
+    linear-gradient(to right, rgba(231, 7, 121, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(231, 7, 121, 0.05) 1px, transparent 1px);
   background-size: 42px 42px;
-
-  -webkit-mask-image:
-    radial-gradient(
-      ellipse 75% 70% at 50% 45%,
-      black 20%,
-      transparent 78%
-    );
-
-  mask-image:
-    radial-gradient(
-      ellipse 75% 70% at 50% 45%,
-      black 20%,
-      transparent 78%
-    );
+  -webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 45%, black 20%, transparent 78%);
+  mask-image: radial-gradient(ellipse 75% 70% at 50% 45%, black 20%, transparent 78%);
 }
 
-
+/* Scanlines */
 body::after {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 50;
-
-  background-image:
-    repeating-linear-gradient(
-      to bottom,
-      rgba(255, 255, 255, 0.022) 0px,
-      rgba(255, 255, 255, 0.022) 1px,
-      transparent 1px,
-      transparent 3px
-    );
-
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.022) 0px,
+    rgba(255, 255, 255, 0.022) 1px,
+    transparent 1px,
+    transparent 3px
+  );
   mix-blend-mode: overlay;
 }
 
 
 /* =========================================================
-   BOOT
+   BOOT-OVERLAY
    ========================================================= */
 
 .boot-overlay {
@@ -167,16 +141,12 @@ body::after {
   inset: 0;
   z-index: 100;
   background: var(--void);
-
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-
   gap: 1.6rem;
-
-  transition:
-    opacity 0.65s ease;
+  transition: opacity 0.65s ease;
 }
 
 .boot-overlay.boot-done {
@@ -187,9 +157,7 @@ body::after {
 .boot-logo {
   width: min(260px, 60vw);
   height: auto;
-
-  animation:
-    boot-logo-in 1s ease both;
+  animation: boot-logo-in 1s ease both;
 }
 
 .boot-lines {
@@ -198,87 +166,55 @@ body::after {
   line-height: 1.7;
   letter-spacing: 0.08em;
   color: var(--magenta);
-
   min-height: 10.2em;
   width: min(420px, 82vw);
 }
 
 .boot-lines div {
-  animation:
-    boot-line-in 0.25s ease both;
+  animation: boot-line-in 0.25s ease both;
 }
 
 .boot-bar {
   width: min(420px, 82vw);
   height: 3px;
-
-  background:
-    var(--panel-border);
-
+  background: var(--panel-border);
   overflow: hidden;
 }
 
 .boot-bar-fill {
   height: 100%;
   width: 0%;
-
-  background:
-    linear-gradient(
-      to right,
-      var(--magenta),
-      var(--magenta-soft)
-    );
-
-  box-shadow:
-    0 0 12px 2px
-    rgba(231, 7, 121, 0.6);
-
-  transition:
-    width 0.3s ease;
+  background: linear-gradient(to right, var(--magenta), var(--magenta-soft));
+  box-shadow: 0 0 12px 2px rgba(231, 7, 121, 0.6);
+  transition: width 0.3s ease;
 }
 
 
 /* =========================================================
-   HUD
+   HUD-LAYOUT
    ========================================================= */
 
 .hud {
   position: relative;
   z-index: 1;
-
   max-width: 1280px;
-
-  margin:
-    0 auto;
-
-  padding:
-    1.1rem 1.2rem 1.6rem;
-
+  margin: 0 auto;
+  padding: 1.1rem 1.2rem 1.6rem;
   display: flex;
   flex-direction: column;
-
   gap: 1rem;
-
   min-height: 100vh;
 }
 
-
+/* HUD-Eckklammern um den ganzen Screen */
 .hud::after {
   content: "";
-
   position: fixed;
-
   inset: 10px;
-
   pointer-events: none;
-
   z-index: 60;
-
   opacity: 0.5;
-
-  background-repeat:
-    no-repeat;
-
+  background-repeat: no-repeat;
   background-image:
     linear-gradient(to bottom, var(--magenta) 2px, transparent 2px),
     linear-gradient(to right, var(--magenta) 2px, transparent 2px),
@@ -288,26 +224,16 @@ body::after {
     linear-gradient(to right, var(--magenta) 2px, transparent 2px),
     linear-gradient(to top, var(--magenta) 2px, transparent 2px),
     linear-gradient(to left, var(--magenta) 2px, transparent 2px);
-
   background-size:
-    2px 30px,
-    30px 2px,
-    2px 30px,
-    30px 2px,
-    2px 30px,
-    30px 2px,
-    2px 30px,
-    30px 2px;
-
+    2px 30px, 30px 2px,
+    2px 30px, 30px 2px,
+    2px 30px, 30px 2px,
+    2px 30px, 30px 2px;
   background-position:
-    top left,
-    top left,
-    top right,
-    top right,
-    bottom left,
-    bottom left,
-    bottom right,
-    bottom right;
+    top left, top left,
+    top right, top right,
+    bottom left, bottom left,
+    bottom right, bottom right;
 }
 
 
@@ -317,33 +243,18 @@ body::after {
 
 .topbar {
   display: grid;
-
-  grid-template-columns:
-    1fr auto 1fr;
-
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-
   gap: 1rem;
-
-  padding-bottom:
-    0.9rem;
-
-  border-bottom:
-    1px solid
-    var(--panel-border);
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--panel-border);
 }
 
 .brand-logo {
   height: 30px;
   width: auto;
-
   display: block;
-
-  filter:
-    drop-shadow(
-      0 0 14px
-      rgba(231, 7, 121, 0.35)
-    );
+  filter: drop-shadow(0 0 14px rgba(231, 7, 121, 0.35));
 }
 
 .top-center {
@@ -351,290 +262,93 @@ body::after {
 }
 
 .top-title {
-  font-family:
-    var(--font-display);
-
-  font-weight:
-    600;
-
-  font-size:
-    1rem;
-
-  letter-spacing:
-    0.35em;
-
-  text-transform:
-    uppercase;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
 }
 
 .top-sub {
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.6rem;
-
-  letter-spacing:
-    0.3em;
-
-  color:
-    var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.3em;
+  color: var(--text-faint);
 }
 
 .top-right {
-  display:
-    flex;
-
-  align-items:
-    center;
-
-  justify-content:
-    flex-end;
-
-  gap:
-    0.8rem;
-}
-
-.top-datetime {
-  text-align:
-    right;
-}
-
-.top-date {
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.68rem;
-
-  letter-spacing:
-    0.24em;
-
-  color:
-    var(--magenta);
-
-  text-transform:
-    uppercase;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.8rem;
 }
 
 .top-clock {
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    1.25rem;
-
-  letter-spacing:
-    0.14em;
-
-  color:
-    var(--text);
-
-  text-shadow:
-    0 0 16px
-    rgba(231, 7, 121, 0.4);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  letter-spacing: 0.12em;
+  color: var(--text);
+  min-width: 5.4em;
+  text-align: right;
 }
 
 .status-pill {
-  position:
-    relative;
-
-  display:
-    inline-flex;
-
-  align-items:
-    center;
-
-  padding:
-    0.45em
-    0.95em
-    0.45em
-    1.8em;
-
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.72rem;
-
-  letter-spacing:
-    0.16em;
-
-  text-transform:
-    uppercase;
-
-  color:
-    var(--text-dim);
-
-  background:
-    var(--panel);
-
-  border:
-    1px solid
-    var(--panel-border);
-
-  border-radius:
-    999px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45em 0.95em 0.45em 1.8em;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
 }
 
 .status-pill::before {
-  content:
-    "";
-
-  position:
-    absolute;
-
-  left:
-    0.8em;
-
-  top:
-    50%;
-
-  width:
-    7px;
-
-  height:
-    7px;
-
-  border-radius:
-    50%;
-
-  transform:
-    translateY(-50%);
-
-  background:
-    var(--reactor-color);
-
-  box-shadow:
-    0 0 8px 1px
-    var(--reactor-glow);
-
-  animation:
-    dot-pulse
-    2.6s
-    ease-in-out
-    infinite;
+  content: "";
+  position: absolute;
+  left: 0.8em;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  background: var(--reactor-color);
+  box-shadow: 0 0 8px 1px var(--reactor-glow);
+  animation: dot-pulse 2.6s ease-in-out infinite;
 }
 
 .status-pill.online {
-  color:
-    var(--text);
-
-  border-color:
-    rgba(231, 7, 121, 0.4);
+  color: var(--text);
+  border-color: rgba(231, 7, 121, 0.4);
 }
 
 
 /* =========================================================
-   TICKER
-   ========================================================= */
-
-.ticker {
-  border:
-    1px solid
-    var(--panel-border);
-
-  background:
-    var(--panel);
-
-  overflow:
-    hidden;
-
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.62rem;
-
-  letter-spacing:
-    0.18em;
-
-  color:
-    var(--text-dim);
-
-  padding:
-    0.5em 0;
-
-  white-space:
-    nowrap;
-}
-
-.ticker-track {
-  display:
-    inline-flex;
-
-  animation:
-    marquee
-    30s
-    linear
-    infinite;
-}
-
-.tick-group {
-  padding-right:
-    4em;
-}
-
-.tick-group b {
-  color:
-    var(--magenta);
-
-  font-weight:
-    400;
-}
-
-
-/* =========================================================
-   COCKPIT
+   COCKPIT: 3 SPALTEN
    ========================================================= */
 
 .cockpit {
-  display:
-    flex;
-
-  flex-direction:
-    column;
-
-  align-items:
-    center;
-
-  gap:
-    1.1rem;
-
-  flex:
-    1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.1rem;
+  flex: 1;
 }
 
-.stage {
-  order:
-    0;
-
-  width:
-    100%;
-}
-
-.column-left {
-  order:
-    1;
-}
-
-.column-right {
-  order:
-    2;
-}
+/* Reaktor oben, dann alle Widgets untereinander */
+.stage { order: 0; width: 100%; }
+.column-left { order: 1; }
+.column-right { order: 2; }
 
 .column {
-  display:
-    flex;
-
-  flex-direction:
-    column;
-
-  gap:
-    1.1rem;
-
-  width:
-    min(640px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  width: min(640px, 100%);
 }
 
 
@@ -643,1126 +357,598 @@ body::after {
    ========================================================= */
 
 .panel {
-  position:
-    relative;
-
-  overflow:
-    hidden;
-
-  background:
-    var(--panel);
-
-  border:
-    1px solid
-    var(--panel-border);
-
-  clip-path:
-    var(--clip-corner);
-
-  padding:
-    0.9rem
-    1rem
-    1rem;
-
-  display:
-    flex;
-
-  flex-direction:
-    column;
-
-  gap:
-    0.7rem;
-
-  backdrop-filter:
-    blur(3px);
-
-  animation:
-    panel-in
-    0.6s
-    ease
-    both;
-
-  transition:
-    border-color
-    0.25s ease,
-    transform
-    0.25s ease,
-    box-shadow
-    0.25s ease;
+  position: relative;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  clip-path: var(--clip-corner);
+  padding: 0.9rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  backdrop-filter: blur(3px);
+  animation: panel-in 0.6s ease both;
+  transition: border-color 0.25s ease, transform 0.25s ease,
+    box-shadow 0.25s ease;
 }
 
 .panel:hover {
-  border-color:
-    rgba(231, 7, 121, 0.5);
-
-  transform:
-    translateY(-2px);
-
-  box-shadow:
-    0 10px 34px -14px
-    rgba(231, 7, 121, 0.5);
+  border-color: rgba(231, 7, 121, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 34px -14px rgba(231, 7, 121, 0.5);
 }
 
+/* Licht-Sweep: alle paar Sekunden gleitet ein Glanz durch */
 .panel::before {
-  content:
-    "";
-
-  position:
-    absolute;
-
-  top:
-    0;
-
-  bottom:
-    0;
-
-  width:
-    45%;
-
-  left:
-    -60%;
-
-  background:
-    linear-gradient(
-      105deg,
-      transparent,
-      rgba(255, 255, 255, 0.05),
-      rgba(231, 7, 121, 0.05),
-      transparent
-    );
-
-  animation:
-    panel-sweep
-    7s
-    ease-in-out
-    infinite;
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 45%;
+  left: -60%;
+  background: linear-gradient(
+    105deg,
+    transparent,
+    rgba(255, 255, 255, 0.05),
+    rgba(231, 7, 121, 0.05),
+    transparent
+  );
+  animation: panel-sweep 7s ease-in-out infinite;
 }
+
+/* Gestaffelter Einflug + versetzte Sweeps */
+.column .panel:nth-child(1) { animation-delay: 0.05s; }
+.column .panel:nth-child(2) { animation-delay: 0.15s; }
+.column .panel:nth-child(3) { animation-delay: 0.25s; }
+.column .panel:nth-child(4) { animation-delay: 0.35s; }
+.column .panel:nth-child(5) { animation-delay: 0.45s; }
+.column .panel:nth-child(6) { animation-delay: 0.55s; }
+.column .panel:nth-child(1)::before { animation-delay: 0s; }
+.column .panel:nth-child(2)::before { animation-delay: 1.4s; }
+.column .panel:nth-child(3)::before { animation-delay: 2.8s; }
+.column .panel:nth-child(4)::before { animation-delay: 4.2s; }
+.column .panel:nth-child(5)::before { animation-delay: 5.6s; }
+.column .panel:nth-child(6)::before { animation-delay: 6.3s; }
+
+.panel-grow { flex: 1; }
 
 .panel-head {
-  display:
-    flex;
-
-  align-items:
-    center;
-
-  justify-content:
-    space-between;
-
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.62rem;
-
-  letter-spacing:
-    0.26em;
-
-  color:
-    var(--magenta);
-
-  border-bottom:
-    1px solid
-    var(--panel-border);
-
-  padding-bottom:
-    0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.26em;
+  color: var(--magenta);
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 0.5rem;
 }
 
 .panel-dot {
-  width:
-    7px;
-
-  height:
-    7px;
-
-  border-radius:
-    50%;
-
-  background:
-    var(--text-faint);
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
 }
 
 .panel-dot.ok {
-  background:
-    var(--magenta);
-
-  box-shadow:
-    0 0 8px 1px
-    rgba(231, 7, 121, 0.7);
-
-  animation:
-    dot-pulse
-    2.4s
-    ease-in-out
-    infinite;
+  background: var(--magenta);
+  box-shadow: 0 0 8px 1px rgba(231, 7, 121, 0.7);
+  animation: dot-pulse 2.4s ease-in-out infinite;
 }
 
 .panel-foot {
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.58rem;
-
-  letter-spacing:
-    0.16em;
-
-  color:
-    var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  color: var(--text-faint);
 }
 
+
+/* Shop-Statistiken */
 .stat-row {
-  display:
-    grid;
-
-  grid-template-columns:
-    1fr 1fr;
-
-  gap:
-    0.6rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
 }
 
-.stat-value {
-  font-family:
-    var(--font-display);
-
-  font-size:
-    1.7rem;
-
-  font-weight:
-    600;
-
-  line-height:
-    1.05;
-
-  color:
-    var(--text);
-
-  text-shadow:
-    0 0 18px
-    rgba(231, 7, 121, 0.35);
+/* Lauf-Ticker */
+.ticker {
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  color: var(--text-dim);
+  padding: 0.5em 0;
+  white-space: nowrap;
 }
 
-.stat-value.stat-small {
-  font-size:
-    1.05rem;
+.ticker-track {
+  display: inline-flex;
+  animation: marquee 30s linear infinite;
 }
 
-.stat-label {
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.55rem;
-
-  letter-spacing:
-    0.14em;
-
-  color:
-    var(--text-faint);
-
-  margin-top:
-    0.15rem;
+.tick-group {
+  padding-right: 4em;
 }
 
-.chart-label {
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.55rem;
-
-  letter-spacing:
-    0.2em;
-
-  color:
-    var(--text-faint);
+.tick-group b {
+  color: var(--magenta);
+  font-weight: 400;
 }
 
-.week-chart {
-  width:
-    100%;
-
-  height:
-    70px;
-
-  display:
-    block;
+/* Datum + Uhrzeit oben in der Kopfzeile */
+.top-datetime {
+  text-align: right;
 }
 
+.top-date {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.24em;
+  color: var(--magenta);
+  text-transform: uppercase;
+}
+
+.top-clock {
+  font-family: var(--font-mono);
+  font-size: 1.25rem;
+  letter-spacing: 0.14em;
+  color: var(--text);
+  text-shadow: 0 0 16px rgba(231, 7, 121, 0.4);
+}
+
+/* Skeleton-Zeilen für Platzhalter-Panels (Gmail/News) */
 .skel-list {
-  display:
-    flex;
-
-  flex-direction:
-    column;
-
-  gap:
-    0.55rem;
-
-  padding:
-    0.2rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.2rem 0;
 }
 
 .skel-row {
-  height:
-    9px;
+  height: 9px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    #1c1c21 25%,
+    #2d2d35 50%,
+    #1c1c21 75%
+  );
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.8s linear infinite;
+}
 
-  border-radius:
-    2px;
+/* Wochenchart */
+.chart-label {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.2em;
+  color: var(--text-faint);
+}
 
-  background:
-    linear-gradient(
-      90deg,
-      #1c1c21 25%,
-      #2d2d35 50%,
-      #1c1c21 75%
-    );
+.week-chart {
+  width: 100%;
+  height: 70px;
+  display: block;
+}
 
-  background-size:
-    200% 100%;
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 1.7rem;
+  font-weight: 600;
+  line-height: 1.05;
+  color: var(--text);
+  text-shadow: 0 0 18px rgba(231, 7, 121, 0.35);
+}
 
-  animation:
-    skel-shimmer
-    1.8s
-    linear
-    infinite;
+.stat-value.stat-small {
+  font-size: 1.05rem;
+}
+
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  color: var(--text-faint);
+  margin-top: 0.15rem;
 }
 
 
-/* =========================================================
-   AUDIO HUD
-   ========================================================= */
-
+/* Audio-Welle + Equalizer */
 .wave {
-  width:
-    100%;
-
-  height:
-    56px;
-
-  display:
-    block;
+  width: 100%;
+  height: 56px;
+  display: block;
 }
 
 .eq {
-  display:
-    flex;
-
-  align-items:
-    flex-end;
-
-  gap:
-    3px;
-
-  height:
-    22px;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 22px;
 }
 
 .eq span {
-  flex:
-    1;
-
-  height:
-    18%;
-
-  background:
-    var(--reactor-color);
-
-  box-shadow:
-    0 0 6px
-    var(--reactor-glow);
-
-  transition:
-    background
-    0.4s ease;
+  flex: 1;
+  height: 18%;
+  background: var(--reactor-color);
+  box-shadow: 0 0 6px var(--reactor-glow);
+  transition: background 0.4s ease;
 }
 
 body[data-jarvis-state="speaking"] .eq span,
 body[data-jarvis-state="hearing"] .eq span {
-  animation:
-    eq-bounce
-    0.6s
-    ease-in-out
-    infinite;
+  animation: eq-bounce 0.6s ease-in-out infinite;
 }
 
+.eq span:nth-child(1) { animation-delay: 0s; }
+.eq span:nth-child(2) { animation-delay: 0.12s; }
+.eq span:nth-child(3) { animation-delay: 0.05s; }
+.eq span:nth-child(4) { animation-delay: 0.2s; }
+.eq span:nth-child(5) { animation-delay: 0.09s; }
+.eq span:nth-child(6) { animation-delay: 0.16s; }
+.eq span:nth-child(7) { animation-delay: 0.03s; }
+.eq span:nth-child(8) { animation-delay: 0.22s; }
+.eq span:nth-child(9) { animation-delay: 0.07s; }
+.eq span:nth-child(10) { animation-delay: 0.18s; }
+.eq span:nth-child(11) { animation-delay: 0.11s; }
+.eq span:nth-child(12) { animation-delay: 0.02s; }
 
-/* =========================================================
-   TEXTIL
-   ========================================================= */
 
+/* Textil-Modul */
 .tex-module {
-  display:
-    grid;
-
-  grid-template-columns:
-    72px 1fr;
-
-  gap:
-    0.9rem;
-
-  align-items:
-    center;
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 0.9rem;
+  align-items: center;
 }
 
 .tshirt {
-  width:
-    72px;
-
-  height:
-    72px;
-
-  color:
-    var(--reactor-color);
-
-  filter:
-    drop-shadow(
-      0 0 8px
-      var(--reactor-glow)
-    );
-
-  transition:
-    color
-    0.4s ease;
+  width: 72px;
+  height: 72px;
+  color: var(--reactor-color);
+  filter: drop-shadow(0 0 8px var(--reactor-glow));
+  transition: color 0.4s ease;
 }
 
 .print-zone {
-  animation:
-    zone-blink
-    2.8s
-    ease-in-out
-    infinite;
+  animation: zone-blink 2.8s ease-in-out infinite;
 }
 
 .tex-lines {
-  display:
-    flex;
-
-  flex-direction:
-    column;
-
-  gap:
-    0.45rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
 }
 
 .tex-line {
-  display:
-    grid;
-
-  grid-template-columns:
-    3.2em 1fr;
-
-  align-items:
-    center;
-
-  gap:
-    0.5rem;
-
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.6rem;
-
-  letter-spacing:
-    0.16em;
-
-  color:
-    var(--text-dim);
+  display: grid;
+  grid-template-columns: 3.2em 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  color: var(--text-dim);
 }
 
 .tex-line i {
-  display:
-    block;
-
-  height:
-    4px;
-
-  background:
-    var(--panel-border);
-
-  position:
-    relative;
-
-  overflow:
-    hidden;
+  display: block;
+  height: 4px;
+  background: var(--panel-border);
+  position: relative;
+  overflow: hidden;
 }
 
 .tex-line i::after {
-  content:
-    "";
-
-  position:
-    absolute;
-
-  inset:
-    0;
-
-  width:
-    var(--w, 50%);
-
-  background:
-    linear-gradient(
-      to right,
-      var(--magenta),
-      var(--magenta-soft)
-    );
-
-  box-shadow:
-    0 0 8px
-    rgba(231, 7, 121, 0.6);
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: var(--w, 50%);
+  background: linear-gradient(to right, var(--magenta), var(--magenta-soft));
+  box-shadow: 0 0 8px rgba(231, 7, 121, 0.6);
 }
 
 
-/* =========================================================
-   WETTER
-   ========================================================= */
-
+/* Wetter */
 .wx-main {
-  display:
-    flex;
-
-  align-items:
-    baseline;
-
-  gap:
-    0.8rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
 }
 
 .wx-temp {
-  font-family:
-    var(--font-display);
-
-  font-size:
-    2.6rem;
-
-  font-weight:
-    600;
-
-  line-height:
-    1;
-
-  text-shadow:
-    0 0 22px
-    rgba(231, 7, 121, 0.4);
+  font-family: var(--font-display);
+  font-size: 2.6rem;
+  font-weight: 600;
+  line-height: 1;
+  text-shadow: 0 0 22px rgba(231, 7, 121, 0.4);
 }
 
 .wx-desc {
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.7rem;
-
-  letter-spacing:
-    0.2em;
-
-  color:
-    var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  color: var(--text-dim);
 }
 
 .wx-grid {
-  display:
-    grid;
-
-  grid-template-columns:
-    repeat(4, 1fr);
-
-  gap:
-    0.4rem;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem;
 }
 
 .wx-cell {
-  display:
-    flex;
-
-  flex-direction:
-    column;
-
-  gap:
-    0.2rem;
-
-  border:
-    1px solid
-    var(--panel-border);
-
-  padding:
-    0.45rem
-    0.3rem;
-
-  text-align:
-    center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  border: 1px solid var(--panel-border);
+  padding: 0.45rem 0.3rem;
+  text-align: center;
 }
 
 .wx-cell span {
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.85rem;
-
-  color:
-    var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text);
 }
 
 .wx-cell label {
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.5rem;
-
-  letter-spacing:
-    0.12em;
-
-  color:
-    var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
 }
 
 
-/* =========================================================
-   SYSTEM
-   ========================================================= */
-
+/* System-Gauges (Ringdiagramme) */
 .gauge-row {
-  display:
-    grid;
-
-  grid-template-columns:
-    repeat(3, 1fr);
-
-  gap:
-    0.5rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
 }
 
 .gauge {
-  position:
-    relative;
-
-  aspect-ratio:
-    1;
-
-  width:
-    100%;
-
-  max-width:
-    96px;
-
-  margin:
-    0 auto;
-
-  border-radius:
-    50%;
-
+  position: relative;
+  aspect-ratio: 1;
+  width: 100%;
+  max-width: 96px;
+  margin: 0 auto;
+  border-radius: 50%;
   background:
-    radial-gradient(
-      closest-side,
-      var(--void) 72%,
-      transparent 73% 100%
-    ),
+    radial-gradient(closest-side, var(--void) 72%, transparent 73% 100%),
     conic-gradient(
-      var(--reactor-color)
-      calc(var(--val, 50) * 1%),
+      var(--reactor-color) calc(var(--val, 50) * 1%),
       var(--panel-border) 0
     );
-
-  display:
-    grid;
-
-  place-items:
-    center;
+  display: grid;
+  place-items: center;
+  transition: background 0.4s ease;
 }
 
 .gauge span {
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.52rem;
-
-  letter-spacing:
-    0.14em;
-
-  color:
-    var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
 }
 
 .sys-lines {
-  display:
-    flex;
-
-  flex-direction:
-    column;
-
-  gap:
-    0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
 .sys-line {
-  display:
-    flex;
-
-  justify-content:
-    space-between;
-
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.6rem;
-
-  letter-spacing:
-    0.14em;
-
-  color:
-    var(--text-dim);
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
 }
 
 .sys-line b {
-  font-weight:
-    400;
-
-  color:
-    var(--magenta);
+  font-weight: 400;
+  color: var(--magenta);
 }
 
 .sys-line b.pending {
-  color:
-    var(--text-faint);
+  color: var(--text-faint);
 }
 
 
 /* =========================================================
-   JARVIS CORE
+   ZENTRUM: BÜHNE + REAKTOR
    ========================================================= */
 
 .stage {
-  display:
-    flex;
-
-  flex-direction:
-    column;
-
-  align-items:
-    center;
-
-  justify-content:
-    center;
-
-  text-align:
-    center;
-
-  gap:
-    1.1rem;
-
-  padding:
-    0.5rem 0;
-
-  position:
-    relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 1.1rem;
+  padding: 0.5rem 0;
+  position: relative;
 }
 
 .eyebrow {
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.66rem;
-
-  letter-spacing:
-    0.32em;
-
-  text-transform:
-    uppercase;
-
-  color:
-    var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 
 h1 {
-  font-family:
-    var(--font-display);
-
-  font-weight:
-    700;
-
-  text-transform:
-    uppercase;
-
-  letter-spacing:
-    0.14em;
-
-  font-size:
-    clamp(
-      2.4rem,
-      6vw,
-      4rem
-    );
-
-  line-height:
-    1;
-
-  background:
-    linear-gradient(
-      180deg,
-      #ffffff 0%,
-      #ffd7ea 55%,
-      var(--magenta) 100%
-    );
-
-  -webkit-background-clip:
-    text;
-
-  background-clip:
-    text;
-
-  color:
-    transparent;
-
-  text-shadow:
-    0 0 52px
-    rgba(231, 7, 121, 0.4);
-
-  animation:
-    h1-glitch
-    9s
-    linear
-    infinite;
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: clamp(2.4rem, 6vw, 4rem);
+  line-height: 1;
+  background: linear-gradient(180deg, #ffffff 0%, #ffd7ea 55%, var(--magenta) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 52px rgba(231, 7, 121, 0.4);
+  animation: h1-glitch 9s linear infinite;
 }
 
 .voice-panel {
-  display:
-    flex;
-
-  flex-direction:
-    column;
-
-  align-items:
-    center;
-
-  gap:
-    0.9rem;
-
-  transition:
-    transform
-    0.15s
-    ease-out;
-
-  will-change:
-    transform;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  transition: transform 0.15s ease-out;
+  will-change: transform;
 }
 
 .voice-button {
-  position:
-    relative;
-
-  width:
-    min(300px, 62vw);
-
-  aspect-ratio:
-    1;
-
-  border-radius:
-    50%;
-
-  background:
-    transparent;
-
-  border:
-    none;
-
-  cursor:
-    pointer;
-
-  padding:
-    0;
-
-  display:
-    grid;
-
-  place-items:
-    center;
+  position: relative;
+  width: min(300px, 62vw);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  display: grid;
+  place-items: center;
 }
 
+/* Rotierende Teilbögen */
 .reactor-arc {
-  position:
-    absolute;
-
-  border-radius:
-    50%;
-
-  border:
-    2px solid
-    transparent;
-
-  pointer-events:
-    none;
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  pointer-events: none;
 }
 
 .reactor-arc.arc-one {
-  inset:
-    0;
-
-  border-top-color:
-    var(--reactor-color);
-
-  border-right-color:
-    var(--reactor-color);
-
-  opacity:
-    0.9;
-
-  animation:
-    spin
-    var(--reactor-speed)
-    linear
-    infinite;
+  inset: 0;
+  border-top-color: var(--reactor-color);
+  border-right-color: var(--reactor-color);
+  opacity: 0.9;
+  animation: spin var(--reactor-speed) linear infinite;
 }
 
 .reactor-arc.arc-two {
-  inset:
-    5.5%;
-
-  border-bottom-color:
-    var(--reactor-color);
-
-  border-left-color:
-    var(--reactor-color);
-
-  opacity:
-    0.55;
-
-  animation:
-    spin-rev
-    calc(var(--reactor-speed) * 0.65)
-    linear
-    infinite;
+  inset: 5.5%;
+  border-bottom-color: var(--reactor-color);
+  border-left-color: var(--reactor-color);
+  opacity: 0.55;
+  animation: spin-rev calc(var(--reactor-speed) * 0.65) linear infinite;
 }
 
 .reactor-arc.arc-three {
-  inset:
-    11%;
-
-  border-top-color:
-    var(--reactor-color);
-
-  opacity:
-    0.4;
-
-  animation:
-    spin
-    calc(var(--reactor-speed) * 0.42)
-    linear
-    infinite;
+  inset: 11%;
+  border-top-color: var(--reactor-color);
+  opacity: 0.4;
+  animation: spin calc(var(--reactor-speed) * 0.42) linear infinite;
 }
 
+/* Zwei Tick-Kränze, gegenläufig */
 .reactor-ticks {
-  position:
-    absolute;
-
-  border-radius:
-    50%;
-
-  border:
-    2px dashed
-    var(--reactor-color);
-
-  pointer-events:
-    none;
+  position: absolute;
+  border-radius: 50%;
+  border: 2px dashed var(--reactor-color);
+  pointer-events: none;
 }
 
 .reactor-ticks.ticks-outer {
-  inset:
-    16%;
-
-  opacity:
-    0.5;
-
-  animation:
-    spin-rev
-    calc(var(--reactor-speed) * 1.6)
-    linear
-    infinite;
+  inset: 16%;
+  opacity: 0.5;
+  animation: spin-rev calc(var(--reactor-speed) * 1.6) linear infinite;
 }
 
 .reactor-ticks.ticks-inner {
-  inset:
-    24%;
-
-  opacity:
-    0.3;
-
-  border-width:
-    1.5px;
-
-  animation:
-    spin
-    calc(var(--reactor-speed) * 0.9)
-    linear
-    infinite;
+  inset: 24%;
+  opacity: 0.3;
+  border-width: 1.5px;
+  animation: spin calc(var(--reactor-speed) * 0.9) linear infinite;
 }
 
+/* Puls-Ringe */
 .voice-ring {
-  position:
-    absolute;
-
-  inset:
-    26%;
-
-  border-radius:
-    50%;
-
-  border:
-    1.5px solid
-    var(--reactor-color);
-
-  opacity:
-    0;
-
-  pointer-events:
-    none;
+  position: absolute;
+  inset: 26%;
+  border-radius: 50%;
+  border: 1.5px solid var(--reactor-color);
+  opacity: 0;
+  pointer-events: none;
 }
 
-.voice-ring.ring-one {
-  animation:
-    ring-pulse
-    3.2s
-    ease-out
-    infinite;
-}
+.voice-ring.ring-one { animation: ring-pulse 3.2s ease-out infinite; }
+.voice-ring.ring-two { animation: ring-pulse 3.2s ease-out infinite; animation-delay: 1.1s; }
 
-.voice-ring.ring-two {
-  animation:
-    ring-pulse
-    3.2s
-    ease-out
-    infinite;
-
-  animation-delay:
-    1.1s;
-}
-
+/* Kern mit 3D-Partikelkugel */
 .voice-core {
-  position:
-    relative;
-
-  width:
-    52%;
-
-  aspect-ratio:
-    1;
-
-  border-radius:
-    50%;
-
-  display:
-    grid;
-
-  place-items:
-    center;
-
-  overflow:
-    hidden;
-
-  background:
-    radial-gradient(
-      circle at 50% 45%,
-      var(--reactor-glow) 0%,
-      rgba(0, 0, 0, 0) 70%
-    );
-
+  position: relative;
+  width: 52%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: radial-gradient(
+    circle at 50% 45%,
+    var(--reactor-glow) 0%,
+    rgba(0, 0, 0, 0) 70%
+  );
   box-shadow:
-    0 0 24px 6px
-    var(--reactor-glow),
-    0 0 70px 18px
-    var(--reactor-glow);
-
-  animation:
-    breathe
-    4.5s
-    ease-in-out
-    infinite;
+    0 0 24px 6px var(--reactor-glow),
+    0 0 70px 18px var(--reactor-glow);
+  animation: breathe 4.5s ease-in-out infinite;
+  transition: box-shadow 0.4s ease;
 }
 
 .voice-core canvas {
-  position:
-    absolute;
-
-  inset:
-    0;
-
-  width:
-    100%;
-
-  height:
-    100%;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .voice-log {
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.88rem;
-
-  letter-spacing:
-    0.04em;
-
-  color:
-    var(--text);
-
-  min-height:
-    1.4em;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  min-height: 1.4em;
 }
 
 .stage-foot {
-  display:
-    flex;
-
-  flex-direction:
-    column;
-
-  gap:
-    0.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
 }
 
 .core-state {
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.7rem;
-
-  letter-spacing:
-    0.26em;
-
-  color:
-    var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.26em;
+  color: var(--text-dim);
 }
 
 .core-state span {
-  color:
-    var(--magenta);
+  color: var(--magenta);
 }
 
 .core-loc {
-  font-family:
-    var(--font-mono);
-
-  font-size:
-    0.58rem;
-
-  letter-spacing:
-    0.22em;
-
-  color:
-    var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.22em;
+  color: var(--text-faint);
 }
 
 
 /* =========================================================
-   STATES
+   REAKTOR-ZUSTÄNDE
    ========================================================= */
 
 body[data-jarvis-state="offline"] {
@@ -1806,341 +992,130 @@ body[data-jarvis-state="hearing"] .voice-ring,
 body[data-jarvis-state="thinking"] .voice-ring,
 body[data-jarvis-state="speaking"] .voice-ring,
 body[data-jarvis-state="connecting"] .voice-ring {
-  opacity:
-    1;
+  opacity: 1;
 }
 
 body[data-jarvis-state="hearing"] .voice-core {
-  animation-name:
-    hear;
-
-  animation-duration:
-    0.8s;
+  animation-name: hear; animation-duration: 0.8s;
 }
 
 body[data-jarvis-state="thinking"] .voice-core {
-  animation-name:
-    think;
-
-  animation-duration:
-    1.05s;
+  animation-name: think; animation-duration: 1.05s;
 }
 
 body[data-jarvis-state="speaking"] .voice-core {
-  animation-name:
-    speak;
-
-  animation-duration:
-    0.55s;
+  animation-name: speak; animation-duration: 0.55s;
 }
 
 
 /* =========================================================
-   COMMANDS
+   COMMAND-LEISTE
    ========================================================= */
 
 .command-bar {
-  display:
-    flex;
-
-  flex-wrap:
-    wrap;
-
-  justify-content:
-    center;
-
-  gap:
-    0.6rem;
-
-  padding-top:
-    0.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+  padding-top: 0.4rem;
 }
 
 .command-chip {
-  font-size:
-    0.82rem;
-
-  color:
-    var(--text);
-
-  background:
-    var(--panel);
-
-  border:
-    1px solid
-    var(--panel-border);
-
-  border-radius:
-    999px;
-
-  padding:
-    0.5em 1em;
+  font-size: 0.82rem;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 0.5em 1em;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-audio {
-  display:
-    none;
+.command-chip:hover {
+  border-color: rgba(231, 7, 121, 0.5);
+  box-shadow: 0 0 16px -6px rgba(231, 7, 121, 0.6);
 }
+
+audio { display: none; }
 
 
 /* =========================================================
-   ANIMATIONS
+   KEYFRAMES
    ========================================================= */
 
-@keyframes spin {
-  from {
-    transform:
-      rotate(0deg);
-  }
-
-  to {
-    transform:
-      rotate(360deg);
-  }
-}
-
-@keyframes spin-rev {
-  from {
-    transform:
-      rotate(360deg);
-  }
-
-  to {
-    transform:
-      rotate(0deg);
-  }
-}
-
-@keyframes marquee {
-  from {
-    transform:
-      translateX(0);
-  }
-
-  to {
-    transform:
-      translateX(-50%);
-  }
-}
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes spin-rev { from { transform: rotate(360deg); } to { transform: rotate(0deg); } }
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
 @keyframes panel-in {
-  from {
-    opacity:
-      0;
-
-    transform:
-      translateY(14px);
-  }
-
-  to {
-    opacity:
-      1;
-
-    transform:
-      translateY(0);
-  }
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes panel-sweep {
-  0%,
-  55% {
-    left:
-      -60%;
-  }
-
-  75%,
-  100% {
-    left:
-      130%;
-  }
+  0%, 55% { left: -60%; }
+  75%, 100% { left: 130%; }
 }
 
 @keyframes skel-shimmer {
-  from {
-    background-position:
-      200% 0;
-  }
-
-  to {
-    background-position:
-      -200% 0;
-  }
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
 }
 
 @keyframes h1-glitch {
-  0%,
-  91%,
-  100% {
-    transform:
-      none;
-  }
-
-  92% {
-    transform:
-      translateX(2px);
-  }
-
-  94% {
-    transform:
-      translateX(-2px);
-  }
+  0%, 91%, 100% { transform: none; text-shadow: 0 0 52px rgba(231, 7, 121, 0.4); }
+  92% { transform: translateX(2px); text-shadow: -3px 0 rgba(231, 7, 121, 0.8), 3px 0 rgba(64, 220, 255, 0.5); }
+  94% { transform: translateX(-2px); text-shadow: 3px 0 rgba(231, 7, 121, 0.8), -3px 0 rgba(64, 220, 255, 0.5); }
+  96% { transform: none; text-shadow: 0 0 52px rgba(231, 7, 121, 0.4); }
 }
 
 @keyframes breathe {
-  0%,
-  100% {
-    transform:
-      scale(1);
-
-    opacity:
-      0.88;
-  }
-
-  50% {
-    transform:
-      scale(1.05);
-
-    opacity:
-      1;
-  }
+  0%, 100% { transform: scale(1); opacity: 0.88; }
+  50% { transform: scale(1.05); opacity: 1; }
 }
 
 @keyframes hear {
-  0%,
-  100% {
-    transform:
-      scale(1);
-  }
-
-  50% {
-    transform:
-      scale(1.13);
-  }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.13); }
 }
 
 @keyframes think {
-  0%,
-  100% {
-    opacity:
-      0.55;
-
-    transform:
-      scale(0.97);
-  }
-
-  50% {
-    opacity:
-      1;
-
-    transform:
-      scale(1.02);
-  }
+  0%, 100% { opacity: 0.55; transform: scale(0.97); }
+  50% { opacity: 1; transform: scale(1.02); }
 }
 
 @keyframes speak {
-  0%,
-  100% {
-    transform:
-      scale(1);
-  }
-
-  50% {
-    transform:
-      scale(1.17);
-  }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.17); }
 }
 
 @keyframes ring-pulse {
-  0% {
-    transform:
-      scale(0.82);
-
-    opacity:
-      0.55;
-  }
-
-  100% {
-    transform:
-      scale(1.55);
-
-    opacity:
-      0;
-  }
+  0% { transform: scale(0.82); opacity: 0.55; }
+  100% { transform: scale(1.55); opacity: 0; }
 }
 
 @keyframes dot-pulse {
-  0%,
-  100% {
-    opacity:
-      1;
-  }
-
-  50% {
-    opacity:
-      0.35;
-  }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
 @keyframes eq-bounce {
-  0%,
-  100% {
-    height:
-      18%;
-  }
-
-  50% {
-    height:
-      95%;
-  }
+  0%, 100% { height: 18%; }
+  50% { height: 95%; }
 }
 
 @keyframes zone-blink {
-  0%,
-  100% {
-    opacity:
-      0.35;
-  }
-
-  50% {
-    opacity:
-      1;
-  }
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
 }
 
 @keyframes boot-logo-in {
-  from {
-    opacity:
-      0;
-
-    transform:
-      scale(0.92);
-  }
-
-  to {
-    opacity:
-      1;
-
-    transform:
-      scale(1);
-  }
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 @keyframes boot-line-in {
-  from {
-    opacity:
-      0;
-
-    transform:
-      translateX(-6px);
-  }
-
-  to {
-    opacity:
-      1;
-
-    transform:
-      translateX(0);
-  }
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 
@@ -2149,913 +1124,348 @@ audio {
    ========================================================= */
 
 @media (max-width: 920px) {
+  /* Widgets stehen auch am Handy sauber untereinander */
   .voice-button {
-    width:
-      min(300px, 76vw);
+    width: min(300px, 76vw);
   }
 
   h1 {
-    font-size:
-      clamp(
-        2.4rem,
-        11vw,
-        3.4rem
-      );
+    font-size: clamp(2.4rem, 11vw, 3.4rem);
   }
 
+  /* Command-Chips als Wisch-Reihe statt Stapel */
   .command-bar {
-    flex-wrap:
-      nowrap;
-
-    justify-content:
-      flex-start;
-
-    overflow-x:
-      auto;
-
-    scroll-snap-type:
-      x proximity;
-
-    -webkit-overflow-scrolling:
-      touch;
-
-    scrollbar-width:
-      none;
-
-    padding-bottom:
-      0.5rem;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 0.5rem;
   }
 
-  .command-bar::-webkit-scrollbar {
-    display:
-      none;
-  }
+  .command-bar::-webkit-scrollbar { display: none; }
 
   .command-chip {
-    flex-shrink:
-      0;
-
-    scroll-snap-align:
-      center;
+    flex-shrink: 0;
+    scroll-snap-align: center;
   }
 }
 
 @media (max-width: 480px) {
   .hud {
-    padding:
-      0.8rem
-      0.8rem
-      1.2rem;
+    padding: 0.8rem 0.8rem 1.2rem;
   }
 
   .topbar {
-    grid-template-columns:
-      1fr auto;
+    grid-template-columns: 1fr auto;
   }
 
-  .top-center {
-    display:
-      none;
-  }
+  .top-center { display: none; }
 
-  .brand-logo {
-    height:
-      26px;
-  }
+  .brand-logo { height: 26px; }
 
   .top-right {
-    flex-direction:
-      column;
-
-    align-items:
-      flex-end;
-
-    gap:
-      0.35rem;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
   }
 
-  .top-clock {
-    font-size:
-      1rem;
-  }
+  .top-clock { font-size: 1rem; }
 }
+
+
+/* =========================================================
+   REDUZIERTE BEWEGUNG
+   ========================================================= */
 
 @media (prefers-reduced-motion: reduce) {
   * {
-    animation-duration:
-      0.001ms !important;
-
-    animation-iteration-count:
-      1 !important;
-
-    transition-duration:
-      0.001ms !important;
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
   }
 }
 
   </style>
 </head>
-
-
 <body>
 
-  <div
-    class="boot-overlay"
-    id="bootOverlay"
-  >
-
+  <!-- ===================================================
+       BOOT-OVERLAY
+       =================================================== -->
+  <div class="boot-overlay" id="bootOverlay">
     <img
       class="boot-logo"
       src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252"
       alt="Druckelite24"
     />
-
-    <div
-      class="boot-lines"
-      id="bootLines"
-    ></div>
-
+    <div class="boot-lines" id="bootLines"></div>
     <div class="boot-bar">
-
-      <div
-        class="boot-bar-fill"
-        id="bootBarFill"
-      ></div>
-
+      <div class="boot-bar-fill" id="bootBarFill"></div>
     </div>
-
   </div>
 
 
   <div class="hud">
 
+    <!-- =================================================
+         TOPBAR
+         ================================================= -->
     <header class="topbar">
-
       <div class="brand-block">
-
         <img
           class="brand-logo"
           src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252"
           alt="Druckelite24"
         />
-
       </div>
-
-
       <div class="top-center">
-
-        <div class="top-title">
-          JARVIS OS
-        </div>
-
-        <div class="top-sub">
-          V5 · BUSINESS VOICE ASSISTANT
-        </div>
-
+        <div class="top-title">JARVIS OS</div>
+        <div class="top-sub">V5 · BUSINESS VOICE ASSISTANT</div>
       </div>
-
-
       <div class="top-right">
-
         <div class="top-datetime">
-
-          <div class="top-date">
-
-            <span id="hudDay">
-              --
-            </span>.
-
-            <span id="hudMonth">
-              —
-            </span>
-
-          </div>
-
-
-          <div
-            class="top-clock"
-            id="hudBigTime"
-          >
-            --:--:--
-          </div>
-
+          <div class="top-date"><span id="hudDay">--</span>. <span id="hudMonth">—</span></div>
+          <div class="top-clock" id="hudBigTime">--:--:--</div>
         </div>
-
-
-        <div
-          class="status-pill"
-          id="status"
-        >
-          Offline
-        </div>
-
+        <div class="status-pill" id="status">Offline</div>
       </div>
-
     </header>
 
 
-    <div
-      class="ticker"
-      aria-hidden="true"
-    >
-
+    <!-- Lauf-Ticker mit Live-Werten -->
+    <div class="ticker" aria-hidden="true">
       <div class="ticker-track">
-
-        <span
-          class="tick-group"
-          id="tickA"
-        >
-          DRUCKELITE24 · JARVIS V5 · SYSTEM ONLINE
-        </span>
-
-        <span
-          class="tick-group"
-          id="tickB"
-        >
-          DRUCKELITE24 · JARVIS V5 · SYSTEM ONLINE
-        </span>
-
+        <span class="tick-group" id="tickA">DRUCKELITE24 · JARVIS V5 · SYSTEM ONLINE</span>
+        <span class="tick-group" id="tickB">DRUCKELITE24 · JARVIS V5 · SYSTEM ONLINE</span>
       </div>
-
     </div>
 
 
+    <!-- =================================================
+         3-SPALTEN-COCKPIT
+         ================================================= -->
     <main class="cockpit">
 
+      <!-- ============ LINKE PANEL-SPALTE ============ -->
       <aside class="column column-left">
 
+        <!-- SHOP LIVE (echte Shopify-Daten) -->
         <section class="panel">
-
           <div class="panel-head">
-
-            <span>
-              SHOP · LIVE
-            </span>
-
-            <span
-              class="panel-dot"
-              id="shopDot"
-            ></span>
-
+            <span>SHOP · LIVE</span>
+            <span class="panel-dot" id="shopDot"></span>
           </div>
-
-
           <div class="stat-row">
-
             <div class="stat">
-
-              <div
-                class="stat-value"
-                id="statOrders"
-              >
-                —
-              </div>
-
-              <div class="stat-label">
-                BESTELLUNGEN HEUTE
-              </div>
-
+              <div class="stat-value" id="statOrders">—</div>
+              <div class="stat-label">BESTELLUNGEN HEUTE</div>
             </div>
-
-
             <div class="stat">
-
-              <div
-                class="stat-value"
-                id="statRevenue"
-              >
-                —
-              </div>
-
-              <div class="stat-label">
-                UMSATZ HEUTE
-              </div>
-
+              <div class="stat-value" id="statRevenue">—</div>
+              <div class="stat-label">UMSATZ HEUTE</div>
             </div>
-
           </div>
-
-
           <div class="stat-row">
-
             <div class="stat">
-
-              <div
-                class="stat-value stat-small"
-                id="statAov"
-              >
-                —
-              </div>
-
-              <div class="stat-label">
-                Ø BESTELLWERT
-              </div>
-
+              <div class="stat-value stat-small" id="statAov">—</div>
+              <div class="stat-label">Ø BESTELLWERT</div>
             </div>
-
-
             <div class="stat">
-
-              <div
-                class="stat-value stat-small"
-                id="statYesterday"
-              >
-                —
-              </div>
-
-              <div class="stat-label">
-                GESTERN
-              </div>
-
+              <div class="stat-value stat-small" id="statYesterday">—</div>
+              <div class="stat-label">GESTERN</div>
             </div>
-
           </div>
-
-
-          <div class="chart-label">
-            UMSATZ · LETZTE 7 TAGE
-          </div>
-
-
-          <canvas
-            class="week-chart"
-            id="weekChart"
-            width="260"
-            height="70"
-          ></canvas>
-
-
-          <div
-            class="panel-foot"
-            id="shopUpdated"
-          >
-            WARTE AUF DATEN …
-          </div>
-
+          <div class="chart-label">UMSATZ · LETZTE 7 TAGE</div>
+          <canvas class="week-chart" id="weekChart" width="260" height="70"></canvas>
+          <div class="panel-foot" id="shopUpdated">WARTE AUF DATEN …</div>
         </section>
 
-
+        <!-- AUDIO-WELLE -->
         <section class="panel">
-
-          <div class="panel-head">
-            <span>
-              AUDIO · SIGNAL
-            </span>
+          <div class="panel-head"><span>AUDIO · SIGNAL</span></div>
+          <canvas class="wave" id="waveCanvas" width="260" height="56"></canvas>
+          <div class="eq" aria-hidden="true">
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
           </div>
-
-          <canvas
-            class="wave"
-            id="waveCanvas"
-            width="260"
-            height="56"
-          ></canvas>
-
-          <div
-            class="eq"
-            aria-hidden="true"
-          >
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-            <span></span>
-          </div>
-
         </section>
 
-
+        <!-- PRODUKTION (Textil-Modul) -->
         <section class="panel">
-
-          <div class="panel-head">
-
-            <span>
-              PRODUKTION · TEXTIL
-            </span>
-
-          </div>
-
-
+          <div class="panel-head"><span>PRODUKTION · TEXTIL</span></div>
           <div class="tex-module">
-
-            <svg
-              class="tshirt"
-              viewBox="0 0 100 100"
-              aria-hidden="true"
-            >
-
-              <path
-                d="M32 12 L20 20 L6 34 L16 46 L24 40 L24 90 L76 90 L76 40 L84 46 L94 34 L80 20 L68 12 C64 20 56 24 50 24 C44 24 36 20 32 12 Z"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                stroke-linejoin="round"
-              />
-
-              <rect
-                class="print-zone"
-                x="38"
-                y="38"
-                width="24"
-                height="26"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                stroke-dasharray="4 3"
-              />
-
+            <svg class="tshirt" viewBox="0 0 100 100" aria-hidden="true">
+              <path d="M32 12 L20 20 L6 34 L16 46 L24 40 L24 90 L76 90 L76 40 L84 46 L94 34 L80 20 L68 12 C64 20 56 24 50 24 C44 24 36 20 32 12 Z"
+                fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" />
+              <rect class="print-zone" x="38" y="38" width="24" height="26" fill="none"
+                stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" />
             </svg>
-
-
             <div class="tex-lines">
-
-              <div class="tex-line">
-                <span>DTF</span>
-                <i style="--w:86%"></i>
-              </div>
-
-              <div class="tex-line">
-                <span>FLEX</span>
-                <i style="--w:64%"></i>
-              </div>
-
-              <div class="tex-line">
-                <span>STICK</span>
-                <i style="--w:48%"></i>
-              </div>
-
-              <div class="tex-line">
-                <span>SIEB</span>
-                <i style="--w:72%"></i>
-              </div>
-
+              <div class="tex-line"><span>DTF</span><i style="--w:86%"></i></div>
+              <div class="tex-line"><span>FLEX</span><i style="--w:64%"></i></div>
+              <div class="tex-line"><span>STICK</span><i style="--w:48%"></i></div>
+              <div class="tex-line"><span>SIEB</span><i style="--w:72%"></i></div>
             </div>
-
           </div>
-
         </section>
 
       </aside>
 
 
+      <!-- ============ ZENTRUM: REAKTOR ============ -->
       <section class="stage">
-
         <div class="stage-title">
-
-          <div class="eyebrow">
-            DEIN PERSÖNLICHER ASSISTENT
-          </div>
-
-          <h1>
-            JARVIS
-          </h1>
-
+          <div class="eyebrow">DEIN PERSÖNLICHER ASSISTENT</div>
+          <h1>JARVIS</h1>
         </div>
 
-
-        <div
-          class="voice-panel"
-          id="voicePanel"
-        >
-
+        <div class="voice-panel" id="voicePanel">
           <button
             id="toggle"
             class="voice-button"
             type="button"
             aria-label="JARVIS starten oder stoppen"
           >
-
             <span class="reactor-arc arc-one"></span>
             <span class="reactor-arc arc-two"></span>
             <span class="reactor-arc arc-three"></span>
-
             <span class="reactor-ticks ticks-outer"></span>
             <span class="reactor-ticks ticks-inner"></span>
-
             <span class="voice-ring ring-one"></span>
             <span class="voice-ring ring-two"></span>
-
             <span class="voice-core">
-
-              <canvas
-                id="coreCanvas"
-                aria-hidden="true"
-              ></canvas>
-
+              <canvas id="coreCanvas" aria-hidden="true"></canvas>
             </span>
-
           </button>
-
-
-          <div
-            class="voice-log"
-            id="log"
-          >
-            Bereit.
-          </div>
-
+          <div class="voice-log" id="log">Bereit.</div>
         </div>
-
 
         <div class="stage-foot">
-
-          <div class="core-state">
-
-            CORE:
-
-            <span id="hudState">
-              STANDBY
-            </span>
-
-          </div>
-
-          <div class="core-loc">
-            LUDWIGSHAFEN AM RHEIN · DE
-          </div>
-
+          <div class="core-state">CORE: <span id="hudState">STANDBY</span></div>
+          <div class="core-loc">LUDWIGSHAFEN AM RHEIN · DE</div>
         </div>
-
       </section>
 
 
+      <!-- ============ RECHTE PANEL-SPALTE ============ -->
       <aside class="column column-right">
 
+        <!-- WETTER LIVE (echte Daten) -->
         <section class="panel">
-
           <div class="panel-head">
-
-            <span>
-              WETTER · LUDWIGSHAFEN
-            </span>
-
-            <span
-              class="panel-dot"
-              id="wxDot"
-            ></span>
-
+            <span>WETTER · LUDWIGSHAFEN</span>
+            <span class="panel-dot" id="wxDot"></span>
           </div>
-
-
           <div class="wx-main">
-
-            <div
-              class="wx-temp"
-              id="wxTemp"
-            >
-              —°
-            </div>
-
-            <div
-              class="wx-desc"
-              id="wxDesc"
-            >
-              …
-            </div>
-
+            <div class="wx-temp" id="wxTemp">—°</div>
+            <div class="wx-desc" id="wxDesc">…</div>
           </div>
-
-
           <div class="wx-grid">
-
             <div class="wx-cell">
-
-              <span id="wxMax">
-                —°
-              </span>
-
-              <label>
-                MAX
-              </label>
-
+              <span id="wxMax">—°</span><label>MAX</label>
             </div>
-
-
             <div class="wx-cell">
-
-              <span id="wxMin">
-                —°
-              </span>
-
-              <label>
-                MIN
-              </label>
-
+              <span id="wxMin">—°</span><label>MIN</label>
             </div>
-
-
             <div class="wx-cell">
-
-              <span id="wxRain">
-                —%
-              </span>
-
-              <label>
-                REGEN
-              </label>
-
+              <span id="wxRain">—%</span><label>REGEN</label>
             </div>
-
-
             <div class="wx-cell">
-
-              <span id="wxWind">
-                —
-              </span>
-
-              <label>
-                WIND KM/H
-              </label>
-
+              <span id="wxWind">—</span><label>WIND KM/H</label>
             </div>
-
           </div>
-
         </section>
 
-
+        <!-- GMAIL (Platzhalter für Phase 2) -->
         <section class="panel">
-
           <div class="panel-head">
-
-            <span>
-              GMAIL · POSTEINGANG
-            </span>
-
+            <span>GMAIL · POSTEINGANG</span>
             <span class="panel-dot"></span>
-
           </div>
-
-
           <div class="skel-list">
-
-            <div
-              class="skel-row"
-              style="width:88%"
-            ></div>
-
-            <div
-              class="skel-row"
-              style="width:64%"
-            ></div>
-
-            <div
-              class="skel-row"
-              style="width:76%"
-            ></div>
-
+            <div class="skel-row" style="width: 88%"></div>
+            <div class="skel-row" style="width: 64%"></div>
+            <div class="skel-row" style="width: 76%"></div>
           </div>
-
-
-          <div class="panel-foot">
-            PHASE 2 · WIRD VERBUNDEN
-          </div>
-
+          <div class="panel-foot">PHASE 2 · WIRD VERBUNDEN</div>
         </section>
 
-
+        <!-- NACHRICHTEN (Platzhalter) -->
         <section class="panel">
-
           <div class="panel-head">
-
-            <span>
-              NACHRICHTEN
-            </span>
-
+            <span>NACHRICHTEN</span>
             <span class="panel-dot"></span>
-
           </div>
-
-
           <div class="skel-list">
-
-            <div
-              class="skel-row"
-              style="width:72%"
-            ></div>
-
-            <div
-              class="skel-row"
-              style="width:84%"
-            ></div>
-
+            <div class="skel-row" style="width: 72%"></div>
+            <div class="skel-row" style="width: 84%"></div>
           </div>
-
-
-          <div class="panel-foot">
-            PHASE 2 · WIRD VERBUNDEN
-          </div>
-
+          <div class="panel-foot">PHASE 2 · WIRD VERBUNDEN</div>
         </section>
 
-
+        <!-- NEWS (Platzhalter) -->
         <section class="panel">
-
           <div class="panel-head">
-
-            <span>
-              NEWS · BRANCHE
-            </span>
-
+            <span>NEWS · BRANCHE</span>
             <span class="panel-dot"></span>
-
           </div>
-
-
           <div class="skel-list">
-
-            <div
-              class="skel-row"
-              style="width:92%"
-            ></div>
-
-            <div
-              class="skel-row"
-              style="width:58%"
-            ></div>
-
-            <div
-              class="skel-row"
-              style="width:80%"
-            ></div>
-
+            <div class="skel-row" style="width: 92%"></div>
+            <div class="skel-row" style="width: 58%"></div>
+            <div class="skel-row" style="width: 80%"></div>
           </div>
-
-
-          <div class="panel-foot">
-            PHASE 2 · WIRD VERBUNDEN
-          </div>
-
+          <div class="panel-foot">PHASE 2 · WIRD VERBUNDEN</div>
         </section>
 
-
+        <!-- SYSTEM-GAUGES -->
         <section class="panel">
-
-          <div class="panel-head">
-
-            <span>
-              SYSTEM
-            </span>
-
-          </div>
-
-
+          <div class="panel-head"><span>SYSTEM</span></div>
           <div class="gauge-row">
-
-            <div
-              class="gauge"
-              id="gaugeTrend"
-              style="--val:0"
-            >
-
-              <span id="gaugeTrendLabel">
-                TREND
-              </span>
-
-            </div>
-
-
-            <div
-              class="gauge"
-              style="--val:92"
-            >
-              <span>
-                LINK
-              </span>
-            </div>
-
-
-            <div
-              class="gauge"
-              style="--val:64"
-            >
-              <span>
-                CORE
-              </span>
-            </div>
-
+            <div class="gauge" id="gaugeTrend" style="--val: 0"><span id="gaugeTrendLabel">TREND</span></div>
+            <div class="gauge" style="--val: 92"><span>LINK</span></div>
+            <div class="gauge" style="--val: 64"><span>CORE</span></div>
           </div>
-
-
           <div class="sys-lines">
-
-            <div class="sys-line">
-
-              <span>
-                SHOPIFY-BRÜCKE
-              </span>
-
-              <b id="sysShop">
-                …
-              </b>
-
-            </div>
-
-
-            <div class="sys-line">
-
-              <span>
-                WETTERDIENST
-              </span>
-
-              <b id="sysWx">
-                …
-              </b>
-
-            </div>
-
-
-            <div class="sys-line">
-
-              <span>
-                GMAIL
-              </span>
-
-              <b class="pending">
-                BALD
-              </b>
-
-            </div>
-
-
-            <div class="sys-line">
-
-              <span>
-                KALENDER
-              </span>
-
-              <b class="pending">
-                BALD
-              </b>
-
-            </div>
-
+            <div class="sys-line"><span>SHOPIFY-BRÜCKE</span><b id="sysShop">…</b></div>
+            <div class="sys-line"><span>WETTERDIENST</span><b id="sysWx">…</b></div>
+            <div class="sys-line"><span>GMAIL</span><b class="pending">BALD</b></div>
+            <div class="sys-line"><span>KALENDER</span><b class="pending">BALD</b></div>
           </div>
-
         </section>
 
       </aside>
-
     </main>
 
 
+    <!-- =================================================
+         COMMAND-LEISTE
+         ================================================= -->
     <footer class="command-bar">
-
-      <div class="command-chip">
-        „Wie viele Bestellungen habe ich heute?“
-      </div>
-
-      <div class="command-chip">
-        „Wie hoch ist mein Umsatz?“
-      </div>
-
-      <div class="command-chip">
-        „Wie wird das Wetter morgen?“
-      </div>
-
-      <div class="command-chip">
-        „Was hältst du von meiner Idee?“
-      </div>
-
+      <div class="command-chip">„Wie viele Bestellungen habe ich heute?“</div>
+      <div class="command-chip">„Wie hoch ist mein Umsatz?“</div>
+      <div class="command-chip">„Wie wird das Wetter morgen?“</div>
+      <div class="command-chip">„Was hältst du von meiner Idee?“</div>
     </footer>
 
   </div>
 
-
-  <audio
-    id="remoteAudio"
-    autoplay
-    playsinline
-  ></audio>
+  <audio id="remoteAudio" autoplay playsinline></audio>
 
 
+  <!-- ===================================================
+       HUD-SCRIPT: Boot, Uhr, Live-Daten, Welle, Datenstrom
+       Voice-Logik bleibt komplett in app.js.
+       =================================================== -->
   <script>
     (function () {
 
-      /* =================================================
-         BOOT
-         ================================================= */
-
-      var overlay =
-        document.getElementById(
-          "bootOverlay"
-        );
-
-      var linesEl =
-        document.getElementById(
-          "bootLines"
-        );
-
-      var barFill =
-        document.getElementById(
-          "bootBarFill"
-        );
-
+      /* ---------- Boot-Sequenz ---------- */
+      var overlay = document.getElementById("bootOverlay");
+      var linesEl = document.getElementById("bootLines");
+      var barFill = document.getElementById("bootBarFill");
 
       var bootLines = [
         "DRUCKELITE24 OS · KERN WIRD GELADEN",
@@ -3066,2105 +1476,491 @@ audio {
         "JARVIS V5 BEREIT."
       ];
 
-
-      var li =
-        0;
-
-
+      var li = 0;
       function nextLine() {
-
-        if (!linesEl) {
-          return;
-        }
-
-
-        if (
-          li <
-          bootLines.length
-        ) {
-
-          var d =
-            document.createElement(
-              "div"
-            );
-
-
-          d.textContent =
-            "> " +
-            bootLines[li];
-
-
-          linesEl.appendChild(
-            d
-          );
-
-
+        if (!linesEl) return;
+        if (li < bootLines.length) {
+          var d = document.createElement("div");
+          d.textContent = "> " + bootLines[li];
+          linesEl.appendChild(d);
           li++;
-
-
-          if (barFill) {
-
-            barFill.style.width =
-              Math.round(
-                (
-                  li /
-                  bootLines.length
-                ) *
-                100
-              ) +
-              "%";
-          }
-
-
-          setTimeout(
-            nextLine,
-            240
-          );
-
-
+          if (barFill) barFill.style.width = Math.round((li / bootLines.length) * 100) + "%";
+          setTimeout(nextLine, 240);
         } else {
-
-          setTimeout(
-            function () {
-
-              if (overlay) {
-
-                overlay.classList.add(
-                  "boot-done"
-                );
-
-
-                setTimeout(
-                  function () {
-
-                    overlay.remove();
-
-                  },
-                  700
-                );
-              }
-
-            },
-            420
-          );
+          setTimeout(function () {
+            if (overlay) {
+              overlay.classList.add("boot-done");
+              setTimeout(function () { overlay.remove(); }, 700);
+            }
+          }, 420);
         }
       }
+      setTimeout(nextLine, 350);
 
 
-      setTimeout(
-        nextLine,
-        350
-      );
-
-
-      /* =================================================
-         CLOCK
-         ================================================= */
-
-      var dayEl =
-        document.getElementById(
-          "hudDay"
-        );
-
-      var monthEl =
-        document.getElementById(
-          "hudMonth"
-        );
-
-      var bigTimeEl =
-        document.getElementById(
-          "hudBigTime"
-        );
-
+      /* ---------- Uhr ---------- */
+      var clockEl = document.getElementById("hudClock");
+      var dayEl = document.getElementById("hudDay");
+      var monthEl = document.getElementById("hudMonth");
+      var bigTimeEl = document.getElementById("hudBigTime");
 
       var monthNames = [
-        "JANUAR",
-        "FEBRUAR",
-        "MÄRZ",
-        "APRIL",
-        "MAI",
-        "JUNI",
-        "JULI",
-        "AUGUST",
-        "SEPTEMBER",
-        "OKTOBER",
-        "NOVEMBER",
-        "DEZEMBER"
+        "JANUAR", "FEBRUAR", "MÄRZ", "APRIL", "MAI", "JUNI",
+        "JULI", "AUGUST", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DEZEMBER"
       ];
 
-
       function tick() {
+        var now = new Date();
+        var time = now.toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin" });
 
-        var now =
-          new Date();
+        if (clockEl) clockEl.textContent = time;
+        if (bigTimeEl) bigTimeEl.textContent = time;
 
+        var parts = new Intl.DateTimeFormat("de-DE", {
+          timeZone: "Europe/Berlin", day: "numeric", month: "numeric"
+        }).formatToParts(now);
 
-        var time =
-          now.toLocaleTimeString(
-            "de-DE",
-            {
-              timeZone:
-                "Europe/Berlin"
-            }
-          );
+        var d = parts.find(function (p) { return p.type === "day"; });
+        var m = parts.find(function (p) { return p.type === "month"; });
 
-
-        if (bigTimeEl) {
-
-          bigTimeEl.textContent =
-            time;
-        }
-
-
-        var parts =
-          new Intl.DateTimeFormat(
-            "de-DE",
-            {
-              timeZone:
-                "Europe/Berlin",
-
-              day:
-                "numeric",
-
-              month:
-                "numeric"
-            }
-          )
-            .formatToParts(
-              now
-            );
-
-
-        var d =
-          parts.find(
-            function (p) {
-
-              return (
-                p.type ===
-                "day"
-              );
-            }
-          );
-
-
-        var m =
-          parts.find(
-            function (p) {
-
-              return (
-                p.type ===
-                "month"
-              );
-            }
-          );
-
-
-        if (
-          dayEl &&
-          d
-        ) {
-
-          dayEl.textContent =
-            d.value;
-        }
-
-
-        if (
-          monthEl &&
-          m
-        ) {
-
-          monthEl.textContent =
-            monthNames[
-              Number(
-                m.value
-              ) -
-              1
-            ] ||
-            "";
-        }
+        if (dayEl && d) dayEl.textContent = d.value;
+        if (monthEl && m) monthEl.textContent = monthNames[Number(m.value) - 1] || "";
       }
-
-
       tick();
+      setInterval(tick, 1000);
 
 
-      setInterval(
-        tick,
-        1000
-      );
-
-
-      /* =================================================
-         CORE STATE
-         ================================================= */
-
-      var stateEl =
-        document.getElementById(
-          "hudState"
-        );
-
-
+      /* ---------- CORE-Status folgt JARVIS ---------- */
+      var stateEl = document.getElementById("hudState");
       var stateNames = {
-
-        offline:
-          "STANDBY",
-
-        connecting:
-          "BOOT",
-
-        listening:
-          "LISTENING",
-
-        hearing:
-          "INPUT",
-
-        thinking:
-          "PROCESSING",
-
-        speaking:
-          "OUTPUT"
+        offline: "STANDBY", connecting: "BOOT", listening: "LISTENING",
+        hearing: "INPUT", thinking: "PROCESSING", speaking: "OUTPUT"
       };
+      new MutationObserver(function () {
+        var s = document.body.dataset.jarvisState || "offline";
+        if (stateEl) stateEl.textContent = stateNames[s] || "STANDBY";
+      }).observe(document.body, { attributes: true, attributeFilter: ["data-jarvis-state"] });
 
 
-      new MutationObserver(
-        function () {
-
-          var s =
-            document.body
-              .dataset
-              .jarvisState ||
-            "offline";
-
-
-          if (stateEl) {
-
-            stateEl.textContent =
-              stateNames[s] ||
-              "STANDBY";
-          }
-        }
-      ).observe(
-        document.body,
-        {
-          attributes:
-            true,
-
-          attributeFilter: [
-            "data-jarvis-state"
-          ]
-        }
-      );
-
-
-      /* =================================================
-         HELPERS
-         ================================================= */
-
-      function setText(
-        id,
-        text
-      ) {
-
-        var el =
-          document.getElementById(
-            id
-          );
-
-
-        if (el) {
-
-          el.textContent =
-            text;
-        }
-      }
-
-
-      function setDot(
-        id,
-        ok
-      ) {
-
-        var el =
-          document.getElementById(
-            id
-          );
-
-
-        if (el) {
-
-          el.classList.toggle(
-            "ok",
-            !!ok
-          );
-        }
-      }
-
-
-      var euro =
-        function (n) {
-
-          return Number(
-            n
-          ).toLocaleString(
-            "de-DE",
-            {
-              style:
-                "currency",
-
-              currency:
-                "EUR",
-
-              maximumFractionDigits:
-                0
-            }
-          );
-        };
-
-
-      /* =================================================
-         TICKER
-         ================================================= */
-
-      var hudVals = {
-
-        revenue:
-          null,
-
-        orders:
-          null,
-
-        temp:
-          null,
-
-        wx:
-          null
-      };
-
+      /* ---------- Ticker mit Live-Werten füllen ---------- */
+      var hudVals = { revenue: null, orders: null, temp: null, wx: null };
 
       function updateTicker() {
+        var parts = ["<b>DRUCKELITE24</b> · JARVIS V5 ONLINE"];
 
-        var parts = [
-          "<b>DRUCKELITE24</b> · JARVIS V5 ONLINE"
-        ];
-
-
-        if (
-          hudVals.orders !==
-          null
-        ) {
-
-          parts.push(
-            "BESTELLUNGEN HEUTE <b>" +
-            hudVals.orders +
-            "</b>"
-          );
+        if (hudVals.orders !== null) {
+          parts.push("BESTELLUNGEN HEUTE <b>" + hudVals.orders + "</b>");
+        }
+        if (hudVals.revenue !== null) {
+          parts.push("UMSATZ <b>" + hudVals.revenue + "</b>");
+        }
+        if (hudVals.temp !== null) {
+          parts.push("LUDWIGSHAFEN <b>" + hudVals.temp + "</b> " + (hudVals.wx || ""));
         }
 
-
-        if (
-          hudVals.revenue !==
-          null
-        ) {
-
-          parts.push(
-            "UMSATZ <b>" +
-            hudVals.revenue +
-            "</b>"
-          );
-        }
-
-
-        if (
-          hudVals.temp !==
-          null
-        ) {
-
-          parts.push(
-            "LUDWIGSHAFEN <b>" +
-            hudVals.temp +
-            "</b> " +
-            (
-              hudVals.wx ||
-              ""
-            )
-          );
-        }
-
-
-        var html =
-          parts.join(
-            " &nbsp;·&nbsp; "
-          ) +
-          " &nbsp;·&nbsp; ";
-
-
-        var a =
-          document.getElementById(
-            "tickA"
-          );
-
-        var b =
-          document.getElementById(
-            "tickB"
-          );
-
-
-        if (a) {
-          a.innerHTML =
-            html;
-        }
-
-
-        if (b) {
-          b.innerHTML =
-            html;
-        }
+        var html = parts.join(" &nbsp;·&nbsp; ") + " &nbsp;·&nbsp; ";
+        var a = document.getElementById("tickA");
+        var b = document.getElementById("tickB");
+        if (a) a.innerHTML = html;
+        if (b) b.innerHTML = html;
       }
 
 
-      /* =================================================
-         SHOPIFY
-         ================================================= */
+      /* ---------- 7-TAGE-CHART ---------- */
+      function drawWeekChart(days) {
+        var canvas = document.getElementById("weekChart");
+        if (!canvas || !canvas.getContext || !days || !days.length) return;
 
-      async function loadShop() {
+        var dpr = window.devicePixelRatio || 1;
+        var cw = canvas.clientWidth || 260;
+        canvas.width = cw * dpr;
+        canvas.height = 70 * dpr;
 
-        try {
+        var ctx = canvas.getContext("2d");
+        ctx.scale(dpr, dpr);
 
-          var r =
-            await fetch(
-              "/api/shopify-summary",
-              {
-                method:
-                  "POST",
+        var w = cw, h = 70, pad = 2, labelH = 12;
+        var chartH = h - labelH;
+        var max = Math.max.apply(null, days.map(function (d) { return d.revenue; }));
+        if (max <= 0) max = 1;
 
-                headers: {
+        var barW = (w - pad * 2) / days.length;
 
-                  "Content-Type":
-                    "application/json"
-                },
+        days.forEach(function (d, i) {
+          var bh = Math.max(2, (d.revenue / max) * (chartH - 6));
+          var x = pad + i * barW + barW * 0.18;
+          var y = chartH - bh;
+          var isToday = i === days.length - 1;
 
-                body:
-                  JSON.stringify({
-                    period:
-                      "today"
-                  })
-              }
-            );
-
-
-          var d =
-            await r.json();
-
-
-          if (
-            !r.ok ||
-            d.error
-          ) {
-
-            throw new Error(
-              d.error ||
-              "Fehler"
-            );
+          ctx.fillStyle = isToday ? "#e70779" : "rgba(231, 7, 121, 0.32)";
+          if (isToday) {
+            ctx.shadowColor = "#e70779";
+            ctx.shadowBlur = 8;
+          } else {
+            ctx.shadowBlur = 0;
           }
+          ctx.fillRect(x, y, barW * 0.64, bh);
 
-
-          setText(
-            "statOrders",
-            d.orders
-          );
-
-
-          setText(
-            "statRevenue",
-            euro(
-              d.revenue
-            )
-          );
-
-
-          setText(
-            "statAov",
-            euro(
-              d.average_order_value
-            )
-          );
-
-
-          setText(
-            "shopUpdated",
-
-            "AKTUALISIERT " +
-
-            new Date()
-              .toLocaleTimeString(
-                "de-DE",
-                {
-                  timeZone:
-                    "Europe/Berlin",
-
-                  hour:
-                    "2-digit",
-
-                  minute:
-                    "2-digit"
-                }
-              ) +
-
-            " UHR"
-          );
-
-
-          setText(
-            "sysShop",
-            "ONLINE"
-          );
-
-
-          setDot(
-            "shopDot",
-            true
-          );
-
-
-          hudVals.orders =
-            d.orders;
-
-
-          hudVals.revenue =
-            euro(
-              d.revenue
-            );
-
-
-          updateTicker();
-
-
-          var r2 =
-            await fetch(
-              "/api/shopify-summary",
-              {
-                method:
-                  "POST",
-
-                headers: {
-
-                  "Content-Type":
-                    "application/json"
-                },
-
-                body:
-                  JSON.stringify({
-                    period:
-                      "yesterday"
-                  })
-              }
-            );
-
-
-          var d2 =
-            await r2.json();
-
-
-          if (
-            r2.ok &&
-            !d2.error
-          ) {
-
-            setText(
-              "statYesterday",
-
-              d2.orders +
-              " · " +
-              euro(
-                d2.revenue
-              )
-            );
-
-
-            var pct =
-              d2.revenue > 0
-
-                ? Math.round(
-                    (
-                      d.revenue /
-                      d2.revenue
-                    ) *
-                    100
-                  )
-
-                : (
-                    d.revenue > 0
-                      ? 100
-                      : 0
-                  );
-
-
-            var gauge =
-              document.getElementById(
-                "gaugeTrend"
-              );
-
-
-            var gaugeLabel =
-              document.getElementById(
-                "gaugeTrendLabel"
-              );
-
-
-            if (gauge) {
-
-              gauge.style.setProperty(
-                "--val",
-
-                Math.min(
-                  100,
-                  pct
-                )
-              );
-            }
-
-
-            if (gaugeLabel) {
-
-              gaugeLabel.textContent =
-                pct +
-                "%";
-            }
-          }
-
-
-        } catch (e) {
-
-          setText(
-            "shopUpdated",
-            "SHOP-DATEN NICHT ERREICHBAR"
-          );
-
-
-          setText(
-            "sysShop",
-            "OFFLINE"
-          );
-
-
-          setDot(
-            "shopDot",
-            false
-          );
-        }
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = isToday ? "#f5f5f7" : "#5c5c62";
+          ctx.font = "8px ui-monospace, monospace";
+          ctx.textAlign = "center";
+          ctx.fillText(d.label, pad + i * barW + barW / 2, h - 2);
+        });
       }
-
-
-      loadShop();
-
-
-      setInterval(
-        loadShop,
-        5 *
-        60 *
-        1000
-      );
-
-
-      /* =================================================
-         WEATHER
-         ================================================= */
-
-      var wxCodes = {
-
-        0: "KLAR",
-        1: "MEIST KLAR",
-        2: "TEILS BEWÖLKT",
-        3: "BEDECKT",
-        45: "NEBEL",
-        48: "NEBEL",
-        51: "NIESELN",
-        53: "NIESELN",
-        55: "NIESELN",
-        61: "REGEN",
-        63: "REGEN",
-        65: "STARKREGEN",
-        66: "EISREGEN",
-        67: "EISREGEN",
-        71: "SCHNEE",
-        73: "SCHNEE",
-        75: "SCHNEE",
-        77: "SCHNEE",
-        80: "SCHAUER",
-        81: "SCHAUER",
-        82: "SCHAUER",
-        85: "SCHNEE",
-        86: "SCHNEE",
-        95: "GEWITTER",
-        96: "GEWITTER",
-        99: "GEWITTER"
-      };
-
-
-      async function loadWeather() {
-
-        try {
-
-          var r =
-            await fetch(
-              "/api/weather",
-              {
-                method:
-                  "POST",
-
-                headers: {
-
-                  "Content-Type":
-                    "application/json"
-                },
-
-                body:
-                  JSON.stringify({
-
-                    location:
-                      "Ludwigshafen",
-
-                    day:
-                      "today"
-                  })
-              }
-            );
-
-
-          var d =
-            await r.json();
-
-
-          if (
-            !r.ok ||
-            d.error
-          ) {
-
-            throw new Error(
-              d.error ||
-              "Fehler"
-            );
-          }
-
-
-          if (
-            d.current &&
-            typeof
-              d.current
-                .temperature_2m ===
-              "number"
-          ) {
-
-            setText(
-              "wxTemp",
-
-              Math.round(
-                d.current
-                  .temperature_2m
-              ) +
-              "°"
-            );
-
-
-            setText(
-              "wxWind",
-
-              Math.round(
-                d.current
-                  .wind_speed_10m ||
-                0
-              )
-            );
-
-
-            hudVals.temp =
-              Math.round(
-                d.current
-                  .temperature_2m
-              ) +
-              "°";
-          }
-
-
-          var f =
-            d.forecast ||
-            {};
-
-
-          setText(
-            "wxDesc",
-
-            wxCodes[
-              f.weather_code
-            ] ||
-            "—"
-          );
-
-
-          hudVals.wx =
-            wxCodes[
-              f.weather_code
-            ] ||
-            "";
-
-
-          updateTicker();
-
-
-          if (
-            typeof
-              f.max_temperature ===
-              "number"
-          ) {
-
-            setText(
-              "wxMax",
-
-              Math.round(
-                f.max_temperature
-              ) +
-              "°"
-            );
-          }
-
-
-          if (
-            typeof
-              f.min_temperature ===
-              "number"
-          ) {
-
-            setText(
-              "wxMin",
-
-              Math.round(
-                f.min_temperature
-              ) +
-              "°"
-            );
-          }
-
-
-          if (
-            typeof
-              f.precipitation_probability ===
-              "number"
-          ) {
-
-            setText(
-              "wxRain",
-
-              f.precipitation_probability +
-              "%"
-            );
-          }
-
-
-          setText(
-            "sysWx",
-            "ONLINE"
-          );
-
-
-          setDot(
-            "wxDot",
-            true
-          );
-
-
-        } catch (e) {
-
-          setText(
-            "wxDesc",
-            "NICHT ERREICHBAR"
-          );
-
-
-          setText(
-            "sysWx",
-            "OFFLINE"
-          );
-
-
-          setDot(
-            "wxDot",
-            false
-          );
-        }
-      }
-
-
-      loadWeather();
-
-
-      setInterval(
-        loadWeather,
-        15 *
-        60 *
-        1000
-      );
-
-
-      /* =================================================
-         WEEK CHART
-         ================================================= */
-
-      function drawWeekChart(
-        days
-      ) {
-
-        var canvas =
-          document.getElementById(
-            "weekChart"
-          );
-
-
-        if (
-          !canvas ||
-          !canvas.getContext ||
-          !days ||
-          !days.length
-        ) {
-
-          return;
-        }
-
-
-        var dpr =
-          window.devicePixelRatio ||
-          1;
-
-
-        var cw =
-          canvas.clientWidth ||
-          260;
-
-
-        canvas.width =
-          cw *
-          dpr;
-
-
-        canvas.height =
-          70 *
-          dpr;
-
-
-        var ctx =
-          canvas.getContext(
-            "2d"
-          );
-
-
-        ctx.scale(
-          dpr,
-          dpr
-        );
-
-
-        var w =
-          cw;
-
-        var h =
-          70;
-
-        var pad =
-          2;
-
-        var labelH =
-          12;
-
-        var chartH =
-          h -
-          labelH;
-
-
-        var max =
-          Math.max.apply(
-            null,
-
-            days.map(
-              function (d) {
-
-                return d.revenue;
-              }
-            )
-          );
-
-
-        if (
-          max <= 0
-        ) {
-
-          max =
-            1;
-        }
-
-
-        var barW =
-          (
-            w -
-            pad *
-            2
-          ) /
-          days.length;
-
-
-        days.forEach(
-          function (
-            d,
-            i
-          ) {
-
-            var bh =
-              Math.max(
-                2,
-
-                (
-                  d.revenue /
-                  max
-                ) *
-                (
-                  chartH -
-                  6
-                )
-              );
-
-
-            var x =
-              pad +
-              i *
-              barW +
-              barW *
-              0.18;
-
-
-            var y =
-              chartH -
-              bh;
-
-
-            var isToday =
-              i ===
-              days.length -
-              1;
-
-
-            ctx.fillStyle =
-              isToday
-                ? "#e70779"
-                : "rgba(231, 7, 121, 0.32)";
-
-
-            ctx.fillRect(
-              x,
-              y,
-              barW *
-              0.64,
-              bh
-            );
-
-
-            ctx.fillStyle =
-              isToday
-                ? "#f5f5f7"
-                : "#5c5c62";
-
-
-            ctx.font =
-              "8px ui-monospace, monospace";
-
-
-            ctx.textAlign =
-              "center";
-
-
-            ctx.fillText(
-              d.label,
-
-              pad +
-              i *
-              barW +
-              barW /
-              2,
-
-              h -
-              2
-            );
-          }
-        );
-      }
-
 
       async function loadWeek() {
-
         try {
-
-          var r =
-            await fetch(
-              "/api/shopify-week",
-              {
-                method:
-                  "POST",
-
-                headers: {
-
-                  "Content-Type":
-                    "application/json"
-                },
-
-                body:
-                  "{}"
-              }
-            );
-
-
-          var d =
-            await r.json();
-
-
-          if (
-            !r.ok ||
-            d.error
-          ) {
-
-            throw new Error();
-          }
-
-
-          drawWeekChart(
-            d.days
-          );
-
-
-        } catch {}
+          var r = await fetch("/api/shopify-week", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}"
+          });
+          var d = await r.json();
+          if (!r.ok || d.error) throw new Error(d.error || "Fehler");
+          drawWeekChart(d.days);
+        } catch (e) {
+          /* Chart bleibt leer, kein Drama */
+        }
       }
 
-
       loadWeek();
+      setInterval(loadWeek, 15 * 60 * 1000);
 
 
-      setInterval(
-        loadWeek,
-        15 *
-        60 *
-        1000
-      );
+      /* ---------- ECHTE SHOPIFY-DATEN ---------- */
+      var euro = function (n) {
+        return Number(n).toLocaleString("de-DE", {
+          style: "currency", currency: "EUR", maximumFractionDigits: 0
+        });
+      };
+
+      function setText(id, text) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = text;
+      }
+
+      function setDot(id, ok) {
+        var el = document.getElementById(id);
+        if (el) el.classList.toggle("ok", !!ok);
+      }
+
+      async function loadShop() {
+        try {
+          var r = await fetch("/api/shopify-summary", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ period: "today" })
+          });
+          var d = await r.json();
+          if (!r.ok || d.error) throw new Error(d.error || "Fehler");
+
+          setText("statOrders", d.orders);
+          setText("statRevenue", euro(d.revenue));
+          setText("statAov", euro(d.average_order_value));
+          setText("shopUpdated",
+            "AKTUALISIERT " + new Date().toLocaleTimeString("de-DE", {
+              timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit"
+            }) + " UHR");
+          setText("sysShop", "ONLINE");
+          setDot("shopDot", true);
+
+          hudVals.orders = d.orders;
+          hudVals.revenue = euro(d.revenue);
+          updateTicker();
+
+          // Gestern nachladen
+          var r2 = await fetch("/api/shopify-summary", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ period: "yesterday" })
+          });
+          var d2 = await r2.json();
+          if (r2.ok && !d2.error) {
+            setText("statYesterday", d2.orders + " · " + euro(d2.revenue));
+
+            // Trend-Gauge: heute vs. gestern (echt berechnet)
+            var pct = d2.revenue > 0
+              ? Math.round((d.revenue / d2.revenue) * 100)
+              : (d.revenue > 0 ? 100 : 0);
+
+            var gauge = document.getElementById("gaugeTrend");
+            var gaugeLabel = document.getElementById("gaugeTrendLabel");
+            if (gauge) gauge.style.setProperty("--val", Math.min(100, pct));
+            if (gaugeLabel) gaugeLabel.textContent = pct + "%";
+          }
+        } catch (e) {
+          setText("shopUpdated", "SHOP-DATEN NICHT ERREICHBAR");
+          setText("sysShop", "OFFLINE");
+          setDot("shopDot", false);
+        }
+      }
+
+      loadShop();
+      setInterval(loadShop, 5 * 60 * 1000); // alle 5 Minuten
 
 
-      /* =================================================
-         WAVE
-         ================================================= */
+      /* ---------- ECHTES WETTER ---------- */
+      var wxCodes = {
+        0: "KLAR", 1: "MEIST KLAR", 2: "TEILS BEWÖLKT", 3: "BEDECKT",
+        45: "NEBEL", 48: "NEBEL", 51: "NIESELN", 53: "NIESELN", 55: "NIESELN",
+        61: "REGEN", 63: "REGEN", 65: "STARKREGEN", 66: "EISREGEN", 67: "EISREGEN",
+        71: "SCHNEE", 73: "SCHNEE", 75: "SCHNEE", 77: "SCHNEE",
+        80: "SCHAUER", 81: "SCHAUER", 82: "SCHAUER",
+        85: "SCHNEE", 86: "SCHNEE", 95: "GEWITTER", 96: "GEWITTER", 99: "GEWITTER"
+      };
 
-      var canvas =
-        document.getElementById(
-          "waveCanvas"
-        );
+      async function loadWeather() {
+        try {
+          var r = await fetch("/api/weather", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ location: "Ludwigshafen", day: "today" })
+          });
+          var d = await r.json();
+          if (!r.ok || d.error) throw new Error(d.error || "Fehler");
+
+          if (d.current && typeof d.current.temperature_2m === "number") {
+            setText("wxTemp", Math.round(d.current.temperature_2m) + "°");
+            setText("wxWind", Math.round(d.current.wind_speed_10m || 0));
+            hudVals.temp = Math.round(d.current.temperature_2m) + "°";
+          }
+          var f = d.forecast || {};
+          setText("wxDesc", wxCodes[f.weather_code] || "—");
+          hudVals.wx = wxCodes[f.weather_code] || "";
+          updateTicker();
+          if (typeof f.max_temperature === "number")
+            setText("wxMax", Math.round(f.max_temperature) + "°");
+          if (typeof f.min_temperature === "number")
+            setText("wxMin", Math.round(f.min_temperature) + "°");
+          if (typeof f.precipitation_probability === "number")
+            setText("wxRain", f.precipitation_probability + "%");
+
+          setText("sysWx", "ONLINE");
+          setDot("wxDot", true);
+        } catch (e) {
+          setText("wxDesc", "NICHT ERREICHBAR");
+          setText("sysWx", "OFFLINE");
+          setDot("wxDot", false);
+        }
+      }
+
+      loadWeather();
+      setInterval(loadWeather, 15 * 60 * 1000); // alle 15 Minuten
 
 
-      var reduceMotion =
-        window.matchMedia(
-          "(prefers-reduced-motion: reduce)"
-        ).matches;
+      /* ---------- WELLENFORM (Canvas) ---------- */
+      var canvas = document.getElementById("waveCanvas");
+      var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-
-      if (
-        canvas &&
-        canvas.getContext &&
-        !reduceMotion
-      ) {
-
-        var ctx =
-          canvas.getContext(
-            "2d"
-          );
-
-
-        var t =
-          0;
-
+      if (canvas && canvas.getContext && !reduceMotion) {
+        var ctx = canvas.getContext("2d");
+        var t = 0;
 
         function amplitudeForState() {
-
-          var s =
-            document.body
-              .dataset
-              .jarvisState ||
-            "offline";
-
-
-          if (
-            s === "speaking"
-          ) {
-
-            return 18;
-          }
-
-
-          if (
-            s === "hearing"
-          ) {
-
-            return 14;
-          }
-
-
-          if (
-            s === "thinking"
-          ) {
-
-            return 8;
-          }
-
-
-          if (
-            s === "listening"
-          ) {
-
-            return 5;
-          }
-
-
-          if (
-            s === "connecting"
-          ) {
-
-            return 10;
-          }
-
-
+          var s = document.body.dataset.jarvisState || "offline";
+          if (s === "speaking") return 18;
+          if (s === "hearing") return 14;
+          if (s === "thinking") return 8;
+          if (s === "listening") return 5;
+          if (s === "connecting") return 10;
           return 2.5;
         }
 
-
         function drawWave() {
-
-          var w =
-            canvas.width;
-
-
-          var h =
-            canvas.height;
-
-
-          var mid =
-            h /
-            2;
-
-
-          ctx.clearRect(
-            0,
-            0,
-            w,
-            h
-          );
-
-
+          var w = canvas.width, h = canvas.height, mid = h / 2;
+          ctx.clearRect(0, 0, w, h);
           ctx.beginPath();
-
-
-          var amp =
-            amplitudeForState();
-
-
-          for (
-            var x = 0;
-            x <= w;
-            x += 2
-          ) {
-
-            var y =
-              mid +
-
-              Math.sin(
-                x *
-                0.05 +
-                t
-              ) *
-
-              amp *
-
-              Math.sin(
-                x *
-                0.011 +
-                t *
-                0.7
-              ) +
-
-              Math.sin(
-                x *
-                0.13 +
-                t *
-                1.7
-              ) *
-
-              amp *
-              0.35;
-
-
-            if (
-              x === 0
-            ) {
-
-              ctx.moveTo(
-                x,
-                y
-              );
-
-            } else {
-
-              ctx.lineTo(
-                x,
-                y
-              );
-            }
+          var amp = amplitudeForState();
+          for (var x = 0; x <= w; x += 2) {
+            var y = mid
+              + Math.sin(x * 0.05 + t) * amp * Math.sin(x * 0.011 + t * 0.7)
+              + Math.sin(x * 0.13 + t * 1.7) * amp * 0.35;
+            if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
           }
-
-
-          ctx.strokeStyle =
-            getComputedStyle(
-              document.body
-            )
-              .getPropertyValue(
-                "--reactor-color"
-              )
-              .trim() ||
-            "#e70779";
-
-
-          ctx.lineWidth =
-            1.6;
-
-
-          ctx.shadowColor =
-            ctx.strokeStyle;
-
-
-          ctx.shadowBlur =
-            6;
-
-
+          ctx.strokeStyle = getComputedStyle(document.body)
+            .getPropertyValue("--reactor-color").trim() || "#e70779";
+          ctx.lineWidth = 1.6;
+          ctx.shadowColor = ctx.strokeStyle;
+          ctx.shadowBlur = 6;
           ctx.stroke();
-
-
-          t +=
-            0.09;
-
-
-          requestAnimationFrame(
-            drawWave
-          );
+          t += 0.09;
+          requestAnimationFrame(drawWave);
         }
-
-
         drawWave();
       }
 
 
-      /* =================================================
-         SPHERE
-         ================================================= */
+      /* ---------- 3D-PARTIKELKUGEL IM KERN ---------- */
+      var coreCanvas = document.getElementById("coreCanvas");
 
-      var coreCanvas =
-        document.getElementById(
-          "coreCanvas"
-        );
+      if (coreCanvas && coreCanvas.getContext && !reduceMotion) {
+        var cctx = coreCanvas.getContext("2d");
 
+        // Punkte gleichmäßig auf einer Kugel verteilen
+        var COUNT = 320;
+        var pts = [];
+        var golden = Math.PI * (3 - Math.sqrt(5));
 
-      if (
-        coreCanvas &&
-        coreCanvas.getContext &&
-        !reduceMotion
-      ) {
-
-        var cctx =
-          coreCanvas.getContext(
-            "2d"
-          );
-
-
-        var COUNT =
-          320;
-
-
-        var pts =
-          [];
-
-
-        var golden =
-          Math.PI *
-          (
-            3 -
-            Math.sqrt(
-              5
-            )
-          );
-
-
-        for (
-          var pi = 0;
-          pi < COUNT;
-          pi++
-        ) {
-
-          var py =
-            1 -
-            (
-              pi /
-              (
-                COUNT -
-                1
-              )
-            ) *
-            2;
-
-
-          var pr =
-            Math.sqrt(
-              1 -
-              py *
-              py
-            );
-
-
-          var pth =
-            golden *
-            pi;
-
-
-          pts.push([
-            Math.cos(
-              pth
-            ) *
-            pr,
-
-            py,
-
-            Math.sin(
-              pth
-            ) *
-            pr
-          ]);
+        for (var pi = 0; pi < COUNT; pi++) {
+          var py = 1 - (pi / (COUNT - 1)) * 2;
+          var pr = Math.sqrt(1 - py * py);
+          var pth = golden * pi;
+          pts.push([Math.cos(pth) * pr, py, Math.sin(pth) * pr]);
         }
 
-
-        var pairs =
-          [];
-
-
-        for (
-          var a = 0;
-          a < COUNT;
-          a++
-        ) {
-
-          for (
-            var b = a + 1;
-            b < COUNT;
-            b++
-          ) {
-
-            var ddx =
-              pts[a][0] -
-              pts[b][0];
-
-
-            var ddy =
-              pts[a][1] -
-              pts[b][1];
-
-
-            var ddz =
-              pts[a][2] -
-              pts[b][2];
-
-
-            if (
-              ddx *
-              ddx +
-
-              ddy *
-              ddy +
-
-              ddz *
-              ddz <
-
-              0.06
-            ) {
-
-              pairs.push([
-                a,
-                b
-              ]);
+        // Nachbar-Paare einmalig berechnen (für das Netz)
+        var pairs = [];
+        for (var a = 0; a < COUNT; a++) {
+          for (var b = a + 1; b < COUNT; b++) {
+            var ddx = pts[a][0] - pts[b][0];
+            var ddy = pts[a][1] - pts[b][1];
+            var ddz = pts[a][2] - pts[b][2];
+            if (ddx * ddx + ddy * ddy + ddz * ddz < 0.06) {
+              pairs.push([a, b]);
             }
           }
         }
 
-
-        var rot =
-          0;
-
+        var rot = 0;
 
         function sphereSpeed() {
-
-          var s =
-            document.body
-              .dataset
-              .jarvisState ||
-            "offline";
-
-
-          if (
-            s === "speaking"
-          ) {
-
-            return 0.022;
-          }
-
-
-          if (
-            s === "hearing"
-          ) {
-
-            return 0.014;
-          }
-
-
-          if (
-            s === "thinking"
-          ) {
-
-            return 0.011;
-          }
-
-
-          if (
-            s === "connecting"
-          ) {
-
-            return 0.018;
-          }
-
-
-          if (
-            s === "listening"
-          ) {
-
-            return 0.006;
-          }
-
-
+          var s = document.body.dataset.jarvisState || "offline";
+          if (s === "speaking") return 0.022;
+          if (s === "hearing") return 0.014;
+          if (s === "thinking") return 0.011;
+          if (s === "connecting") return 0.018;
+          if (s === "listening") return 0.006;
           return 0.0025;
         }
 
-
-        function projected(
-          p,
-          cosR,
-          sinR,
-          cosT,
-          sinT
-        ) {
-
-          var x =
-            p[0] *
-            cosR -
-            p[2] *
-            sinR;
-
-
-          var z =
-            p[0] *
-            sinR +
-            p[2] *
-            cosR;
-
-
-          var y =
-            p[1] *
-            cosT -
-            z *
-            sinT;
-
-
-          var z2 =
-            p[1] *
-            sinT +
-            z *
-            cosT;
-
-
-          return [
-            x,
-            y,
-            z2
-          ];
+        function projected(p, cosR, sinR, cosT, sinT) {
+          // Rotation um die Y-Achse
+          var x = p[0] * cosR - p[2] * sinR;
+          var z = p[0] * sinR + p[2] * cosR;
+          // Leichte Neigung um die X-Achse
+          var y = p[1] * cosT - z * sinT;
+          var z2 = p[1] * sinT + z * cosT;
+          return [x, y, z2];
         }
 
-
         function drawSphere() {
+          var dpr = window.devicePixelRatio || 1;
+          var size = coreCanvas.clientWidth || 100;
 
-          var dpr =
-            window.devicePixelRatio ||
-            1;
-
-
-          var size =
-            coreCanvas.clientWidth ||
-            100;
-
-
-          if (
-            coreCanvas.width !==
-            size *
-            dpr
-          ) {
-
-            coreCanvas.width =
-              size *
-              dpr;
-
-
-            coreCanvas.height =
-              size *
-              dpr;
+          if (coreCanvas.width !== size * dpr) {
+            coreCanvas.width = size * dpr;
+            coreCanvas.height = size * dpr;
           }
 
+          var w = coreCanvas.width;
+          var cx = w / 2, cy = w / 2;
+          var R = w * 0.36;
 
-          var w =
-            coreCanvas.width;
+          cctx.clearRect(0, 0, w, w);
 
+          rot += sphereSpeed();
+          var cosR = Math.cos(rot), sinR = Math.sin(rot);
+          var tilt = 0.42;
+          var cosT = Math.cos(tilt), sinT = Math.sin(tilt);
 
-          var cx =
-            w /
-            2;
+          var color = getComputedStyle(document.body)
+            .getPropertyValue("--reactor-color").trim() || "#e70779";
 
-
-          var cy =
-            w /
-            2;
-
-
-          var R =
-            w *
-            0.36;
-
-
-          cctx.clearRect(
-            0,
-            0,
-            w,
-            w
-          );
-
-
-          rot +=
-            sphereSpeed();
-
-
-          var cosR =
-            Math.cos(
-              rot
-            );
-
-
-          var sinR =
-            Math.sin(
-              rot
-            );
-
-
-          var tilt =
-            0.42;
-
-
-          var cosT =
-            Math.cos(
-              tilt
-            );
-
-
-          var sinT =
-            Math.sin(
-              tilt
-            );
-
-
-          var color =
-            getComputedStyle(
-              document.body
-            )
-              .getPropertyValue(
-                "--reactor-color"
-              )
-              .trim() ||
-            "#e70779";
-
-
-          var proj =
-            [];
-
-
-          for (
-            var i = 0;
-            i < COUNT;
-            i++
-          ) {
-
-            proj.push(
-              projected(
-                pts[i],
-                cosR,
-                sinR,
-                cosT,
-                sinT
-              )
-            );
+          // Projizierte Punkte einmal pro Frame berechnen
+          var proj = [];
+          for (var i = 0; i < COUNT; i++) {
+            proj.push(projected(pts[i], cosR, sinR, cosT, sinT));
           }
 
+          // Netz-Linien (Tiefe steuert Transparenz)
+          cctx.strokeStyle = color;
+          cctx.lineWidth = Math.max(0.6, 0.55 * dpr);
 
-          cctx.strokeStyle =
-            color;
+          for (var li = 0; li < pairs.length; li++) {
+            var pa = proj[pairs[li][0]];
+            var pb = proj[pairs[li][1]];
+            var depth = (pa[2] + pb[2]) / 2;
+            var alpha = 0.06 + (depth + 1) * 0.14;
 
-
-          cctx.lineWidth =
-            Math.max(
-              0.6,
-              0.55 *
-              dpr
-            );
-
-
-          for (
-            var li = 0;
-            li < pairs.length;
-            li++
-          ) {
-
-            var pa =
-              proj[
-                pairs[li][0]
-              ];
-
-
-            var pb =
-              proj[
-                pairs[li][1]
-              ];
-
-
-            var depth =
-              (
-                pa[2] +
-                pb[2]
-              ) /
-              2;
-
-
-            var alpha =
-              0.06 +
-              (
-                depth +
-                1
-              ) *
-              0.14;
-
-
-            cctx.globalAlpha =
-              alpha;
-
-
+            cctx.globalAlpha = alpha;
             cctx.beginPath();
-
-
-            cctx.moveTo(
-              cx +
-              pa[0] *
-              R,
-
-              cy +
-              pa[1] *
-              R
-            );
-
-
-            cctx.lineTo(
-              cx +
-              pb[0] *
-              R,
-
-              cy +
-              pb[1] *
-              R
-            );
-
-
+            cctx.moveTo(cx + pa[0] * R, cy + pa[1] * R);
+            cctx.lineTo(cx + pb[0] * R, cy + pb[1] * R);
             cctx.stroke();
           }
 
+          // Punkte
+          cctx.fillStyle = color;
+          for (var di = 0; di < COUNT; di++) {
+            var pp = proj[di];
+            var depthA = 0.15 + (pp[2] + 1) * 0.42;
+            var dotR = (0.8 + (pp[2] + 1) * 0.8) * dpr;
 
-          cctx.fillStyle =
-            color;
-
-
-          for (
-            var di = 0;
-            di < COUNT;
-            di++
-          ) {
-
-            var pp =
-              proj[di];
-
-
-            var depthA =
-              0.15 +
-              (
-                pp[2] +
-                1
-              ) *
-              0.42;
-
-
-            var dotR =
-              (
-                0.8 +
-                (
-                  pp[2] +
-                  1
-                ) *
-                0.8
-              ) *
-              dpr;
-
-
-            cctx.globalAlpha =
-              depthA;
-
-
+            cctx.globalAlpha = depthA;
             cctx.beginPath();
-
-
-            cctx.arc(
-              cx +
-              pp[0] *
-              R,
-
-              cy +
-              pp[1] *
-              R,
-
-              dotR,
-
-              0,
-
-              Math.PI *
-              2
-            );
-
-
+            cctx.arc(cx + pp[0] * R, cy + pp[1] * R, dotR, 0, Math.PI * 2);
             cctx.fill();
           }
 
-
-          cctx.globalAlpha =
-            1;
-
-
-          requestAnimationFrame(
-            drawSphere
-          );
+          cctx.globalAlpha = 1;
+          requestAnimationFrame(drawSphere);
         }
-
 
         drawSphere();
       }
 
 
-      /* =================================================
-         PARALLAX
-         ================================================= */
-
-      var panel =
-        document.getElementById(
-          "voicePanel"
-        );
-
-
-      if (
-        panel &&
-        !reduceMotion
-      ) {
-
-        document.addEventListener(
-          "mousemove",
-
-          function (e) {
-
-            var x =
-              (
-                e.clientX /
-                window.innerWidth -
-                0.5
-              ) *
-              12;
-
-
-            var y =
-              (
-                e.clientY /
-                window.innerHeight -
-                0.5
-              ) *
-              9;
-
-
-            panel.style.transform =
-              "translate(" +
-              x +
-              "px, " +
-              y +
-              "px)";
-          }
-        );
+      /* ---------- Parallax ---------- */
+      var panel = document.getElementById("voicePanel");
+      if (panel && !reduceMotion) {
+        document.addEventListener("mousemove", function (e) {
+          var x = (e.clientX / window.innerWidth - 0.5) * 12;
+          var y = (e.clientY / window.innerHeight - 0.5) * 9;
+          panel.style.transform = "translate(" + x + "px, " + y + "px)";
+        });
       }
 
 
-      /* =================================================
-         GYRO
-         ================================================= */
-
+      /* ---------- MOBILE: Gyroskop-Parallax ---------- */
+      // Der Reaktor neigt sich mit dem Handy, als würde er
+      // im Raum schweben. iPhones fragen beim ersten Tippen
+      // auf den Reaktor nach Erlaubnis; Android läuft direkt.
       function startGyro() {
+        window.addEventListener("deviceorientation", function (e) {
+          if (!panel || reduceMotion) return;
+          if (e.gamma === null || e.beta === null) return;
 
-        window.addEventListener(
-          "deviceorientation",
+          var x = Math.max(-14, Math.min(14, e.gamma * 0.6));
+          var y = Math.max(-10, Math.min(10, (e.beta - 45) * 0.35));
 
-          function (e) {
-
-            if (
-              !panel ||
-              reduceMotion
-            ) {
-
-              return;
-            }
-
-
-            if (
-              e.gamma === null ||
-              e.beta === null
-            ) {
-
-              return;
-            }
-
-
-            var x =
-              Math.max(
-                -14,
-
-                Math.min(
-                  14,
-
-                  e.gamma *
-                  0.6
-                )
-              );
-
-
-            var y =
-              Math.max(
-                -10,
-
-                Math.min(
-                  10,
-
-                  (
-                    e.beta -
-                    45
-                  ) *
-                  0.35
-                )
-              );
-
-
-            panel.style.transform =
-              "translate(" +
-              x +
-              "px, " +
-              y +
-              "px)";
-          }
-        );
+          panel.style.transform =
+            "translate(" + x + "px, " + y + "px)";
+        });
       }
 
-
-      if (
-        typeof
-          DeviceOrientationEvent !==
-        "undefined"
-      ) {
-
-        if (
-          typeof
-            DeviceOrientationEvent
-              .requestPermission ===
-          "function"
-        ) {
-
-          var toggleBtn =
-            document.getElementById(
-              "toggle"
-            );
-
-
+      if (typeof DeviceOrientationEvent !== "undefined") {
+        if (typeof DeviceOrientationEvent.requestPermission === "function") {
+          // iOS: Erlaubnis beim ersten Tippen auf den Reaktor holen
+          var toggleBtn = document.getElementById("toggle");
           if (toggleBtn) {
-
-            toggleBtn.addEventListener(
-              "click",
-
-              function askOnce() {
-
-                toggleBtn.removeEventListener(
-                  "click",
-                  askOnce
-                );
-
-
-                DeviceOrientationEvent
-                  .requestPermission()
-                  .then(
-                    function (state) {
-
-                      if (
-                        state ===
-                        "granted"
-                      ) {
-
-                        startGyro();
-                      }
-                    }
-                  )
-                  .catch(
-                    function () {}
-                  );
-              }
-            );
+            toggleBtn.addEventListener("click", function askOnce() {
+              toggleBtn.removeEventListener("click", askOnce);
+              DeviceOrientationEvent.requestPermission()
+                .then(function (state) {
+                  if (state === "granted") startGyro();
+                })
+                .catch(function () {});
+            });
           }
-
-
         } else {
-
+          // Android und ältere Geräte
           startGyro();
         }
       }
-
     })();
   </script>
 
-
-  <script src="app.js?v=16"></script>
-
+  <script src="app.js?v=17"></script>
 </body>
 </html>
