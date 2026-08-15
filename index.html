@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="de">
+
 <head>
   <meta charset="utf-8" />
 
@@ -13,6 +14,11 @@
     content="#0a0a0a"
   />
 
+  <meta
+    name="description"
+    content="Druckelite24 JARVIS Business Voice Assistant"
+  />
+
   <title>Druckelite24 · JARVIS</title>
 
   <link
@@ -21,9 +27,14 @@
   />
 </head>
 
+
 <body>
 
   <main class="app-shell">
+
+    <!-- =========================================
+         HEADER
+         ========================================= -->
 
     <header class="topbar">
 
@@ -39,6 +50,7 @@
 
       </div>
 
+
       <div
         class="status-pill"
         id="status"
@@ -48,6 +60,10 @@
 
     </header>
 
+
+    <!-- =========================================
+         JARVIS
+         ========================================= -->
 
     <section class="hero">
 
@@ -62,11 +78,17 @@
         </h1>
 
         <p class="hero-subline">
-          Shop, E-Mails, Termine, Wetter und Business-Überblick per Sprache.
+          Dein persönlicher Business-Assistent für
+          Gespräche, Shopify, E-Mails, Termine,
+          Wetter und Druckelite24.
         </p>
 
       </div>
 
+
+      <!-- =======================================
+           VOICE BUTTON
+           ======================================= -->
 
       <div class="voice-panel">
 
@@ -74,11 +96,19 @@
           id="toggle"
           class="voice-button"
           type="button"
-          aria-label="JARVIS starten oder stoppen"
+          aria-label="Mit JARVIS sprechen"
         >
+
           <span class="voice-core"></span>
-          <span class="voice-ring ring-one"></span>
-          <span class="voice-ring ring-two"></span>
+
+          <span
+            class="voice-ring ring-one"
+          ></span>
+
+          <span
+            class="voice-ring ring-two"
+          ></span>
+
         </button>
 
 
@@ -102,7 +132,14 @@
     </section>
 
 
+    <!-- =========================================
+         CAPABILITIES
+         ========================================= -->
+
     <section class="quick-grid">
+
+
+      <!-- SHOPIFY -->
 
       <article class="quick-card">
 
@@ -115,11 +152,14 @@
         </div>
 
         <div class="quick-note">
-          Bestellungen, Umsatz und Auffälligkeiten
+          Bestellungen, Umsatz und
+          Business-Kennzahlen
         </div>
 
       </article>
 
+
+      <!-- COMMUNICATION -->
 
       <article class="quick-card">
 
@@ -132,11 +172,14 @@
         </div>
 
         <div class="quick-note">
-          Wichtige Kundenmails und Follow-ups
+          Wichtige Kundenmails,
+          Nachrichten und Follow-ups
         </div>
 
       </article>
 
+
+      <!-- CALENDAR -->
 
       <article class="quick-card">
 
@@ -149,11 +192,14 @@
         </div>
 
         <div class="quick-note">
-          Termine, Fristen und Tagesplanung
+          Termine, Fristen und
+          Tagesplanung
         </div>
 
       </article>
 
+
+      <!-- WEATHER -->
 
       <article class="quick-card">
 
@@ -166,7 +212,8 @@
         </div>
 
         <div class="quick-note">
-          Aktuelle Bedingungen und Prognosen
+          Aktuelle Bedingungen
+          und Prognosen
         </div>
 
       </article>
@@ -174,41 +221,69 @@
     </section>
 
 
+    <!-- =========================================
+         COMMAND EXAMPLES
+         ========================================= -->
+
     <section class="command-panel">
 
       <div class="command-title">
-        Beispiele
+        Sprich mit JARVIS
       </div>
+
 
       <div class="command-list">
 
         <div class="command-chip">
-          „Jarvis, gib mir mein Briefing.“
+          „Jarvis, wie viele Shopify-Bestellungen
+          habe ich heute?“
         </div>
 
-        <div class="command-chip">
-          „Wie viele Bestellungen hatten wir heute?“
-        </div>
 
         <div class="command-chip">
-          „Welche wichtigen Mails habe ich?“
+          „Jarvis, wie hoch ist mein Umsatz heute?“
         </div>
 
+
         <div class="command-chip">
-          „Wie wird morgen das Wetter?“
+          „Jarvis, wie wird morgen das Wetter
+          in Ludwigshafen?“
         </div>
+
+
+        <div class="command-chip">
+          „Jarvis, was hältst du von meiner Idee?“
+        </div>
+
+      </div>
+
+
+      <div class="command-help">
+
+        Kugel drücken · sprechen ·
+        Kugel erneut drücken
 
       </div>
 
     </section>
 
 
+    <!-- =========================================
+         FOOTER
+         ========================================= -->
+
     <footer class="footer">
-      Druckelite24 · Voice System
+
+      Druckelite24 · JARVIS V3
+
     </footer>
 
   </main>
 
+
+  <!-- ===========================================
+       AUDIO OUTPUT
+       =========================================== -->
 
   <audio
     id="remoteAudio"
@@ -217,12 +292,15 @@
   ></audio>
 
 
-  <!--
-    Cache-Buster:
-    Der Browser lädt dadurch garantiert
-    die aktuelle JARVIS app.js.
-  -->
-  <script src="app.js?v=2"></script>
+  <!-- ===========================================
+       JARVIS APPLICATION
+
+       v=4 verhindert, dass der Browser
+       eine alte app.js aus dem Cache verwendet.
+       =========================================== -->
+
+  <script src="app.js?v=4"></script>
 
 </body>
+
 </html>
