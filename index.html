@@ -1,82 +1,57 @@
 <!doctype html>
 <html lang="de">
-
 <head>
   <meta charset="utf-8" />
-
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1, viewport-fit=cover"
   />
-
   <meta
     name="theme-color"
     content="#0a0a0a"
   />
-
   <meta
     name="description"
     content="Druckelite24 JARVIS Business Voice Assistant"
   />
-
   <title>Druckelite24 · JARVIS</title>
-
   <link
     rel="stylesheet"
     href="styles.css"
   />
 </head>
-
 <body>
-
   <main class="app-shell">
-
     <header class="topbar">
-
       <div class="brand-block">
-
         <div class="brand-kicker">
           DRUCKELITE24
         </div>
-
         <div class="brand-title">
           Business Voice Assistant
         </div>
-
       </div>
-
       <div
         class="status-pill"
         id="status"
       >
         Offline
       </div>
-
     </header>
-
-
     <section class="hero">
-
       <div class="hero-copy">
-
         <div class="eyebrow">
           DEIN PERSÖNLICHER ASSISTENT
         </div>
-
         <h1>
           JARVIS
         </h1>
-
         <p class="hero-subline">
           Sprich frei mit JARVIS über Shopify, Wetter,
           Business, Ideen und deinen Alltag.
         </p>
-
       </div>
-
-
       <div class="voice-panel">
-
         <button
           id="toggle"
           class="voice-button"
@@ -84,158 +59,110 @@
           aria-label="JARVIS starten oder stoppen"
         >
           <span class="voice-core"></span>
-          <span class="voice-ring ring-one"></span>
-          <span class="voice-ring ring-two"></span>
+          <span
+            class="voice-ring ring-one"
+          ></span>
+          <span
+            class="voice-ring ring-two"
+          ></span>
         </button>
-
-
         <div class="voice-text">
-
           <div class="voice-state">
             JARVIS
           </div>
-
           <div
             class="voice-log"
             id="log"
           >
             Bereit.
           </div>
-
         </div>
-
       </div>
-
     </section>
-
-
     <section class="quick-grid">
-
       <article class="quick-card">
-
         <div class="quick-label">
           SHOP
         </div>
-
         <div class="quick-value">
           Shopify
         </div>
-
         <div class="quick-note">
           Bestellungen, Umsatz und Kennzahlen
         </div>
-
       </article>
-
-
       <article class="quick-card">
-
         <div class="quick-label">
           KOMMUNIKATION
         </div>
-
         <div class="quick-value">
           Gmail
         </div>
-
         <div class="quick-note">
           Wichtige Nachrichten und Follow-ups
         </div>
-
       </article>
-
-
       <article class="quick-card">
-
         <div class="quick-label">
           PLANUNG
         </div>
-
         <div class="quick-value">
           Kalender
         </div>
-
         <div class="quick-note">
           Termine, Fristen und Tagesplanung
         </div>
-
       </article>
-
-
       <article class="quick-card">
-
         <div class="quick-label">
           LIVE
         </div>
-
         <div class="quick-value">
           Wetter
         </div>
-
         <div class="quick-note">
           Aktuelle Bedingungen und Prognosen
         </div>
-
       </article>
-
     </section>
-
-
     <section class="command-panel">
-
       <div class="command-title">
         Freies Gespräch
       </div>
-
       <div class="command-list">
-
         <div class="command-chip">
-          „Wie viele Shopify-Bestellungen habe ich heute?“
+          „Wie viele Shopify-Bestellungen habe ich heute?"
         </div>
-
         <div class="command-chip">
-          „Wie hoch ist mein Umsatz heute?“
+          „Wie hoch ist mein Umsatz heute?"
         </div>
-
         <div class="command-chip">
-          „Wie wird morgen das Wetter in Ludwigshafen?“
+          „Wie wird morgen das Wetter in Ludwigshafen?"
         </div>
-
         <div class="command-chip">
-          „Was hältst du von meiner Idee?“
+          „Was hältst du von meiner Idee?"
         </div>
-
       </div>
-
       <div class="command-help">
         Einmal starten · danach frei sprechen
       </div>
-
     </section>
-
-
     <footer class="footer">
-      Druckelite24 · JARVIS V5
+      Druckelite24 · JARVIS V4
     </footer>
-
   </main>
-
-
   <audio
     id="remoteAudio"
     autoplay
     playsinline
   ></audio>
-
-
   <!--
-    v=14
-    - direktes Shopify-Routing im Browser
-    - keine Realtime-Tool-Calls für Shopify
-    - keine automatische Realtime-Antwort
-    - echte Shopify-Zahlen werden direkt abgefragt
+    v=12
+    - JARVIS deutlich lauter
+    - Intro beim Sprechen leiser
+    - Realtime Speech-to-Speech
+    - Anti-Selbstunterbrechung
   -->
-  <script src="app.js?v=14"></script>
-
+  <script src="app.js?v=12"></script>
 </body>
 </html>
