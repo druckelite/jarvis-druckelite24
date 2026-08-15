@@ -11,7 +11,6 @@ let active = false;
 let connecting = false;
 let assistantSpeaking = false;
 let responseInProgress = false;
-let startupSoundPlaying = false;
 let greetingInProgress = false;
 
 const handledToolCalls = new Set();
@@ -37,271 +36,43 @@ function setLog(text) {
 
 
 /* =========================================================
-   5 SEKUNDEN STARTSOUND
-   ========================================================= */
-
-async function playStartupSound() {
-  if (startupSoundPlaying) return;
-
-  startupSoundPlaying = true;
-
-  const AudioContextClass =
-    window.AudioContext ||
-    window.webkitAudioContext;
-
-  if (!AudioContextClass) {
-    startupSoundPlaying = false;
-    return;
-  }
-
-  let ctx;
-
-  try {
-    ctx = new AudioContextClass();
-
-    if (ctx.state === "suspended") {
-      await ctx.resume();
-    }
-
-    const now = ctx.currentTime;
-
-    const master = ctx.createGain();
-
-    master.gain.setValueAtTime(
-      0.0001,
-      now
-    );
-
-    master.gain.exponentialRampToValueAtTime(
-      0.20,
-      now + 0.25
-    );
-
-    master.gain.setValueAtTime(
-      0.20,
-      now + 4.25
-    );
-
-    master.gain.exponentialRampToValueAtTime(
-      0.0001,
-      now + 5
-    );
-
-    master.connect(ctx.destination);
-
-
-    /*
-     * Tiefer System-Grundton.
-     */
-    const bass = ctx.createOscillator();
-    const bassGain = ctx.createGain();
-
-    bass.type = "sine";
-
-    bass.frequency.setValueAtTime(
-      52,
-      now
-    );
-
-    bass.frequency.exponentialRampToValueAtTime(
-      82,
-      now + 4.7
-    );
-
-    bassGain.gain.setValueAtTime(
-      0.0001,
-      now
-    );
-
-    bassGain.gain.exponentialRampToValueAtTime(
-      0.22,
-      now + 0.3
-    );
-
-    bassGain.gain.exponentialRampToValueAtTime(
-      0.0001,
-      now + 4.9
-    );
-
-    bass.connect(bassGain);
-    bassGain.connect(master);
-
-    bass.start(now);
-    bass.stop(now + 5);
-
-
-    /*
-     * Eigene futuristische Tonfolge.
-     */
-    const notes = [
-      { time: 0.20, freq: 110.00, duration: 1.00 },
-      { time: 0.90, freq: 146.83, duration: 1.00 },
-      { time: 1.60, freq: 196.00, duration: 1.00 },
-      { time: 2.35, freq: 246.94, duration: 1.00 },
-      { time: 3.15, freq: 329.63, duration: 1.10 },
-      { time: 4.05, freq: 493.88, duration: 0.75 }
-    ];
-
-    for (const note of notes) {
-      const oscillator =
-        ctx.createOscillator();
-
-      const gain =
-        ctx.createGain();
-
-      oscillator.type = "triangle";
-
-      oscillator.frequency.setValueAtTime(
-        note.freq,
-        now + note.time
-      );
-
-      gain.gain.setValueAtTime(
-        0.0001,
-        now + note.time
-      );
-
-      gain.gain.exponentialRampToValueAtTime(
-        0.14,
-        now + note.time + 0.06
-      );
-
-      gain.gain.exponentialRampToValueAtTime(
-        0.0001,
-        now + note.time + note.duration
-      );
-
-      oscillator.connect(gain);
-      gain.connect(master);
-
-      oscillator.start(
-        now + note.time
-      );
-
-      oscillator.stop(
-        now +
-        note.time +
-        note.duration
-      );
-    }
-
-
-    /*
-     * Kurzer Abschluss-Chime.
-     */
-    const chime = ctx.createOscillator();
-    const chimeGain = ctx.createGain();
-
-    chime.type = "sine";
-
-    chime.frequency.setValueAtTime(
-      659.25,
-      now + 4.3
-    );
-
-    chime.frequency.exponentialRampToValueAtTime(
-      987.77,
-      now + 4.8
-    );
-
-    chimeGain.gain.setValueAtTime(
-      0.0001,
-      now + 4.3
-    );
-
-    chimeGain.gain.exponentialRampToValueAtTime(
-      0.12,
-      now + 4.4
-    );
-
-    chimeGain.gain.exponentialRampToValueAtTime(
-      0.0001,
-      now + 4.95
-    );
-
-    chime.connect(chimeGain);
-    chimeGain.connect(master);
-
-    chime.start(now + 4.3);
-    chime.stop(now + 5);
-
-
-    await new Promise(
-      resolve =>
-        setTimeout(resolve, 5000)
-    );
-
-  } catch (error) {
-    console.error(
-      "Startup sound error:",
-      error
-    );
-  } finally {
-    startupSoundPlaying = false;
-
-    if (ctx) {
-      try {
-        await ctx.close();
-      } catch {}
-    }
-  }
-}
-
-
-/* =========================================================
    REALTIME SEND
    ========================================================= */
 
 function safeSend(payload) {
-  if (
-    !dc ||
-    dc.readyState !== "open"
-  ) {
+  if (!dc || dc.readyState !== "open") {
     return false;
   }
 
   try {
-    dc.send(
-      JSON.stringify(payload)
-    );
-
+    dc.send(JSON.stringify(payload));
     return true;
   } catch (error) {
-    console.error(
-      "DataChannel send error:",
-      error
-    );
-
+    console.error("DataChannel send error:", error);
     return false;
   }
 }
 
 
 /* =========================================================
-   MIKROFON
+   MICROPHONE
    ========================================================= */
 
 function setMicrophoneEnabled(enabled) {
   if (!localStream) return;
 
-  for (
-    const track of
-    localStream.getAudioTracks()
-  ) {
+  for (const track of localStream.getAudioTracks()) {
     track.enabled = enabled;
   }
 }
 
 
 /* =========================================================
-   ANTWORT ABBRECHEN
+   CANCEL RESPONSE
    ========================================================= */
 
 function cancelCurrentResponse() {
-  if (
-    !assistantSpeaking &&
-    !responseInProgress
-  ) {
+  if (!assistantSpeaking && !responseInProgress) {
     return;
   }
 
@@ -310,8 +81,7 @@ function cancelCurrentResponse() {
   });
 
   safeSend({
-    type:
-      "output_audio_buffer.clear"
+    type: "output_audio_buffer.clear"
   });
 
   assistantSpeaking = false;
@@ -320,53 +90,229 @@ function cancelCurrentResponse() {
 
 
 /* =========================================================
-   STARTBEGRÜSSUNG
+   QUERY CLASSIFICATION
    ========================================================= */
 
-function requestStartupGreeting() {
-  greetingInProgress = true;
+function normalize(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[.,!?]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  /*
-   * Während der Begrüßung Mikrofon aus:
-   * TV oder andere Personen können nicht dazwischenreden.
-   */
-  setMicrophoneEnabled(false);
+
+function isShopifyLiveQuery(text) {
+  const t = normalize(text);
+
+  return (
+    /\bumsatz\b/.test(t) ||
+    /\bbestellungen?\b/.test(t) ||
+    /\bverkäufe?\b/.test(t) ||
+    /\bverkauf\b/.test(t) ||
+    /\bbestellwert\b/.test(t) ||
+    /\bshopify\b.*\b(heute|gestern|umsatz|bestellung|verkauf)\b/.test(t) ||
+    /\b(wie läuft|wie lief)\b.*\b(shop|shopify)\b/.test(t)
+  );
+}
+
+
+function isEmailQuery(text) {
+  const t = normalize(text);
+
+  return (
+    /\b(e-?mail|mails|postfach)\b/.test(t) &&
+    /\b(wichtig|heute|neu|neue|zeigen|zeige|prüf|prüfe|lesen|lies|habe|gibt)\b/.test(t)
+  );
+}
+
+
+function isCalendarQuery(text) {
+  const t = normalize(text);
+
+  return (
+    /\bkalender\b/.test(t) ||
+    /\btermine?\b/.test(t) ||
+    /\bwas steht heute an\b/.test(t) ||
+    /\bwas habe ich heute vor\b/.test(t)
+  );
+}
+
+
+function isWeatherQuery(text) {
+  const t = normalize(text);
+
+  return (
+    /\bwetter\b/.test(t) ||
+    /\btemperatur\b/.test(t) ||
+    /\bregen\b/.test(t) ||
+    /\bregnet\b/.test(t) ||
+    /\bgrad\b/.test(t)
+  );
+}
+
+
+/* =========================================================
+   FORCE TOOL
+   ========================================================= */
+
+function requestToolResponse(toolName, transcript) {
+  console.log(
+    "JARVIS routing:",
+    transcript,
+    "=>",
+    toolName
+  );
+
+  setLog(`Live-Daten: ${toolName}`);
 
   safeSend({
-    type:
-      "conversation.item.create",
+    type: "response.create",
 
-    item: {
-      type: "message",
-      role: "user",
+    response: {
+      output_modalities: ["audio"],
 
-      content: [
-        {
-          type: "input_text",
-          text:
-            "Gib jetzt ausschließlich die in deinen Systemanweisungen festgelegte Startbegrüßung passend zur aktuellen Tageszeit aus. Danach nichts weiter sagen."
-        }
-      ]
+      tool_choice: {
+        type: "function",
+        name: toolName
+      },
+
+      instructions:
+        `Der Benutzer hat auf Deutsch gesagt: "${transcript}"
+
+Du MUSST jetzt ausschließlich das vorgegebene Tool verwenden.
+Noch keine inhaltliche Antwort geben.
+Keine Daten erfinden.`
     }
-  });
-
-  safeSend({
-    type: "response.create"
   });
 }
 
 
 /* =========================================================
-   TOOL CALLS
+   GENERAL RESPONSE
+   ========================================================= */
+
+function requestGeneralResponse(transcript) {
+  safeSend({
+    type: "response.create",
+
+    response: {
+      output_modalities: ["audio"],
+
+      tool_choice: "none",
+
+      instructions:
+        `Antworte auf die letzte Äußerung des Benutzers.
+
+Der erkannte deutsche Satz lautet ungefähr:
+"${transcript}"
+
+Antworte ausschließlich auf Deutsch.
+Antworte präzise und eher kurz.
+Wenn du den Satz nicht sicher verstanden hast, frage kurz auf Deutsch nach.
+Keine themenfremden Vorschläge.
+Nach deiner Antwort schweigen.`
+    }
+  });
+}
+
+
+/* =========================================================
+   ROUTE USER SPEECH
+   ========================================================= */
+
+function routeTranscript(transcript) {
+  const text = normalize(transcript);
+
+  if (!text) {
+    return;
+  }
+
+  console.log(
+    "Transcription:",
+    transcript
+  );
+
+  /*
+   * Falls bereits eine Antwort läuft:
+   * erst sauber stoppen.
+   */
+  if (
+    responseInProgress ||
+    assistantSpeaking
+  ) {
+    cancelCurrentResponse();
+  }
+
+
+  /*
+   * SHOPIFY LIVE
+   */
+  if (isShopifyLiveQuery(text)) {
+    requestToolResponse(
+      "get_shopify_summary",
+      transcript
+    );
+    return;
+  }
+
+
+  /*
+   * GMAIL LIVE
+   */
+  if (isEmailQuery(text)) {
+    requestToolResponse(
+      "get_important_emails",
+      transcript
+    );
+    return;
+  }
+
+
+  /*
+   * CALENDAR LIVE
+   */
+  if (isCalendarQuery(text)) {
+    requestToolResponse(
+      "get_calendar_today",
+      transcript
+    );
+    return;
+  }
+
+
+  /*
+   * WEATHER LIVE
+   */
+  if (isWeatherQuery(text)) {
+    requestToolResponse(
+      "get_weather",
+      transcript
+    );
+    return;
+  }
+
+
+  /*
+   * GENERAL QUESTION
+   */
+  requestGeneralResponse(
+    transcript
+  );
+}
+
+
+/* =========================================================
+   RUN TOOL
    ========================================================= */
 
 async function runTool(event) {
-  if (!event.call_id) return;
+  if (!event.call_id) {
+    return;
+  }
 
   if (
-    handledToolCalls.has(
-      event.call_id
-    )
+    handledToolCalls.has(event.call_id)
   ) {
     return;
   }
@@ -375,51 +321,45 @@ async function runTool(event) {
     event.call_id
   );
 
+
   let payload = {};
 
   try {
-    payload =
-      event.arguments
-        ? JSON.parse(
-            event.arguments
-          )
-        : {};
+    payload = event.arguments
+      ? JSON.parse(event.arguments)
+      : {};
   } catch {
     payload = {};
   }
 
+
   let endpoint = null;
 
-  if (
-    event.name === "get_weather"
-  ) {
-    endpoint = "/api/weather";
+
+  switch (event.name) {
+    case "get_shopify_summary":
+      endpoint =
+        "/api/shopify-summary";
+      break;
+
+    case "get_important_emails":
+      endpoint =
+        "/api/important-emails";
+      break;
+
+    case "get_calendar_today":
+      endpoint =
+        "/api/calendar-today";
+      break;
+
+    case "get_weather":
+      endpoint =
+        "/api/weather";
+      break;
   }
 
+
   if (!endpoint) {
-    safeSend({
-      type:
-        "conversation.item.create",
-
-      item: {
-        type:
-          "function_call_output",
-
-        call_id:
-          event.call_id,
-
-        output:
-          JSON.stringify({
-            error:
-              `Tool ${event.name} ist noch nicht aktiv.`
-          })
-      }
-    });
-
-    safeSend({
-      type: "response.create"
-    });
-
     return;
   }
 
@@ -428,7 +368,9 @@ async function runTool(event) {
     "Live-Daten werden geprüft …"
   );
 
+
   let result;
+
 
   try {
     const response =
@@ -449,8 +391,10 @@ async function runTool(event) {
         }
       );
 
+
     const raw =
       await response.text();
+
 
     try {
       result =
@@ -461,6 +405,7 @@ async function runTool(event) {
         message: raw
       };
     }
+
 
     if (!response.ok) {
       result.http_status =
@@ -481,7 +426,7 @@ async function runTool(event) {
 
 
   /*
-   * Tool-Ergebnis an Realtime zurückgeben.
+   * Tool-Ergebnis zurück an OpenAI.
    */
   safeSend({
     type:
@@ -503,67 +448,139 @@ async function runTool(event) {
 
 
   /*
-   * Danach genau eine Folgeantwort.
+   * Jetzt aus dem Tool-Ergebnis
+   * genau EINE deutsche Antwort.
    */
   safeSend({
-    type: "response.create"
+    type: "response.create",
+
+    response: {
+      output_modalities: ["audio"],
+
+      tool_choice: "none",
+
+      instructions:
+        `Beantworte jetzt die Frage des Benutzers ausschließlich anhand des gerade gelieferten Tool-Ergebnisses.
+
+Regeln:
+- ausschließlich Deutsch
+- keine erfundenen Zahlen
+- kurz und konkret
+- wenn configured=false ist, sage klar, dass diese Verbindung noch nicht eingerichtet ist
+- keine Reisen, Hotels oder themenfremden Vorschläge
+- nach der Antwort schweigen`
+    }
   });
 }
 
 
 /* =========================================================
-   JARVIS START
+   STARTUP GREETING
+   ========================================================= */
+
+function getGreeting() {
+  const hour = Number(
+    new Intl.DateTimeFormat(
+      "de-DE",
+      {
+        timeZone:
+          "Europe/Berlin",
+
+        hour:
+          "2-digit",
+
+        hour12:
+          false
+      }
+    ).format(
+      new Date()
+    )
+  );
+
+
+  if (
+    hour >= 5 &&
+    hour < 11
+  ) {
+    return "Guten Morgen.";
+  }
+
+
+  if (
+    hour >= 11 &&
+    hour < 18
+  ) {
+    return "Guten Tag.";
+  }
+
+
+  return "Guten Abend.";
+}
+
+
+function requestGreeting() {
+  greetingInProgress = true;
+
+  setMicrophoneEnabled(false);
+
+  safeSend({
+    type: "response.create",
+
+    response: {
+      output_modalities: [
+        "audio"
+      ],
+
+      max_output_tokens: 12,
+
+      tool_choice: "none",
+
+      instructions:
+        `Sprich exakt nur diesen Satz:
+"${getGreeting()}"
+
+Kein weiteres Wort.
+Danach schweigen.`
+    }
+  });
+}
+
+
+/* =========================================================
+   START JARVIS
    ========================================================= */
 
 async function startJarvis() {
   if (
     active ||
-    connecting ||
-    startupSoundPlaying
+    connecting
   ) {
     return;
   }
 
-  connecting = true;
-  button.disabled = true;
 
-  setStatus("Starte …");
-  setLog(
-    "JARVIS wird initialisiert."
-  );
+  connecting = true;
+
+  button.disabled = true;
 
   handledToolCalls.clear();
 
-  assistantSpeaking = false;
-  responseInProgress = false;
-  greetingInProgress = false;
+
+  setStatus(
+    "Verbinde …"
+  );
+
+  setLog(
+    "Voice-System wird gestartet."
+  );
 
 
   try {
-
-    /*
-     * 1. STARTSOUND
-     */
-    await playStartupSound();
-
-
-    /*
-     * 2. REALTIME VERBINDUNG
-     */
-    setStatus("Verbinde …");
-
-    setLog(
-      "Voice-System wird verbunden."
-    );
-
 
     pc =
       new RTCPeerConnection();
 
 
-    /*
-     * Nur EIN Remote-Audio.
-     */
     pc.ontrack =
       event => {
 
@@ -580,32 +597,10 @@ async function startJarvis() {
             );
         }
 
+
         remoteAudio
           .play()
           .catch(() => {});
-      };
-
-
-    pc.onconnectionstatechange =
-      () => {
-
-        const state =
-          pc?.connectionState;
-
-        console.log(
-          "Peer connection:",
-          state
-        );
-
-        if (
-          state === "failed" ||
-          state ===
-            "disconnected"
-        ) {
-          setLog(
-            "Voice-Verbindung wurde unterbrochen."
-          );
-        }
       };
 
 
@@ -615,9 +610,6 @@ async function startJarvis() {
       );
 
 
-    /*
-     * 3. VERBINDUNG OFFEN
-     */
     dc.onopen =
       () => {
 
@@ -630,17 +622,50 @@ async function startJarvis() {
           "active"
         );
 
-        setStatus("Online");
-
-        setLog(
-          "JARVIS startet …"
+        setStatus(
+          "Online"
         );
 
 
         /*
-         * Automatische Tageszeit-Begrüßung.
+         * WICHTIG:
+         * Server-VAD erkennt weiterhin Sprache,
+         * erzeugt aber NICHT automatisch Antworten.
+         * Die Routing-Logik unten entscheidet.
          */
-        requestStartupGreeting();
+        safeSend({
+          type:
+            "session.update",
+
+          session: {
+            audio: {
+              input: {
+                turn_detection: {
+                  type:
+                    "server_vad",
+
+                  threshold:
+                    0.80,
+
+                  prefix_padding_ms:
+                    300,
+
+                  silence_duration_ms:
+                    850,
+
+                  create_response:
+                    false,
+
+                  interrupt_response:
+                    true
+                }
+              }
+            }
+          }
+        });
+
+
+        requestGreeting();
       };
 
 
@@ -670,13 +695,11 @@ async function startJarvis() {
       };
 
 
-    /*
-     * SERVER EVENTS
-     */
     dc.onmessage =
       async message => {
 
         let event;
+
 
         try {
           event =
@@ -687,6 +710,7 @@ async function startJarvis() {
           return;
         }
 
+
         console.log(
           "Realtime event:",
           event.type
@@ -694,7 +718,7 @@ async function startJarvis() {
 
 
         /*
-         * Mattl beginnt zu sprechen.
+         * Nutzer beginnt zu sprechen.
          */
         if (
           event.type ===
@@ -708,18 +732,49 @@ async function startJarvis() {
             cancelCurrentResponse();
           }
 
+
           setLog(
             "Ich höre zu …"
           );
         }
 
 
+        /*
+         * Nutzer hört auf.
+         */
         if (
           event.type ===
           "input_audio_buffer.speech_stopped"
         ) {
           setLog(
-            "Denke nach …"
+            "Verstehe …"
+          );
+        }
+
+
+        /*
+         * WICHTIG:
+         * Fertige deutsche Transkription.
+         * HIER wird geroutet.
+         */
+        if (
+          event.type ===
+          "conversation.item.input_audio_transcription.completed"
+        ) {
+
+          const transcript =
+            String(
+              event.transcript || ""
+            ).trim();
+
+
+          setLog(
+            `Verstanden: ${transcript}`
+          );
+
+
+          routeTranscript(
+            transcript
           );
         }
 
@@ -733,9 +788,6 @@ async function startJarvis() {
         }
 
 
-        /*
-         * JARVIS spricht.
-         */
         if (
           event.type ===
           "output_audio_buffer.started"
@@ -752,9 +804,6 @@ async function startJarvis() {
         }
 
 
-        /*
-         * Audio ist wirklich vollständig abgespielt.
-         */
         if (
           event.type ===
           "output_audio_buffer.stopped"
@@ -764,10 +813,6 @@ async function startJarvis() {
             false;
 
 
-          /*
-           * Startbegrüßung ist fertig.
-           * Jetzt Mikrofon einschalten.
-           */
           if (
             greetingInProgress
           ) {
@@ -795,36 +840,19 @@ async function startJarvis() {
         }
 
 
-        if (
-          event.type ===
-          "output_audio_buffer.cleared"
-        ) {
-
-          assistantSpeaking =
-            false;
-
-          if (active) {
-            setLog(
-              "JARVIS hört zu."
-            );
-          }
-        }
-
-
         /*
-         * Fertiger Funktionsaufruf.
+         * Function call vollständig.
          */
         if (
           event.type ===
           "response.function_call_arguments.done"
         ) {
-          await runTool(event);
+          await runTool(
+            event
+          );
         }
 
 
-        /*
-         * Modellantwort beendet.
-         */
         if (
           event.type ===
           "response.done"
@@ -833,18 +861,20 @@ async function startJarvis() {
           responseInProgress =
             false;
 
-          const responseStatus =
+
+          const status =
             event.response?.status;
 
+
           if (
-            responseStatus ===
-            "failed"
+            status === "failed"
           ) {
 
             console.error(
               "Response failed:",
               event.response
             );
+
 
             setLog(
               "JARVIS konnte die Antwort nicht erzeugen."
@@ -854,7 +884,8 @@ async function startJarvis() {
 
 
         if (
-          event.type === "error"
+          event.type ===
+          "error"
         ) {
 
           console.error(
@@ -862,8 +893,10 @@ async function startJarvis() {
             event
           );
 
+
           const code =
             event.error?.code || "";
+
 
           if (
             code !==
@@ -880,32 +913,39 @@ async function startJarvis() {
 
 
     /*
-     * 4. MIKROFON HOLEN
+     * MICROPHONE
      */
     localStream =
       await navigator
         .mediaDevices
         .getUserMedia({
           audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: 1
+            echoCancellation:
+              true,
+
+            noiseSuppression:
+              true,
+
+            autoGainControl:
+              true,
+
+            channelCount:
+              1
           }
         });
 
 
     /*
-     * Noch deaktiviert.
-     * Erst nach der Begrüßung einschalten.
+     * Erst nach Begrüßung aktivieren.
      */
-    setMicrophoneEnabled(false);
+    setMicrophoneEnabled(
+      false
+    );
 
 
     for (
       const track of
-      localStream
-        .getAudioTracks()
+      localStream.getAudioTracks()
     ) {
       pc.addTrack(
         track,
@@ -915,7 +955,7 @@ async function startJarvis() {
 
 
     /*
-     * 5. WEBRTC OFFER
+     * WEBRTC
      */
     const offer =
       await pc.createOffer();
@@ -944,7 +984,6 @@ async function startJarvis() {
 
 
     if (!response.ok) {
-
       throw new Error(
         await response.text()
       );
@@ -968,7 +1007,9 @@ async function startJarvis() {
       error
     );
 
+
     stopJarvis();
+
 
     setLog(
       `Start fehlgeschlagen: ${error.message}`
@@ -1005,10 +1046,6 @@ function stopJarvis() {
 
   try {
     if (pc) {
-      pc.ontrack = null;
-      pc.onconnectionstatechange =
-        null;
-
       pc.close();
     }
   } catch {}
@@ -1029,7 +1066,8 @@ function stopJarvis() {
 
   try {
     remoteAudio.pause();
-    remoteAudio.srcObject = null;
+    remoteAudio.srcObject =
+      null;
   } catch {}
 
 
@@ -1039,7 +1077,6 @@ function stopJarvis() {
 
   active = false;
   connecting = false;
-
   assistantSpeaking = false;
   responseInProgress = false;
   greetingInProgress = false;
@@ -1052,8 +1089,13 @@ function stopJarvis() {
     "active"
   );
 
-  setStatus("Offline");
-  setLog("Bereit.");
+  setStatus(
+    "Offline"
+  );
+
+  setLog(
+    "Bereit."
+  );
 }
 
 
@@ -1065,17 +1107,16 @@ button.addEventListener(
   "click",
   async () => {
 
-    if (
-      connecting ||
-      startupSoundPlaying
-    ) {
+    if (connecting) {
       return;
     }
+
 
     if (active) {
       stopJarvis();
       return;
     }
+
 
     await startJarvis();
   }
