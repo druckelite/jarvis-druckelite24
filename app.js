@@ -1,3 +1,17 @@
+/* =========================================================
+   ÄNDERUNGEN IN DIESER VERSION
+   =========================================================
+   1) Watchdog: Mikro bleibt nicht mehr für immer stumm,
+      falls JARVIS mal keine Audio-Antwort schickt.
+   2) Lautstärke wird jetzt sanft geregelt statt hart
+      gesprungen -> kein Knacken mehr beim Sprechbeginn.
+   3) Doppelte ontrack-Events verbinden den Stream nicht
+      mehr unnötig neu.
+   4) handledToolCalls wächst bei langen Sessions nicht
+      mehr unbegrenzt.
+   5) Absicherung, falls der #toggle-Button im HTML fehlt.
+   ========================================================= */
+
 const button = document.querySelector("#toggle");
 const statusEl = document.querySelector("#status");
 const logEl = document.querySelector("#log");
@@ -17,11 +31,19 @@ let startupGreeting = false;
 let outputAudioContext = null;
 let outputSource = null;
 let outputGain = null;
+let lastRemoteStream = null;
 
 let introAudio = null;
 let introFadeTimer = null;
 
+// Sicherheitsnetz: falls JARVIS nach einer Anfrage
+// aus irgendeinem Grund NICHT antwortet (z. B. Response
+// ohne Audio, verlorenes Event), würde das Mikro sonst
+// für immer stumm bleiben. Dieser Timer holt es zurück.
+let responseWatchdog = null;
+
 const handledToolCalls = new Set();
+const MAX_HANDLED_TOOL_CALLS = 50;
 
 /* =========================================================
    SETTINGS
@@ -117,6 +139,35 @@ function safeSend(payload) {
 
 
 /* =========================================================
+   RESPONSE WATCHDOG
+   ========================================================= */
+
+// Wird direkt nach jedem "response.create" gestartet.
+// Kommt keine Audio-Antwort (output_audio_buffer.started),
+// gibt der Watchdog das Mikro nach Ablauf der Zeit wieder frei.
+function armResponseWatchdog(ms = 12000) {
+  clearResponseWatchdog();
+
+  responseWatchdog = setTimeout(() => {
+    console.warn(
+      "Watchdog: keine Audio-Antwort erhalten, Mikro wird freigegeben."
+    );
+
+    if (active) {
+      resumeListening();
+    }
+  }, ms);
+}
+
+function clearResponseWatchdog() {
+  if (responseWatchdog) {
+    clearTimeout(responseWatchdog);
+    responseWatchdog = null;
+  }
+}
+
+
+/* =========================================================
    MICROPHONE CONTROL
    ========================================================= */
 
@@ -149,6 +200,8 @@ function muteForAssistant() {
 
 
 function resumeListening() {
+  clearResponseWatchdog();
+
   if (!active) {
     return;
   }
@@ -553,7 +606,30 @@ function fadeIntroOut() {
    JARVIS AUDIO OUTPUT
    ========================================================= */
 
+function setJarvisGain(value) {
+  if (!outputGain || !outputAudioContext) {
+    return;
+  }
+
+  const now = outputAudioContext.currentTime;
+
+  outputGain.gain.cancelScheduledValues(now);
+  outputGain.gain.setTargetAtTime(value, now, 0.05);
+}
+
+
 async function connectRemoteAudio(stream) {
+  /*
+   * Gleicher Stream wie zuvor?
+   * Dann nichts neu verbinden (verhindert
+   * Aussetzer, falls ontrack mehrfach feuert).
+   */
+  if (stream === lastRemoteStream) {
+    return;
+  }
+
+  lastRemoteStream = stream;
+
   remoteAudio.srcObject =
     stream;
 
@@ -625,10 +701,9 @@ async function connectRemoteAudio(stream) {
      * JARVIS deutlich verstärken.
      */
 
-    if (outputGain) {
-      outputGain.gain.value =
-        JARVIS_OUTPUT_GAIN;
-    }
+    setJarvisGain(
+      JARVIS_OUTPUT_GAIN
+    );
 
 
   } catch (error) {
@@ -678,6 +753,8 @@ Kein weiterer Satz.
 Danach schweigen.`
     }
   });
+
+  armResponseWatchdog();
 }
 
 
@@ -699,6 +776,18 @@ async function runTool(event) {
   handledToolCalls.add(
     event.call_id
   );
+
+  if (
+    handledToolCalls.size >
+    MAX_HANDLED_TOOL_CALLS
+  ) {
+    const oldest =
+      handledToolCalls
+        .values()
+        .next().value;
+
+    handledToolCalls.delete(oldest);
+  }
 
 
   /*
@@ -876,6 +965,8 @@ Regeln:
 - nach der Antwort schweigen`
     }
   });
+
+  armResponseWatchdog();
 }
 
 
@@ -1177,6 +1268,14 @@ async function startJarvis() {
 
 
           /*
+           * Audio ist tatsächlich da,
+           * Watchdog wird nicht mehr gebraucht.
+           */
+
+          clearResponseWatchdog();
+
+
+          /*
            * Mikro garantiert AUS.
            */
 
@@ -1191,10 +1290,9 @@ async function startJarvis() {
            * auf den gewünschten Gain setzen.
            */
 
-          if (outputGain) {
-            outputGain.gain.value =
-              JARVIS_OUTPUT_GAIN;
-          }
+          setJarvisGain(
+            JARVIS_OUTPUT_GAIN
+          );
 
 
           setLog(
@@ -1549,27 +1647,33 @@ async function stopJarvis() {
    BUTTON
    ========================================================= */
 
-button.addEventListener(
-  "click",
+if (button) {
+  button.addEventListener(
+    "click",
 
-  async () => {
+    async () => {
 
-    if (connecting) {
-      return;
+      if (connecting) {
+        return;
+      }
+
+
+      if (active) {
+
+        await stopJarvis();
+
+        return;
+      }
+
+
+      await startJarvis();
     }
-
-
-    if (active) {
-
-      await stopJarvis();
-
-      return;
-    }
-
-
-    await startJarvis();
-  }
-);
+  );
+} else {
+  console.error(
+    "#toggle-Button nicht im DOM gefunden."
+  );
+}
 
 
 /* =========================================================
