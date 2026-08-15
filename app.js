@@ -2,8 +2,18 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V8.4 · LÄNGERES WACH-FENSTER FÜR GESPRÄCHE
-   (Basis: V8.3, überarbeitet am 15.08.2026)
+   V8.5 · ERINNERUNGEN + E-MAIL-ENTWÜRFE
+   (Basis: V8.4, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN GEGENÜBER V8.4:
+   20. Neu: Erinnerungs-Check läuft jetzt zusätzlich zum normalen
+       20-Minuten-Business-Check jede Minute (REMINDER_CHECK_INTERVAL_MS),
+       damit "erinnere mich in 30 Minuten" nicht zu spät kommt. Beide
+       Checks laufen jetzt über eine gemeinsame Funktion
+       (runBackgroundCheck), Code-Duplizierung vermieden.
+   21. Neu: showDraft() zeigt E-Mail-Entwürfe im HUD an (neues Panel
+       in index.html), mit Kopieren-Button. askJarvis() gibt jetzt
+       ein Objekt { answer, draft } zurück statt nur den reinen Text.
 
    ÄNDERUNGEN GEGENÜBER V8.3:
    19. AWAKE_TIMEOUT_MS von 60s auf 2 Minuten erhöht - für ein
@@ -150,6 +160,7 @@ let lastInteractionAt = 0;
 /* ============ PROAKTIVER CHECK ============ */
 let proactiveCheckTimer = null;
 let proactiveFirstCheckTimer = null;
+let reminderCheckTimer = null;
 
 /* ============ MICROPHONE ============ */
 let micStream = null;
@@ -252,6 +263,13 @@ const LISTENING_RESUME_DELAY_MS = 1100;
 const PROACTIVE_CHECK_INTERVAL_MS = 20 * 60 * 1000; // alle 20 Minuten
 const PROACTIVE_FIRST_CHECK_DELAY_MS = 2 * 60 * 1000; // erster Check nach 2 Minuten
 
+/*
+ * Eigener, viel häufigerer Rhythmus für fällige Erinnerungen/Timer -
+ * "erinnere mich in 30 Minuten" soll nicht bis zu 20 Minuten zu spät
+ * kommen, deshalb getrennt vom schwereren Business-Check oben.
+ */
+const REMINDER_CHECK_INTERVAL_MS = 60 * 1000; // jede Minute
+
 /* ============ NETWORK TIMEOUTS ============ */
 const TRANSCRIPTION_TIMEOUT_MS = 30000;
 const CHAT_TIMEOUT_MS = 45000;
@@ -280,6 +298,48 @@ function setButtonActive(value) {
 
 function setJarvisState(state) {
   document.body.dataset.jarvisState = state;
+}
+
+
+/* =========================================================
+   ENTWURF-ANZEIGE (E-Mails etc.)
+   =========================================================
+
+   JARVIS kann längere Texte (z.B. E-Mail-Entwürfe) nicht einfach
+   "übergeben" - er kann nur sprechen. Diese Funktion zeigt so einen
+   Entwurf stattdessen im HUD an, mit Kopieren-Button.
+   ========================================================= */
+
+function showDraft(draft) {
+  const panel = document.getElementById("draftPanel");
+  const subjectEl = document.getElementById("draftSubject");
+  const bodyEl = document.getElementById("draftBody");
+  if (!panel || !subjectEl || !bodyEl) return;
+
+  subjectEl.textContent = draft.subject ? `Betreff: ${draft.subject}` : "";
+  bodyEl.textContent = draft.body || "";
+  panel.style.display = "flex";
+}
+
+// Kopieren-Button einmalig verdrahten - Betreff + Text zusammen kopieren.
+const draftCopyBtn = document.getElementById("draftCopyBtn");
+if (draftCopyBtn) {
+  draftCopyBtn.addEventListener("click", async () => {
+    const subjectEl = document.getElementById("draftSubject");
+    const bodyEl = document.getElementById("draftBody");
+    const fullText = `${subjectEl?.textContent || ""}\n\n${bodyEl?.textContent || ""}`.trim();
+
+    try {
+      await navigator.clipboard.writeText(fullText);
+      const original = draftCopyBtn.textContent;
+      draftCopyBtn.textContent = "Kopiert!";
+      setTimeout(() => {
+        draftCopyBtn.textContent = original;
+      }, 1500);
+    } catch (error) {
+      console.warn("Kopieren fehlgeschlagen:", error);
+    }
+  });
 }
 
 
@@ -966,7 +1026,10 @@ async function askJarvis(transcript) {
       previousResponseId = data.response_id;
     }
 
-    return answer;
+    // FIX: E-Mail-Entwürfe kommen zusätzlich zur gesprochenen Antwort
+    // als "draft"-Feld zurück - zu lang zum Vorsprechen, wird stattdessen
+    // im HUD angezeigt (siehe showDraft()).
+    return { answer, draft: data.draft || null };
   } catch (error) {
     clearTimeout(timeout);
     throw error;
@@ -1251,11 +1314,15 @@ async function processRecordedAudio(blob) {
     setLog("Denke nach …");
 
     const chatStart = performance.now();
-    const answer = await askJarvis(transcript);
+    const { answer, draft } = await askJarvis(transcript);
     console.log(`[TIMING] ChatGPT-Antwort (Browser -> Server -> zurück): ${Math.round(performance.now() - chatStart)}ms`);
     if (!active) return;
 
     console.log("JARVIS:", answer);
+
+    if (draft) {
+      showDraft(draft);
+    }
 
     await speakWithElevenLabs(answer);
     spokeResponse = true;
@@ -1296,12 +1363,18 @@ async function processRecordedAudio(blob) {
 
    Läuft periodisch im Hintergrund, unabhängig davon, ob Mattl gerade
    etwas fragt. Fragt den Server, ob es etwas Wichtiges gibt (z.B.
-   offene Bestellungen) - der Server entscheidet, ob es sich lohnt,
-   sich zu melden (siehe /api/jarvis-checkin), damit JARVIS nicht bei
-   jedem Check dieselbe Sache wiederholt.
+   offene Bestellungen, fällige Erinnerungen) - der Server entscheidet,
+   ob es sich lohnt, sich zu melden, damit JARVIS nicht bei jedem
+   Check dieselbe Sache wiederholt.
+
+   Eine gemeinsame Funktion für zwei unterschiedlich schnelle Rhythmen:
+   der normale Business-Check (offene Bestellungen, große Bestellung,
+   Morgen-Briefing) läuft alle 20 Minuten, der Erinnerungs-Check läuft
+   jede Minute - eine Erinnerung "in 30 Minuten" soll nicht bis zu 20
+   Minuten zu spät kommen.
    ========================================================= */
 
-async function checkProactiveNotice() {
+async function runBackgroundCheck(endpointUrl) {
   if (!active || processing || assistantSpeaking) return;
 
   processing = true;
@@ -1315,7 +1388,7 @@ async function checkProactiveNotice() {
       try { mediaRecorder.stop(); } catch {}
     }
 
-    const response = await fetch("/api/jarvis-checkin", {
+    const response = await fetch(endpointUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ previous_response_id: previousResponseId })
@@ -1341,7 +1414,7 @@ async function checkProactiveNotice() {
     await speakWithElevenLabs(data.text);
     spokeResponse = true;
   } catch (error) {
-    console.warn("Proaktiver Check fehlgeschlagen:", error);
+    console.warn("Hintergrund-Check fehlgeschlagen:", error);
   } finally {
     processing = false;
     assistantSpeaking = false;
@@ -1355,6 +1428,14 @@ async function checkProactiveNotice() {
   }
 }
 
+async function checkProactiveNotice() {
+  await runBackgroundCheck("/api/jarvis-checkin");
+}
+
+async function checkDueReminders() {
+  await runBackgroundCheck("/api/jarvis-reminder-check");
+}
+
 function startProactiveChecks() {
   stopProactiveChecks();
 
@@ -1365,6 +1446,11 @@ function startProactiveChecks() {
   proactiveCheckTimer = setInterval(() => {
     checkProactiveNotice();
   }, PROACTIVE_CHECK_INTERVAL_MS);
+
+  // Erinnerungs-Check läuft eigenständig, viel häufiger.
+  reminderCheckTimer = setInterval(() => {
+    checkDueReminders();
+  }, REMINDER_CHECK_INTERVAL_MS);
 }
 
 function stopProactiveChecks() {
@@ -1375,6 +1461,10 @@ function stopProactiveChecks() {
   if (proactiveCheckTimer) {
     clearInterval(proactiveCheckTimer);
     proactiveCheckTimer = null;
+  }
+  if (reminderCheckTimer) {
+    clearInterval(reminderCheckTimer);
+    reminderCheckTimer = null;
   }
 }
 
