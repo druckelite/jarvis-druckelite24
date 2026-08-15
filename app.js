@@ -10,6 +10,8 @@ let localStream = null;
 let active = false;
 let connecting = false;
 let assistantSpeaking = false;
+let responseInProgress = false;
+let toolResponsePending = false;
 
 const handledToolCalls = new Set();
 
@@ -22,13 +24,34 @@ function log(text) {
 }
 
 function safeSend(payload) {
-  if (!dc || dc.readyState !== "open") return;
+  if (!dc || dc.readyState !== "open") {
+    return false;
+  }
 
   try {
     dc.send(JSON.stringify(payload));
+    return true;
   } catch (error) {
     console.error("DataChannel send error:", error);
+    return false;
   }
+}
+
+function cancelCurrentResponse() {
+  if (!responseInProgress && !assistantSpeaking) {
+    return;
+  }
+
+  safeSend({
+    type: "response.cancel"
+  });
+
+  safeSend({
+    type: "output_audio_buffer.clear"
+  });
+
+  responseInProgress = false;
+  assistantSpeaking = false;
 }
 
 async function runTool(event) {
@@ -75,6 +98,9 @@ async function runTool(event) {
     case "recall_memory":
       endpoint = "/api/memory/recall";
       break;
+
+    default:
+      endpoint = null;
   }
 
   log(`Live-Daten: ${event.name}`);
@@ -95,14 +121,14 @@ async function runTool(event) {
         body: JSON.stringify(payload)
       });
 
-      const text = await response.text();
+      const raw = await response.text();
 
       try {
-        result = JSON.parse(text);
+        result = JSON.parse(raw);
       } catch {
         result = {
           ok: response.ok,
-          message: text
+          message: raw
         };
       }
 
@@ -114,8 +140,7 @@ async function runTool(event) {
       console.error("Tool request error:", error);
 
       result = {
-        error:
-          "Die Live-Daten konnten nicht geladen werden."
+        error: "Live-Daten konnten nicht geladen werden."
       };
     }
   }
@@ -129,23 +154,17 @@ async function runTool(event) {
     }
   });
 
-  safeSend({
-    type: "response.create"
-  });
-}
+  /*
+   * Wichtig:
+   * Nach einem Tool-Ergebnis genau EINE Folgeantwort erzeugen.
+   */
+  if (!toolResponsePending) {
+    toolResponsePending = true;
 
-function interruptAssistant() {
-  if (!assistantSpeaking) return;
-
-  safeSend({
-    type: "response.cancel"
-  });
-
-  safeSend({
-    type: "output_audio_buffer.clear"
-  });
-
-  assistantSpeaking = false;
+    safeSend({
+      type: "response.create"
+    });
+  }
 }
 
 async function startJarvis() {
@@ -160,6 +179,9 @@ async function startJarvis() {
   log("Mikrofon wird vorbereitet.");
 
   handledToolCalls.clear();
+  responseInProgress = false;
+  toolResponsePending = false;
+  assistantSpeaking = false;
 
   try {
     pc = new RTCPeerConnection();
@@ -167,49 +189,37 @@ async function startJarvis() {
     pc.onconnectionstatechange = () => {
       const state = pc?.connectionState;
 
-      console.log(
-        "Peer connection:",
-        state
-      );
+      console.log("Peer connection:", state);
+
+      if (state === "connected") {
+        setStatus("Online");
+      }
 
       if (
         state === "failed" ||
-        state === "disconnected"
+        state === "disconnected" ||
+        state === "closed"
       ) {
-        log(
-          "Voice-Verbindung wurde unterbrochen."
-        );
+        log("Voice-Verbindung wurde unterbrochen.");
       }
     };
 
     pc.ontrack = event => {
-      if (
-        event.streams &&
-        event.streams[0]
-      ) {
-        if (
-          remoteAudio.srcObject !==
-          event.streams[0]
-        ) {
-          remoteAudio.srcObject =
-            event.streams[0];
+      /*
+       * Nur EINEN Remote-Audiostream verwenden.
+       */
+      if (event.streams?.[0]) {
+        if (remoteAudio.srcObject !== event.streams[0]) {
+          remoteAudio.srcObject = event.streams[0];
         }
       } else {
-        remoteAudio.srcObject =
-          new MediaStream([
-            event.track
-          ]);
+        remoteAudio.srcObject = new MediaStream([event.track]);
       }
 
-      remoteAudio
-        .play()
-        .catch(() => {});
+      remoteAudio.play().catch(() => {});
     };
 
-    dc =
-      pc.createDataChannel(
-        "oai-events"
-      );
+    dc = pc.createDataChannel("oai-events");
 
     dc.onopen = () => {
       active = true;
@@ -223,167 +233,192 @@ async function startJarvis() {
     };
 
     dc.onclose = () => {
-      if (active) {
+      if (active || connecting) {
         stopJarvis();
       }
     };
 
     dc.onerror = error => {
-      console.error(
-        "DataChannel error:",
-        error
-      );
-
-      log(
-        "Fehler in der Voice-Verbindung."
-      );
+      console.error("DataChannel error:", error);
+      log("Fehler in der Voice-Verbindung.");
     };
 
-    dc.onmessage =
-      async message => {
-        let event;
+    dc.onmessage = async message => {
+      let event;
 
-        try {
-          event =
-            JSON.parse(
-              message.data
-            );
-        } catch {
+      try {
+        event = JSON.parse(message.data);
+      } catch {
+        return;
+      }
+
+      console.log("Realtime event:", event.type);
+
+      /*
+       * Nutzer beginnt zu sprechen.
+       * Server-VAD kann bereits automatisch unterbrechen.
+       * Wir leeren hier zusätzlich den lokalen Audio-Puffer,
+       * falls noch etwas abgespielt wird.
+       */
+      if (
+        event.type ===
+        "input_audio_buffer.speech_started"
+      ) {
+        if (assistantSpeaking || responseInProgress) {
+          cancelCurrentResponse();
+        }
+
+        log("Ich höre zu …");
+      }
+
+      if (
+        event.type ===
+        "input_audio_buffer.speech_stopped"
+      ) {
+        log("Denke nach …");
+      }
+
+      /*
+       * Eine Modellantwort wurde angelegt.
+       */
+      if (
+        event.type ===
+        "response.created"
+      ) {
+        responseInProgress = true;
+      }
+
+      /*
+       * Audioausgabe beginnt.
+       */
+      if (
+        event.type ===
+        "output_audio_buffer.started"
+      ) {
+        assistantSpeaking = true;
+        responseInProgress = true;
+        log("JARVIS spricht.");
+      }
+
+      /*
+       * Audioausgabe beendet oder geleert.
+       */
+      if (
+        event.type ===
+          "output_audio_buffer.stopped" ||
+        event.type ===
+          "output_audio_buffer.cleared"
+      ) {
+        assistantSpeaking = false;
+
+        if (active && !responseInProgress) {
+          log("JARVIS hört zu.");
+        }
+      }
+
+      /*
+       * Fertiger Tool-Aufruf:
+       * Nur dieses Event verwenden, nicht die Delta-Events.
+       */
+      if (
+        event.type ===
+        "response.function_call_arguments.done"
+      ) {
+        await runTool(event);
+      }
+
+      /*
+       * Modellantwort komplett beendet.
+       */
+      if (
+        event.type ===
+        "response.done"
+      ) {
+        responseInProgress = false;
+
+        const status =
+          event.response?.status;
+
+        /*
+         * Sobald eine Tool-Response beendet wurde,
+         * darf der nächste Tool-Aufruf später wieder
+         * genau eine Folgeantwort erzeugen.
+         */
+        toolResponsePending = false;
+
+        if (status === "failed") {
+          console.error(
+            "Response failed:",
+            event.response
+          );
+
+          log(
+            "JARVIS konnte die Antwort nicht erzeugen."
+          );
+
           return;
         }
 
-        console.log(
-          "Realtime event:",
-          event.type
+        if (active && !assistantSpeaking) {
+          log("JARVIS hört zu.");
+        }
+      }
+
+      if (event.type === "error") {
+        console.error(
+          "Realtime error:",
+          event
         );
 
+        const code =
+          event.error?.code || "";
+
+        /*
+         * Dieser Fehler ist harmlos, wenn gerade
+         * nichts mehr zu canceln war.
+         */
         if (
-          event.type ===
-          "input_audio_buffer.speech_started"
+          code !==
+          "response_cancel_not_active"
         ) {
-          interruptAssistant();
-          log("Ich höre zu …");
-        }
-
-        if (
-          event.type ===
-          "input_audio_buffer.speech_stopped"
-        ) {
-          log("Denke nach …");
-        }
-
-        if (
-          event.type ===
-          "output_audio_buffer.started"
-        ) {
-          assistantSpeaking = true;
-          log("JARVIS spricht.");
-        }
-
-        if (
-          event.type ===
-            "output_audio_buffer.stopped" ||
-          event.type ===
-            "output_audio_buffer.cleared"
-        ) {
-          assistantSpeaking = false;
-
-          if (active) {
-            log("JARVIS hört zu.");
-          }
-        }
-
-        if (
-          event.type ===
-          "response.function_call_arguments.done"
-        ) {
-          await runTool(event);
-        }
-
-        if (
-          event.type ===
-          "response.done"
-        ) {
-          const status =
-            event.response?.status;
-
-          if (
-            status === "failed"
-          ) {
-            console.error(
-              "Response failed:",
-              event.response
-            );
-
-            log(
-              "JARVIS konnte die Antwort nicht erzeugen."
-            );
-          }
-        }
-
-        if (
-          event.type === "error"
-        ) {
-          console.error(
-            "Realtime error:",
-            event
+          log(
+            event.error?.message ||
+            "JARVIS-Fehler."
           );
-
-          const code =
-            event.error?.code || "";
-
-          if (
-            code !==
-            "response_cancel_not_active"
-          ) {
-            log(
-              event.error?.message ||
-                "JARVIS-Fehler."
-            );
-          }
         }
-      };
+      }
+    };
 
     localStream =
-      await navigator
-        .mediaDevices
-        .getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-          }
-        });
+      await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1
+        }
+      });
 
     for (
-      const track of
-      localStream.getAudioTracks()
+      const track of localStream.getAudioTracks()
     ) {
-      pc.addTrack(
-        track,
-        localStream
-      );
+      pc.addTrack(track, localStream);
     }
 
     const offer =
       await pc.createOffer();
 
-    await pc.setLocalDescription(
-      offer
-    );
+    await pc.setLocalDescription(offer);
 
     const response =
-      await fetch(
-        "/session",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/sdp"
-          },
-          body: offer.sdp
-        }
-      );
+      await fetch("/session", {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/sdp"
+        },
+        body: offer.sdp
+      });
 
     if (!response.ok) {
       throw new Error(
@@ -418,6 +453,10 @@ async function startJarvis() {
 
 function stopJarvis() {
   try {
+    cancelCurrentResponse();
+  } catch {}
+
+  try {
     if (
       dc &&
       dc.readyState === "open"
@@ -429,9 +468,7 @@ function stopJarvis() {
   try {
     if (pc) {
       pc.ontrack = null;
-      pc.onconnectionstatechange =
-        null;
-
+      pc.onconnectionstatechange = null;
       pc.close();
     }
   } catch {}
@@ -439,8 +476,7 @@ function stopJarvis() {
   try {
     if (localStream) {
       for (
-        const track of
-        localStream.getTracks()
+        const track of localStream.getTracks()
       ) {
         track.stop();
       }
@@ -459,6 +495,8 @@ function stopJarvis() {
   active = false;
   connecting = false;
   assistantSpeaking = false;
+  responseInProgress = false;
+  toolResponsePending = false;
 
   handledToolCalls.clear();
 
