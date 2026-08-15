@@ -1922,45 +1922,9 @@ audio { display: none; }
       }
 
 
-      /* ---------- MOBILE: Gyroskop-Parallax ---------- */
-      // Der Reaktor neigt sich mit dem Handy, als würde er
-      // im Raum schweben. iPhones fragen beim ersten Tippen
-      // auf den Reaktor nach Erlaubnis; Android läuft direkt.
-      function startGyro() {
-        window.addEventListener("deviceorientation", function (e) {
-          if (!panel || reduceMotion) return;
-          if (e.gamma === null || e.beta === null) return;
-
-          var x = Math.max(-14, Math.min(14, e.gamma * 0.6));
-          var y = Math.max(-10, Math.min(10, (e.beta - 45) * 0.35));
-
-          panel.style.transform =
-            "translate(" + x + "px, " + y + "px)";
-        });
-      }
-
-      if (typeof DeviceOrientationEvent !== "undefined") {
-        if (typeof DeviceOrientationEvent.requestPermission === "function") {
-          // iOS: Erlaubnis beim ersten Tippen auf den Reaktor holen
-          var toggleBtn = document.getElementById("toggle");
-          if (toggleBtn) {
-            toggleBtn.addEventListener("click", function askOnce() {
-              toggleBtn.removeEventListener("click", askOnce);
-              DeviceOrientationEvent.requestPermission()
-                .then(function (state) {
-                  if (state === "granted") startGyro();
-                })
-                .catch(function () {});
-            });
-          }
-        } else {
-          // Android und ältere Geräte
-          startGyro();
-        }
-      }
     })();
   </script>
 
-  <script src="app.js?v=21"></script>
+  <script src="app.js?v=22"></script>
 </body>
 </html>
