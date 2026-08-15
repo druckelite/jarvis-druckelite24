@@ -7,10 +7,26 @@ let mediaRecorder = null;
 let mediaStream = null;
 let audioChunks = [];
 
+let audioContext = null;
+let analyser = null;
+let sourceNode = null;
+
+let active = false;
 let recording = false;
 let processing = false;
+let speaking = false;
+
+let silenceTimer = null;
+let monitorTimer = null;
 
 let history = [];
+
+const SILENCE_MS = 1100;
+const SPEECH_THRESHOLD = 0.035;
+const MIN_RECORDING_MS = 500;
+
+let recordingStartedAt = 0;
+let speechDetected = false;
 
 function setStatus(text) {
   if (!statusEl) return;
@@ -29,10 +45,10 @@ function setLog(text) {
   logEl.textContent = text;
 }
 
-function setButtonActive(active) {
+function setButtonActive(value) {
   if (!button) return;
 
-  if (active) {
+  if (value) {
     button.classList.add("active");
   } else {
     button.classList.remove("active");
@@ -65,7 +81,14 @@ function getGreeting() {
 async function speak(text) {
   const sentence = String(text || "").trim();
 
-  if (!sentence) return;
+  if (!sentence || !active) {
+    return;
+  }
+
+  speaking = true;
+  processing = false;
+
+  stopListeningMonitor();
 
   setLog("JARVIS spricht …");
 
@@ -74,11 +97,9 @@ async function speak(text) {
       "/api/speak",
       {
         method: "POST",
-
         headers: {
           "Content-Type": "application/json"
         },
-
         body: JSON.stringify({
           text: sentence
         })
@@ -86,24 +107,20 @@ async function speak(text) {
     );
 
     if (!response.ok) {
-      const error = await response.text();
+      const raw = await response.text();
 
       console.error(
         "Speech API error:",
-        error
+        raw
       );
 
-      setLog(
+      throw new Error(
         "Sprachausgabe fehlgeschlagen."
       );
-
-      return;
     }
 
     const blob = await response.blob();
-
-    const url =
-      URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
 
     remoteAudio.srcObject = null;
     remoteAudio.src = url;
@@ -116,10 +133,6 @@ async function speak(text) {
 
     URL.revokeObjectURL(url);
 
-    setLog(
-      "Bereit."
-    );
-
   } catch (error) {
     console.error(
       "Speak error:",
@@ -127,140 +140,136 @@ async function speak(text) {
     );
 
     setLog(
+      error.message ||
       "Sprachausgabe fehlgeschlagen."
     );
+
+  } finally {
+    speaking = false;
+
+    if (active) {
+      await startContinuousListening();
+    }
   }
 }
 
 async function transcribe(audioBlob) {
-  setLog(
-    "Verstehe …"
-  );
+  setLog("Verstehe …");
 
-  try {
-    const response = await fetch(
+  const response =
+    await fetch(
       "/api/transcribe",
       {
         method: "POST",
-
         headers: {
           "Content-Type":
             audioBlob.type ||
             "audio/webm"
         },
-
         body: audioBlob
       }
     );
 
-    const data =
-      await response.json();
+  const raw =
+    await response.text();
 
-    if (!response.ok) {
-      console.error(
-        "Transcription error:",
-        data
-      );
+  let data;
 
-      throw new Error(
-        data.error ||
-        "Spracherkennung fehlgeschlagen."
-      );
-    }
-
-    return String(
-      data.text || ""
-    ).trim();
-
-  } catch (error) {
-    console.error(
-      "Transcription request error:",
-      error
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      "Spracherkennung hat eine ungültige Antwort geliefert."
     );
-
-    throw error;
   }
+
+  if (!response.ok) {
+    throw new Error(
+      data.error ||
+      "Spracherkennung fehlgeschlagen."
+    );
+  }
+
+  return String(
+    data.text || ""
+  ).trim();
 }
 
 async function askJarvis(message) {
-  setLog(
-    "Denke nach …"
-  );
+  setLog("Denke nach …");
 
-  try {
-    const response =
-      await fetch(
-        "/api/ask",
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body: JSON.stringify({
-            message,
-            history
-          })
-        }
-      );
-
-    const data =
-      await response.json();
-
-    if (!response.ok) {
-      console.error(
-        "Ask API error:",
-        data
-      );
-
-      throw new Error(
-        data.error ||
-        "JARVIS konnte die Anfrage nicht bearbeiten."
-      );
-    }
-
-    const reply =
-      String(
-        data.reply || ""
-      ).trim();
-
-    if (!reply) {
-      throw new Error(
-        "Leere Antwort von JARVIS."
-      );
-    }
-
-    history.push({
-      role: "user",
-      text: message
-    });
-
-    history.push({
-      role: "assistant",
-      text: reply
-    });
-
-    if (history.length > 12) {
-      history =
-        history.slice(-12);
-    }
-
-    return reply;
-
-  } catch (error) {
-    console.error(
-      "Ask request error:",
-      error
+  const response =
+    await fetch(
+      "/api/ask",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json"
+        },
+        body: JSON.stringify({
+          message,
+          history
+        })
+      }
     );
 
-    throw error;
+  const raw =
+    await response.text();
+
+  let data;
+
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      "JARVIS hat eine ungültige Serverantwort erhalten."
+    );
   }
+
+  if (!response.ok) {
+    throw new Error(
+      data.error ||
+      "JARVIS konnte die Anfrage nicht bearbeiten."
+    );
+  }
+
+  const reply =
+    String(
+      data.reply || ""
+    ).trim();
+
+  if (!reply) {
+    throw new Error(
+      "JARVIS hat keine Antwort geliefert."
+    );
+  }
+
+  history.push({
+    role: "user",
+    text: message
+  });
+
+  history.push({
+    role: "assistant",
+    text: reply
+  });
+
+  if (history.length > 12) {
+    history =
+      history.slice(-12);
+  }
+
+  return reply;
 }
 
 async function processRecording(blob) {
-  if (processing) return;
+  if (
+    processing ||
+    !active
+  ) {
+    return;
+  }
 
   processing = true;
 
@@ -269,11 +278,12 @@ async function processRecording(blob) {
       await transcribe(blob);
 
     if (!transcript) {
-      setLog(
-        "Ich habe nichts verstanden."
-      );
+      setLog("JARVIS hört zu.");
 
       processing = false;
+
+      await startContinuousListening();
+
       return;
     }
 
@@ -301,35 +311,178 @@ async function processRecording(blob) {
       "Verarbeitung fehlgeschlagen."
     );
 
-  } finally {
     processing = false;
-    setStatus("Online");
-    setButtonActive(false);
+
+    if (active) {
+      setTimeout(
+        () => {
+          startContinuousListening();
+        },
+        700
+      );
+    }
   }
 }
 
-async function startRecording() {
+function getAudioLevel() {
+  if (!analyser) {
+    return 0;
+  }
+
+  const buffer =
+    new Uint8Array(
+      analyser.fftSize
+    );
+
+  analyser.getByteTimeDomainData(
+    buffer
+  );
+
+  let sum = 0;
+
+  for (
+    let i = 0;
+    i < buffer.length;
+    i++
+  ) {
+    const value =
+      (buffer[i] - 128) /
+      128;
+
+    sum +=
+      value * value;
+  }
+
+  return Math.sqrt(
+    sum / buffer.length
+  );
+}
+
+function monitorSilence() {
   if (
+    !active ||
+    !recording ||
+    processing ||
+    speaking
+  ) {
+    return;
+  }
+
+  const level =
+    getAudioLevel();
+
+  if (
+    level >
+    SPEECH_THRESHOLD
+  ) {
+    speechDetected = true;
+
+    setLog(
+      "Ich höre zu …"
+    );
+
+    if (silenceTimer) {
+      clearTimeout(
+        silenceTimer
+      );
+
+      silenceTimer = null;
+    }
+
+  } else if (
+    speechDetected &&
+    !silenceTimer
+  ) {
+    silenceTimer =
+      setTimeout(
+        () => {
+          stopRecordingAutomatically();
+        },
+        SILENCE_MS
+      );
+  }
+
+  monitorTimer =
+    requestAnimationFrame(
+      monitorSilence
+    );
+}
+
+function stopListeningMonitor() {
+  if (monitorTimer) {
+    cancelAnimationFrame(
+      monitorTimer
+    );
+
+    monitorTimer = null;
+  }
+
+  if (silenceTimer) {
+    clearTimeout(
+      silenceTimer
+    );
+
+    silenceTimer = null;
+  }
+}
+
+async function startContinuousListening() {
+  if (
+    !active ||
     recording ||
-    processing
+    processing ||
+    speaking
   ) {
     return;
   }
 
   try {
-    mediaStream =
-      await navigator
-        .mediaDevices
-        .getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            channelCount: 1
-          }
-        });
+    if (!mediaStream) {
+      mediaStream =
+        await navigator
+          .mediaDevices
+          .getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+              channelCount: 1
+            }
+          });
+    }
+
+    if (!audioContext) {
+      const AudioContextClass =
+        window.AudioContext ||
+        window.webkitAudioContext;
+
+      audioContext =
+        new AudioContextClass();
+
+      if (
+        audioContext.state ===
+        "suspended"
+      ) {
+        await audioContext.resume();
+      }
+
+      analyser =
+        audioContext.createAnalyser();
+
+      analyser.fftSize = 1024;
+
+      sourceNode =
+        audioContext.createMediaStreamSource(
+          mediaStream
+        );
+
+      sourceNode.connect(
+        analyser
+      );
+    }
 
     audioChunks = [];
+    speechDetected = false;
 
     let mimeType = "";
 
@@ -340,6 +493,7 @@ async function startRecording() {
     ) {
       mimeType =
         "audio/webm;codecs=opus";
+
     } else if (
       MediaRecorder.isTypeSupported(
         "audio/webm"
@@ -373,83 +527,89 @@ async function startRecording() {
 
     mediaRecorder.onstop =
       async () => {
+        const type =
+          mediaRecorder?.mimeType ||
+          "audio/webm";
+
         const blob =
           new Blob(
             audioChunks,
             {
-              type:
-                mediaRecorder.mimeType ||
-                "audio/webm"
+              type
             }
           );
 
-        if (mediaStream) {
-          for (
-            const track of
-            mediaStream.getTracks()
-          ) {
-            track.stop();
-          }
-        }
-
-        mediaStream = null;
         mediaRecorder = null;
         audioChunks = [];
+
+        recording = false;
+
+        stopListeningMonitor();
+
+        if (
+          !active ||
+          blob.size === 0
+        ) {
+          return;
+        }
 
         await processRecording(
           blob
         );
       };
 
+    recordingStartedAt =
+      Date.now();
+
     mediaRecorder.start();
 
     recording = true;
 
-    setStatus(
-      "Online"
-    );
-
-    setButtonActive(
-      true
-    );
+    setStatus("Online");
+    setButtonActive(true);
 
     setLog(
-      "Ich höre zu …"
+      "JARVIS hört zu."
     );
+
+    monitorSilence();
 
   } catch (error) {
     console.error(
-      "Microphone error:",
+      "Continuous listening error:",
       error
-    );
-
-    setStatus(
-      "Offline"
-    );
-
-    setButtonActive(
-      false
     );
 
     setLog(
       "Mikrofon konnte nicht gestartet werden."
     );
+
+    await stopJarvis();
   }
 }
 
-function stopRecording() {
+function stopRecordingAutomatically() {
   if (
     !recording ||
-    !mediaRecorder
+    !mediaRecorder ||
+    mediaRecorder.state ===
+      "inactive"
   ) {
     return;
   }
 
-  recording = false;
+  const duration =
+    Date.now() -
+    recordingStartedAt;
 
-  setButtonActive(
-    false
-  );
+  if (
+    duration <
+    MIN_RECORDING_MS
+  ) {
+    return;
+  }
+
+  stopListeningMonitor();
 
   setLog(
     "Verarbeite …"
@@ -459,69 +619,125 @@ function stopRecording() {
     mediaRecorder.stop();
   } catch (error) {
     console.error(
-      "Recorder stop error:",
+      "Automatic recorder stop error:",
       error
     );
   }
 }
 
+async function startJarvis() {
+  if (
+    active ||
+    processing
+  ) {
+    return;
+  }
+
+  active = true;
+
+  button.disabled = true;
+
+  setStatus(
+    "Online"
+  );
+
+  setButtonActive(
+    true
+  );
+
+  setLog(
+    "JARVIS startet …"
+  );
+
+  try {
+    await speak(
+      getGreeting()
+    );
+
+  } catch (error) {
+    console.error(error);
+
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function stopJarvis() {
+  active = false;
+  recording = false;
+  processing = false;
+  speaking = false;
+
+  stopListeningMonitor();
+
+  try {
+    if (
+      mediaRecorder &&
+      mediaRecorder.state !==
+        "inactive"
+    ) {
+      mediaRecorder.stop();
+    }
+  } catch {}
+
+  mediaRecorder = null;
+
+  try {
+    if (mediaStream) {
+      for (
+        const track of
+        mediaStream.getTracks()
+      ) {
+        track.stop();
+      }
+    }
+  } catch {}
+
+  mediaStream = null;
+
+  try {
+    if (sourceNode) {
+      sourceNode.disconnect();
+    }
+  } catch {}
+
+  sourceNode = null;
+  analyser = null;
+
+  try {
+    if (audioContext) {
+      await audioContext.close();
+    }
+  } catch {}
+
+  audioContext = null;
+
+  try {
+    remoteAudio.pause();
+    remoteAudio.src = "";
+    remoteAudio.srcObject = null;
+  } catch {}
+
+  setButtonActive(false);
+  setStatus("Offline");
+  setLog("Bereit.");
+}
+
 button.addEventListener(
   "click",
   async () => {
-    if (processing) {
+    if (active) {
+      await stopJarvis();
       return;
     }
 
-    if (recording) {
-      stopRecording();
-      return;
-    }
-
-    await startRecording();
+    await startJarvis();
   }
 );
 
 window.addEventListener(
   "pagehide",
   () => {
-    try {
-      if (
-        mediaRecorder &&
-        mediaRecorder.state !==
-          "inactive"
-      ) {
-        mediaRecorder.stop();
-      }
-    } catch {}
-
-    try {
-      if (mediaStream) {
-        for (
-          const track of
-          mediaStream.getTracks()
-        ) {
-          track.stop();
-        }
-      }
-    } catch {}
-  }
-);
-
-window.addEventListener(
-  "load",
-  async () => {
-    setStatus(
-      "Online"
-    );
-
-    setLog(
-      "Bereit."
-    );
-
-    try {
-      await speak(
-        getGreeting()
-      );
-    } catch {}
+    stopJarvis();
   }
 );
