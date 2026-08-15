@@ -2,8 +2,19 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V8.0 · ZEITMESSUNG
-   (Basis: V7.9, überarbeitet am 15.08.2026)
+   V8.1 · INTRO KLINGT NATÜRLICH AUS
+   (Basis: V8.0, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN GEGENÜBER V8.0:
+   16. Die Intro-Musik wurde bisher abrupt abgewürgt, sobald die
+       Begrüßung fertig gesprochen war - egal wo das eingebaute
+       sanfte Ausblenden (duckIntro/fadeIntroOut, zusammen ca. 8,5
+       Sekunden) gerade stand. Jetzt läuft nach der Begrüßung noch
+       eine Pause von 4,5 Sekunden, in der die Musik natürlich weiter
+       ausklingt, bevor sicherheitshalber trotzdem gestoppt wird.
+       Zusätzlich die Vorlaufzeit vor der Begrüßung von 1200ms auf
+       1800ms erhöht - insgesamt ist der Soundtrack dadurch spürbar
+       länger zu hören.
 
    ÄNDERUNGEN GEGENÜBER V7.9:
    15. Zeitmessung eingebaut (Browser-Konsole, Zeilen mit "[TIMING]"):
@@ -163,11 +174,12 @@ let introFadeTimer = null;
 const INTRO_START = 4;
 const INTRO_START_VOLUME = 0.28;
 // War 2000ms, dann auf 500ms gekürzt für einen schnelleren Start -
-// dabei ist die Musik aber praktisch untergegangen, weil sie kaum
-// noch Zeit hatte, bevor sie schon wieder ausgeblendet wurde. 1200ms
-// ist der Mittelweg: Musik ist wieder hörbar, Start bleibt trotzdem
-// spürbar schneller als ursprünglich (2000ms).
-const INTRO_VOICE_DELAY_MS = 1200;
+// dabei ist die Musik aber praktisch untergegangen. 1200ms war ein
+// erster Mittelweg. Jetzt auf 1800ms erhöht, damit der Soundtrack
+// insgesamt länger und deutlicher zu hören ist, bevor die Begrüßung
+// einsetzt - der Start bleibt trotzdem spürbar schneller als die
+// ursprünglichen 2000ms plus dem alten abrupten Abwürgen am Ende.
+const INTRO_VOICE_DELAY_MS = 1800;
 const INTRO_BACKGROUND_VOLUME = 0.025;
 const INTRO_DUCK_DURATION_MS = 1500;
 const INTRO_FADE_DURATION_MS = 7000;
@@ -1380,7 +1392,16 @@ async function startJarvis() {
     processing = false;
     if (!active) return;
 
-    // Intro vollständig stoppen, bevor der Raumpegel gemessen wird.
+    // FIX: Vorher wurde die Intro-Musik hier abrupt abgewürgt, egal wo
+    // das sanfte Ausblenden (duckIntro/fadeIntroOut) gerade stand - das
+    // klang abgehackt statt natürlich. Jetzt lassen wir sie noch 4,5
+    // Sekunden lang von selbst weiter ausklingen (die Fade-Timer laufen
+    // im Hintergrund bereits seit duckIntro() weiter), bevor wir sie
+    // zur Sicherheit trotzdem hart stoppen - falls sie bis dahin noch
+    // nicht ganz verklungen sein sollte.
+    await sleep(4500);
+    if (!active) return;
+
     stopIntro();
     stopElevenAudio();
     await sleep(200);
