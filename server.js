@@ -1,7 +1,18 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
-   V8.4 · "MATTL"-AUSSPRACHE + SPORT-BEGRIFFE
-   (Basis: V8.3, überarbeitet am 15.08.2026)
+   V8.5 · WEBSUCHE FÜR ALLTAGSFRAGEN
+   (Basis: V8.4, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN IN V8.5:
+   22. Die Stichwort-Liste für die Websuche (V8.4) war grundsätzlich
+       der falsche Ansatz - jede Alltagsfrage außerhalb der Liste lief
+       ins Leere, egal wie oft man sie ergänzt. Jetzt umgekehrt:
+       Websuche ist IMMER verfügbar, außer bei Shopify-/Wetterfragen
+       (eigene schnelle Live-Datenquelle) und automatischen System-
+       Hinweisen (proaktive Meldungen, Morgen-Briefing). ChatGPT
+       entscheidet pro Frage selbst, ob es sucht. JARVIS-Anweisungen
+       ergänzt: soll sich auch über Alltägliches unterhalten, nicht
+       nur über Druckelite24.
 
    ÄNDERUNGEN IN V8.4:
    20. "Mattl" wurde als "Maddl" gesprochen - die Anweisung dazu in
@@ -438,13 +449,19 @@ WICHTIG ZUR STIMME:
 - Nenne niemals rohe Links oder URLs - fasse Informationen aus der Websuche natürlich in eigenen Worten zusammen.
 
 INTERNETZUGRIFF:
-Du hast eine Websuche als Werkzeug zur Verfügung. Nutze sie, wenn du
-aktuelle Informationen brauchst, die du nicht sicher weißt - zum
-Beispiel aktuelle Nachrichten, Ereignisse oder Fakten von heute.
-Für Fragen zu Druckelite24, Shopify, Bestellungen oder Wetter nutze
-NICHT die Websuche, sondern ausschließlich die LIVE-DATEN, falls
+Du hast eine Websuche als Werkzeug zur Verfügung - für Alltagsfragen,
+Wissen, Nachrichten, Sport, allgemeine Unterhaltung, einfach alles.
+Nutze sie, wenn du etwas nicht sicher weißt oder es aktuell sein
+könnte. Für Fragen zu Druckelite24, Shopify, Bestellungen oder Wetter
+nutze NICHT die Websuche, sondern ausschließlich die LIVE-DATEN, falls
 welche mitgegeben wurden - die Websuche würde hier ohnehin nichts
 Sinnvolles finden und nur unnötig Zeit kosten.
+
+GESPRÄCH ÜBER ALLES:
+Mattl will sich auch ganz normal mit dir unterhalten können - nicht
+nur über sein Geschäft. Beantworte Alltagsfragen, plaudere mit, hab
+eine Meinung, mach Witze, sei einfach ein guter Gesprächspartner.
+Du bist nicht auf Druckelite24-Themen beschränkt.
 
 DRUCKELITE24:
 Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
@@ -751,12 +768,25 @@ Für aktuelle Werte sind ausschließlich die LIVE-DATEN maßgeblich.
 Erfinde keine weiteren aktuellen Zahlen.`;
   }
 
-  // FIX: Websuche und reasoning.effort "minimal" vertragen sich laut
-  // OpenAI nicht (harter API-Fehler). Deshalb nur bei Bedarf aktivieren
-  // und dann auf "low" hochstufen - für alle anderen Fragen bleibt es
-  // bei "minimal" ohne das Tool, das ist der schnelle Normalfall.
-  const needsWebSearch = isWebSearchQuestion(inputText);
-  const reasoningEffort = needsWebSearch ? "low" : "minimal";
+  // FIX: Vorher gab es eine Liste von Stichwörtern, bei denen die
+  // Websuche ansprang (Nachrichten, Fußball, Wahlen, ...) - das war
+  // grundsätzlich zu eng, jede Alltagsfrage außerhalb der Liste lief
+  // ins Leere. Jetzt umgekehrt: Websuche ist IMMER verfügbar, außer
+  // bei Shopify- und Wetterfragen (die haben schon ihre eigene,
+  // schnelle Live-Datenquelle und brauchen sie nicht) sowie bei
+  // automatischen System-Hinweisen (proaktive Meldungen, Morgen-
+  // Briefing - die haben ihre Fakten schon im Text, keine Suche nötig).
+  // Websuche und reasoning.effort "minimal" vertragen sich laut OpenAI
+  // nicht (harter API-Fehler) - deshalb im schnellen Fall "minimal"
+  // ohne Websuche, sonst "low" mit Websuche verfügbar. ChatGPT
+  // entscheidet dann selbst pro Frage, ob es die Websuche nutzt.
+  const isFastPathQuestion =
+    inputText.startsWith("[SYSTEM-HINWEIS") ||
+    liveData?.type === "shopify" ||
+    liveData?.type === "weather";
+
+  const reasoningEffort = isFastPathQuestion ? "minimal" : "low";
+  const needsWebSearch = !isFastPathQuestion;
 
   // ERSTER VERSUCH: minimaler Reasoning-Aufwand - für ein Sprachgespräch
   // reicht das völlig aus und spart spürbar Antwortzeit gegenüber "low".
@@ -1425,57 +1455,11 @@ function isWeatherQuestion(text) {
 }
 
 /*
- * Grobe Heuristik, ob eine Frage aktuelle Infos von außen braucht
- * (Nachrichten, Weltgeschehen, aktuelle Fakten) - nur DANN wird die
- * Websuche aktiviert (siehe requestOpenAIResponse). Nicht perfekt,
- * aber besser als die Websuche immer mitzuschicken - kostet sonst
- * unnötig Zeit UND verträgt sich technisch nicht mit "minimal"-
- * Reasoning, das für alle anderen Fragen genutzt wird.
- *
- * Fehlt ein Stichwort, das öfter vorkommen sollte - einfach ergänzen.
+ * Websuche-Steuerung läuft jetzt umgekehrt direkt in
+ * createJarvisResponse (isFastPathQuestion) - Websuche ist immer
+ * verfügbar, außer bei Shopify/Wetter/System-Hinweisen. Diese
+ * Stichwort-Liste wurde dadurch überflüssig und entfernt.
  */
-function isWebSearchQuestion(text) {
-  const n = normalize(text);
-  const keywords = [
-    "nachrichten",
-    "neuigkeiten",
-    "was ist los",
-    "was gibt es neues",
-    "weltgeschehen",
-    "aktuelle",
-    "aktuell",
-    "neuste",
-    "neueste",
-    "heute passiert",
-    "wer ist",
-    "wer war",
-    "wahl",
-    "kanzler",
-    "president",
-    "präsident",
-    "kurs von",
-    "aktienkurs",
-    "börse",
-    "ergebnis",
-    "spielstand",
-    "gewonnen",
-    // Sport/Fußball - fehlte bisher komplett, Anfragen dazu liefen
-    // ins Leere, weil die Websuche gar nicht erst ausgelöst wurde.
-    "fußball",
-    "bundesliga",
-    "champions league",
-    "tabellenstand",
-    "spiel gegen",
-    "gegen gespielt",
-    "verloren",
-    "unentschieden",
-    "meisterschaft",
-    "pokal",
-    "torschütze",
-    "tore geschossen"
-  ];
-  return keywords.some(word => n.includes(word));
-}
 
 function getShopifyPeriodFromText(text) {
   return normalize(text).includes("gestern") ? "yesterday" : "today";
