@@ -41,14 +41,11 @@ function nextDateString(dateString) {
 }
 
 function getPeriodDates(period) {
-  const today =
-    berlinDate();
+  const today = berlinDate();
 
   if (period === "yesterday") {
     const date =
-      new Date(
-        `${today}T12:00:00Z`
-      );
+      new Date(`${today}T12:00:00Z`);
 
     date.setUTCDate(
       date.getUTCDate() - 1
@@ -71,7 +68,6 @@ function getPeriodDates(period) {
   };
 }
 
-
 /* =========================================================
    JARVIS PERSONALITY
    ========================================================= */
@@ -87,9 +83,9 @@ SPRACHE
 
 AUSSPRACHE
 - Der Benutzer heißt Mattl.
-- Sprich den Namen ungefähr "Mat-tl".
+- Sprich ungefähr: Mat-tl.
 - Das T muss hörbar bleiben.
-- Nicht "Maddl".
+- Nicht Maddl.
 
 CHARAKTER
 - Locker.
@@ -123,11 +119,11 @@ GESPRÄCH
 - Keine unnötigen Monologe.
 - Keine automatische Anschlussfrage nach jeder Antwort.
 - Wenn du fertig bist, warte auf Mattl.
-- Du darfst Kontext aus dem laufenden Gespräch berücksichtigen.
-- Wenn du etwas akustisch nicht sicher verstanden hast, frage kurz nach.
+- Berücksichtige den Kontext des laufenden Gesprächs.
+- Wenn du akustisch unsicher bist, frage kurz nach.
 
-WICHTIG
-Wenn Mattl nach aktuellen Daten fragt, niemals raten.
+LIVE-DATEN
+Erfinde niemals aktuelle Daten.
 
 SHOPIFY
 Für aktuelle Shopify-Fragen MUSST du get_shopify_summary benutzen.
@@ -138,9 +134,9 @@ Dazu gehören:
 - Verkäufe
 - Bestellwert
 - Shop-Umsatz
-- "Wie läuft Shopify?"
-- "Wie viele Bestellungen heute?"
-- "Was haben wir heute umgesetzt?"
+- Wie läuft Shopify?
+- Wie viele Bestellungen heute?
+- Was haben wir heute umgesetzt?
 
 WETTER
 Für Wetterfragen MUSST du get_weather benutzen.
@@ -149,10 +145,12 @@ Bei Ludwigshafen bevorzuge:
 Ludwigshafen am Rhein, Rheinland-Pfalz, Deutschland.
 
 GMAIL
-Wenn Mattl nach aktuellen Mails fragt, benutze get_important_emails.
+Für aktuelle Mail-Fragen:
+get_important_emails verwenden.
 
 KALENDER
-Wenn Mattl nach Terminen oder Kalender fragt, benutze get_calendar_today.
+Für Termine und Kalender:
+get_calendar_today verwenden.
 
 ABSOLUT VERBOTEN
 Bei Shopify-Fragen:
@@ -180,7 +178,7 @@ Relevante Bereiche:
 - E-Commerce
 
 BUSINESS-DENKEN
-Denke zusätzlich wie ein guter:
+Denke zusätzlich wie:
 - Geschäftsführer
 - E-Commerce-Manager
 - Verkaufsleiter
@@ -205,7 +203,6 @@ Vor kritischen Aktionen brauchst du Mattls ausdrückliche Zustimmung:
 - Daten löschen
 `;
 
-
 /* =========================================================
    REALTIME TOOLS
    ========================================================= */
@@ -213,85 +210,61 @@ Vor kritischen Aktionen brauchst du Mattls ausdrückliche Zustimmung:
 const realtimeTools = [
   {
     type: "function",
-
-    name:
-      "get_shopify_summary",
-
+    name: "get_shopify_summary",
     description:
       "Liest echte aktuelle Shopify-Bestellungen, Umsatz und durchschnittlichen Bestellwert für heute oder gestern.",
-
     parameters: {
       type: "object",
-
       properties: {
         period: {
           type: "string",
-
           enum: [
             "today",
             "yesterday"
           ]
         }
       },
-
       required: [
         "period"
       ],
-
-      additionalProperties:
-        false
+      additionalProperties: false
     }
   },
 
   {
     type: "function",
-
-    name:
-      "get_weather",
-
+    name: "get_weather",
     description:
       "Liest echtes Wetter für einen Ort für heute oder morgen.",
-
     parameters: {
       type: "object",
-
       properties: {
         location: {
           type: "string"
         },
-
         day: {
           type: "string",
-
           enum: [
             "today",
             "tomorrow"
           ]
         }
       },
-
       required: [
         "location",
         "day"
       ],
-
-      additionalProperties:
-        false
+      additionalProperties: false
     }
   },
 
   {
     type: "function",
-
-    name:
-      "get_important_emails",
-
+    name: "get_important_emails",
     description:
       "Liest aktuelle wichtige E-Mails.",
-
     parameters: {
       type: "object",
-
       properties: {
         limit: {
           type: "integer",
@@ -299,34 +272,25 @@ const realtimeTools = [
           maximum: 10
         }
       },
-
       required: [
         "limit"
       ],
-
-      additionalProperties:
-        false
+      additionalProperties: false
     }
   },
 
   {
     type: "function",
-
-    name:
-      "get_calendar_today",
-
+    name: "get_calendar_today",
     description:
       "Liest die heutigen Kalendereinträge.",
-
     parameters: {
       type: "object",
       properties: {},
-      additionalProperties:
-        false
+      additionalProperties: false
     }
   }
 ];
-
 
 /* =========================================================
    OPENAI REALTIME SESSION
@@ -336,11 +300,8 @@ app.post(
   "/session",
 
   express.text({
-    type:
-      "application/sdp",
-
-    limit:
-      "1mb"
+    type: "application/sdp",
+    limit: "1mb"
   }),
 
   async (req, res) => {
@@ -357,8 +318,7 @@ app.post(
 
       if (
         !req.body ||
-        typeof req.body !==
-          "string"
+        typeof req.body !== "string"
       ) {
         return res
           .status(400)
@@ -368,11 +328,8 @@ app.post(
       }
 
       const session = {
-        type:
-          "realtime",
-
-        model:
-          "gpt-realtime",
+        type: "realtime",
+        model: "gpt-realtime",
 
         output_modalities: [
           "audio"
@@ -392,15 +349,8 @@ app.post(
 
         audio: {
           input: {
-
-            /*
-             * Für Mikrofone, die nicht direkt
-             * am Mund sitzen und bei denen
-             * Raum-/TV-Geräusche auftreten.
-             */
             noise_reduction: {
-              type:
-                "far_field"
+              type: "far_field"
             },
 
             transcription: {
@@ -414,11 +364,6 @@ app.post(
                 "Deutsch. Benutzer heißt Mattl. Begriffe: Druckelite24, Shopify, Umsatz, Bestellungen, DTF, Textildruck, E-Commerce, Ludwigshafen."
             },
 
-            /*
-             * Höhere Schwelle:
-             * weniger empfindlich auf
-             * Fernseher und leise Geräusche.
-             */
             turn_detection: {
               type:
                 "server_vad",
@@ -464,7 +409,6 @@ app.post(
               session
             )
           ],
-
           {
             type:
               "application/json"
@@ -475,10 +419,8 @@ app.post(
       const response =
         await fetch(
           "https://api.openai.com/v1/realtime/calls?model=gpt-realtime",
-
           {
-            method:
-              "POST",
+            method: "POST",
 
             headers: {
               Authorization:
@@ -533,7 +475,6 @@ app.post(
   }
 );
 
-
 /* =========================================================
    SHOPIFY AUTH
    ========================================================= */
@@ -543,7 +484,6 @@ let shopifyTokenCache = {
   expiresAt: 0
 };
 
-
 async function getShopifyAccessToken() {
   if (
     shopifyTokenCache.token &&
@@ -551,9 +491,7 @@ async function getShopifyAccessToken() {
       shopifyTokenCache.expiresAt -
       5 * 60 * 1000
   ) {
-    return (
-      shopifyTokenCache.token
-    );
+    return shopifyTokenCache.token;
   }
 
   const domain =
@@ -593,7 +531,6 @@ async function getShopifyAccessToken() {
   const response =
     await fetch(
       `https://${domain}/admin/oauth/access_token`,
-
       {
         method:
           "POST",
@@ -616,7 +553,6 @@ async function getShopifyAccessToken() {
   try {
     data =
       JSON.parse(raw);
-
   } catch {
     console.error(
       "Shopify token raw response:",
@@ -661,11 +597,8 @@ async function getShopifyAccessToken() {
     "Shopify access token refreshed."
   );
 
-  return (
-    data.access_token
-  );
+  return data.access_token;
 }
-
 
 /* =========================================================
    SHOPIFY DATA
@@ -724,7 +657,6 @@ async function getShopifySummary(
   const response =
     await fetch(
       `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-
       {
         method:
           "POST",
@@ -792,7 +724,6 @@ async function getShopifySummary(
             ?.amount ||
           0
         ),
-
       0
     );
 
@@ -834,7 +765,6 @@ async function getShopifySummary(
       "Shopify"
   };
 }
-
 
 /* =========================================================
    SHOPIFY ENDPOINT
@@ -879,7 +809,6 @@ app.post(
     }
   }
 );
-
 
 /* =========================================================
    WEATHER
@@ -1057,8 +986,7 @@ app.post(
       }
 
       const index =
-        day ===
-          "tomorrow"
+        day === "tomorrow"
           ? 1
           : 0;
 
@@ -1128,7 +1056,6 @@ app.post(
   }
 );
 
-
 /* =========================================================
    GMAIL PLACEHOLDER
    ========================================================= */
@@ -1148,7 +1075,6 @@ app.post(
       });
   }
 );
-
 
 /* =========================================================
    CALENDAR PLACEHOLDER
@@ -1170,7 +1096,6 @@ app.post(
   }
 );
 
-
 /* =========================================================
    HEALTH
    ========================================================= */
@@ -1180,8 +1105,7 @@ app.get(
 
   (req, res) => {
     return res.json({
-      ok:
-        true,
+      ok: true,
 
       version:
         "JARVIS V4",
@@ -1214,7 +1138,6 @@ app.get(
   }
 );
 
-
 /* =========================================================
    ROOT
    ========================================================= */
@@ -1231,7 +1154,6 @@ app.get(
     );
   }
 );
-
 
 /* =========================================================
    START
