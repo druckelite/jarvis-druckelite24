@@ -1,7 +1,17 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
-   V8.2 · ZURÜCK ZU ELEVENLABS
-   (Basis: V8.1, überarbeitet am 15.08.2026)
+   V8.3 · ZAHLEN-FIX BEI LIVE-DATEN
+   (Basis: V8.2, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN IN V8.3:
+   19. Shopify liefert Zahlen roh mit PUNKT als Dezimaltrennzeichen
+       (z.B. 1234.56). Die bisherige Euro-Korrektur hat nur nach
+       Komma gesucht - Punkt-Beträge (und Beträge mit ausgeschriebenem
+       Wort "Euro" statt Symbol) sind unkorrigiert durchgerutscht und
+       wurden komisch vorgelesen. Jetzt werden beide Schreibweisen
+       erkannt. Zusätzlich weiß ChatGPT jetzt explizit, dass Live-
+       Daten-Zahlen im Punkt-Format ankommen und wie es sie aussprechen
+       soll (z.B. 1234.56 -> "1234 Euro 56").
 
    ÄNDERUNGEN IN V8.2:
    18. OpenAI TTS (V8.1) wieder rückgängig gemacht - die Stimme klang
@@ -235,13 +245,17 @@ function sanitizeForSpeech(text) {
     // Symbole in Wörter umwandeln
     .replace(/&/g, " und ")
     .replace(/(\d+)\s?%/g, "$1 Prozent")
-    // FIX: Euro-Beträge mit Komma - "49,90 €" wurde vorher nur zu
-    // "49,90 Euro" (das Komma blieb stehen und wurde komisch vorgelesen).
-    // Jetzt wird der Centbetrag als eigene ausgeschriebene Zahl gelesen:
-    // "49,90 €" -> "49 Euro 90".
-    .replace(/(\d+),(\d{2})\s?€/g, "$1 Euro $2")
-    .replace(/€\s?(\d+),(\d{2})/g, "$1 Euro $2")
-    // Ganze Euro-Beträge ohne Komma.
+    // FIX: Centbeträge als eigene Zahl aussprechen - "49,90 €" wurde
+    // vorher nur zu "49,90 Euro" (das Komma blieb stehen). Jetzt:
+    // "49,90 €" -> "49 Euro 90". Wichtig: Shopify liefert Zahlen roh
+    // mit PUNKT statt Komma (z.B. "1234.56"), und ChatGPT gibt das beim
+    // Vorlesen der Live-Daten manchmal unverändert so wieder - das
+    // Komma-Muster allein hat solche Fälle bisher nicht erfasst. Jetzt
+    // werden Punkt UND Komma als Dezimaltrennzeichen erkannt, egal ob
+    // mit €-Symbol oder ausgeschriebenem Wort "Euro".
+    .replace(/(\d+)[.,](\d{2})\s?(?:€|Euro)\b/gi, "$1 Euro $2")
+    .replace(/€\s?(\d+)[.,](\d{2})/g, "$1 Euro $2")
+    // Ganze Euro-Beträge ohne Nachkommastellen.
     .replace(/(\d+)\s?€/g, "$1 Euro")
     .replace(/€\s?(\d+)/g, "$1 Euro")
     .replace(/\s+/g, " ")
@@ -459,6 +473,13 @@ Erfinde niemals aktuelle:
 - Wetterwerte
 - Bestellwerte
 - sonstige Live-Daten
+
+Die Zahlen in LIVE-DATEN stehen im rohen Rechen-Format mit Punkt als
+Dezimaltrennzeichen (zum Beispiel 1234.56). Gib solche Beträge beim
+Sprechen NIEMALS mit Punkt wieder. Wandle sie um in die Form
+"1234 Euro 56" (ganze Euro, dann "Euro", dann die Cent als eigene
+Zahl) - also zum Beispiel aus 1234.56 wird "1234 Euro 56", nicht
+"1234,56 Euro" und nicht "1234 Punkt 56".
 
 BUSINESS:
 Bei passenden Themen darfst du zusätzlich wie ein
