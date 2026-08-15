@@ -8,7 +8,7 @@
   />
   <meta
     name="theme-color"
-    content="#0a0a0a"
+    content="#060608"
   />
   <meta
     name="description"
@@ -17,152 +17,294 @@
   <title>Druckelite24 · JARVIS</title>
   <link
     rel="stylesheet"
-    href="styles.css"
+    href="styles.css?v=2"
   />
 </head>
 <body>
+
+  <!-- ===================================================
+       BOOT-OVERLAY
+       Läuft einmal beim Laden der Seite durch.
+       =================================================== -->
+  <div class="boot-overlay" id="bootOverlay">
+    <img
+      class="boot-logo"
+      src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252"
+      alt="Druckelite24"
+    />
+    <div class="boot-lines" id="bootLines"></div>
+    <div class="boot-bar">
+      <div class="boot-bar-fill" id="bootBarFill"></div>
+    </div>
+  </div>
+
+
   <main class="app-shell">
+
+    <!-- =================================================
+         TOPBAR mit Logo
+         ================================================= -->
     <header class="topbar">
       <div class="brand-block">
-        <div class="brand-kicker">
-          DRUCKELITE24
-        </div>
-        <div class="brand-title">
-          Business Voice Assistant
-        </div>
+        <img
+          class="brand-logo"
+          src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252"
+          alt="Druckelite24"
+        />
+        <div class="brand-sub">Business Voice Assistant</div>
       </div>
-      <div
-        class="status-pill"
-        id="status"
-      >
-        Offline
-      </div>
+      <div class="status-pill" id="status">Offline</div>
     </header>
-    <section class="hero">
-      <div class="hero-copy">
-        <div class="eyebrow">
-          DEIN PERSÖNLICHER ASSISTENT
-        </div>
-        <h1>
-          JARVIS
-        </h1>
-        <p class="hero-subline">
-          Sprich frei mit JARVIS über Shopify, Wetter,
-          Business, Ideen und deinen Alltag.
-        </p>
+
+
+    <!-- =================================================
+         HUD-BÜHNE: Reaktor + Telemetrie
+         ================================================= -->
+    <section class="stage">
+
+      <!-- Telemetrie links oben -->
+      <div class="hud-readout hud-top-left">
+        <div class="hud-label">SYS.TIME</div>
+        <div class="hud-value" id="hudClock">--:--:--</div>
+        <div class="hud-line" id="hudDate">--.--.----</div>
       </div>
-      <div class="voice-panel">
+
+      <!-- Telemetrie rechts oben -->
+      <div class="hud-readout hud-top-right">
+        <div class="hud-label">CORE</div>
+        <div class="hud-value" id="hudState">STANDBY</div>
+        <div class="hud-line">LUDWIGSHAFEN · DE</div>
+      </div>
+
+      <!-- Audio-Balken links unten -->
+      <div class="hud-readout hud-bottom-left">
+        <div class="hud-label">AUDIO</div>
+        <div class="eq" aria-hidden="true">
+          <span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span>
+        </div>
+      </div>
+
+      <!-- Verbindung rechts unten -->
+      <div class="hud-readout hud-bottom-right">
+        <div class="hud-label">LINK</div>
+        <div class="hud-value hud-small">SHOPIFY · WETTER</div>
+        <div class="hud-line">GMAIL · KALENDER</div>
+      </div>
+
+
+      <div class="hero-copy">
+        <div class="eyebrow">DEIN PERSÖNLICHER ASSISTENT</div>
+        <h1>JARVIS</h1>
+      </div>
+
+
+      <!-- Reaktor -->
+      <div class="voice-panel" id="voicePanel">
         <button
           id="toggle"
           class="voice-button"
           type="button"
           aria-label="JARVIS starten oder stoppen"
         >
+          <span class="reactor-arc arc-one"></span>
+          <span class="reactor-arc arc-two"></span>
+          <span class="reactor-arc arc-three"></span>
+          <span class="reactor-ticks"></span>
+          <span class="voice-ring ring-one"></span>
+          <span class="voice-ring ring-two"></span>
           <span class="voice-core"></span>
-          <span
-            class="voice-ring ring-one"
-          ></span>
-          <span
-            class="voice-ring ring-two"
-          ></span>
         </button>
         <div class="voice-text">
-          <div class="voice-state">
-            JARVIS
-          </div>
-          <div
-            class="voice-log"
-            id="log"
-          >
-            Bereit.
-          </div>
+          <div class="voice-log" id="log">Bereit.</div>
         </div>
       </div>
+
+      <p class="hero-subline">
+        Sprich frei mit JARVIS über Shopify, Wetter,
+        Business, Ideen und deinen Alltag.
+      </p>
     </section>
+
+
+    <!-- =================================================
+         MODULE
+         ================================================= -->
     <section class="quick-grid">
       <article class="quick-card">
-        <div class="quick-label">
-          SHOP
-        </div>
-        <div class="quick-value">
-          Shopify
-        </div>
-        <div class="quick-note">
-          Bestellungen, Umsatz und Kennzahlen
-        </div>
+        <div class="quick-label">SHOP</div>
+        <div class="quick-value">Shopify</div>
+        <div class="quick-note">Bestellungen, Umsatz und Kennzahlen</div>
       </article>
       <article class="quick-card">
-        <div class="quick-label">
-          KOMMUNIKATION
-        </div>
-        <div class="quick-value">
-          Gmail
-        </div>
-        <div class="quick-note">
-          Wichtige Nachrichten und Follow-ups
-        </div>
+        <div class="quick-label">KOMMUNIKATION</div>
+        <div class="quick-value">Gmail</div>
+        <div class="quick-note">Wichtige Nachrichten und Follow-ups</div>
       </article>
       <article class="quick-card">
-        <div class="quick-label">
-          PLANUNG
-        </div>
-        <div class="quick-value">
-          Kalender
-        </div>
-        <div class="quick-note">
-          Termine, Fristen und Tagesplanung
-        </div>
+        <div class="quick-label">PLANUNG</div>
+        <div class="quick-value">Kalender</div>
+        <div class="quick-note">Termine, Fristen und Tagesplanung</div>
       </article>
       <article class="quick-card">
-        <div class="quick-label">
-          LIVE
-        </div>
-        <div class="quick-value">
-          Wetter
-        </div>
-        <div class="quick-note">
-          Aktuelle Bedingungen und Prognosen
-        </div>
+        <div class="quick-label">LIVE</div>
+        <div class="quick-value">Wetter</div>
+        <div class="quick-note">Aktuelle Bedingungen und Prognosen</div>
       </article>
     </section>
+
+
     <section class="command-panel">
-      <div class="command-title">
-        Freies Gespräch
-      </div>
+      <div class="command-title">Freies Gespräch</div>
       <div class="command-list">
-        <div class="command-chip">
-          „Wie viele Shopify-Bestellungen habe ich heute?"
-        </div>
-        <div class="command-chip">
-          „Wie hoch ist mein Umsatz heute?"
-        </div>
-        <div class="command-chip">
-          „Wie wird morgen das Wetter in Ludwigshafen?"
-        </div>
-        <div class="command-chip">
-          „Was hältst du von meiner Idee?"
-        </div>
+        <div class="command-chip">„Wie viele Shopify-Bestellungen habe ich heute?“</div>
+        <div class="command-chip">„Wie hoch ist mein Umsatz heute?“</div>
+        <div class="command-chip">„Wie wird morgen das Wetter in Ludwigshafen?“</div>
+        <div class="command-chip">„Was hältst du von meiner Idee?“</div>
       </div>
-      <div class="command-help">
-        Einmal starten · danach frei sprechen
-      </div>
+      <div class="command-help">Einmal starten · danach frei sprechen</div>
     </section>
+
+
     <footer class="footer">
-      Druckelite24 · JARVIS V4
+      Druckelite24 · JARVIS V5
     </footer>
   </main>
+
   <audio
     id="remoteAudio"
     autoplay
     playsinline
   ></audio>
-  <!--
-    v=12
-    - JARVIS deutlich lauter
-    - Intro beim Sprechen leiser
-    - Realtime Speech-to-Speech
-    - Anti-Selbstunterbrechung
-  -->
-  <script src="app.js?v=12"></script>
+
+
+  <!-- ===================================================
+       HUD-SCRIPT
+       Nur Optik: Boot-Sequenz, Uhr, Parallax.
+       Die Voice-Logik bleibt komplett in app.js.
+       =================================================== -->
+  <script>
+    (function () {
+      /* Boot-Sequenz ------------------------------------ */
+      var overlay = document.getElementById("bootOverlay");
+      var linesEl = document.getElementById("bootLines");
+      var barFill = document.getElementById("bootBarFill");
+
+      var bootLines = [
+        "DRUCKELITE24 OS  ·  KERN WIRD GELADEN",
+        "SPRACHMODUL ......... OK",
+        "SHOPIFY-BRÜCKE ...... OK",
+        "WETTERDIENST ........ OK",
+        "AUDIO-SYSTEM ........ OK",
+        "JARVIS V5 BEREIT."
+      ];
+
+      var lineIndex = 0;
+
+      function nextLine() {
+        if (!linesEl) return;
+
+        if (lineIndex < bootLines.length) {
+          var div = document.createElement("div");
+          div.textContent = "> " + bootLines[lineIndex];
+          linesEl.appendChild(div);
+
+          lineIndex++;
+
+          if (barFill) {
+            barFill.style.width =
+              Math.round((lineIndex / bootLines.length) * 100) + "%";
+          }
+
+          setTimeout(nextLine, 260);
+        } else {
+          setTimeout(function () {
+            if (overlay) {
+              overlay.classList.add("boot-done");
+
+              setTimeout(function () {
+                overlay.remove();
+              }, 700);
+            }
+          }, 450);
+        }
+      }
+
+      setTimeout(nextLine, 350);
+
+
+      /* Live-Uhr ---------------------------------------- */
+      var clockEl = document.getElementById("hudClock");
+      var dateEl = document.getElementById("hudDate");
+
+      function tick() {
+        var now = new Date();
+
+        if (clockEl) {
+          clockEl.textContent = now.toLocaleTimeString("de-DE", {
+            timeZone: "Europe/Berlin"
+          });
+        }
+
+        if (dateEl) {
+          dateEl.textContent = now.toLocaleDateString("de-DE", {
+            timeZone: "Europe/Berlin",
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric"
+          });
+        }
+      }
+
+      tick();
+      setInterval(tick, 1000);
+
+
+      /* CORE-Anzeige folgt dem JARVIS-Zustand ----------- */
+      var stateEl = document.getElementById("hudState");
+
+      var stateNames = {
+        offline: "STANDBY",
+        connecting: "BOOT",
+        listening: "LISTENING",
+        hearing: "INPUT",
+        thinking: "PROCESSING",
+        speaking: "OUTPUT"
+      };
+
+      var observer = new MutationObserver(function () {
+        var s = document.body.dataset.jarvisState || "offline";
+
+        if (stateEl) {
+          stateEl.textContent = stateNames[s] || "STANDBY";
+        }
+      });
+
+      observer.observe(document.body, {
+        attributes: true,
+        attributeFilter: ["data-jarvis-state"]
+      });
+
+
+      /* Parallax: Reaktor folgt leicht der Maus --------- */
+      var panel = document.getElementById("voicePanel");
+
+      var reduceMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)"
+      ).matches;
+
+      if (panel && !reduceMotion) {
+        document.addEventListener("mousemove", function (e) {
+          var x = (e.clientX / window.innerWidth - 0.5) * 14;
+          var y = (e.clientY / window.innerHeight - 0.5) * 10;
+
+          panel.style.transform =
+            "translate(" + x + "px, " + y + "px)";
+        });
+      }
+    })();
+  </script>
+
+  <script src="app.js?v=13"></script>
 </body>
 </html>
