@@ -6,25 +6,18 @@
     name="viewport"
     content="width=device-width, initial-scale=1, viewport-fit=cover"
   />
-  <meta
-    name="theme-color"
-    content="#060608"
-  />
+  <meta name="theme-color" content="#060608" />
   <meta
     name="description"
     content="Druckelite24 JARVIS Business Voice Assistant"
   />
   <title>Druckelite24 · JARVIS</title>
-  <link
-    rel="stylesheet"
-    href="styles.css?v=2"
-  />
+  <link rel="stylesheet" href="styles.css?v=3" />
 </head>
 <body>
 
   <!-- ===================================================
        BOOT-OVERLAY
-       Läuft einmal beim Laden der Seite durch.
        =================================================== -->
   <div class="boot-overlay" id="bootOverlay">
     <img
@@ -39,10 +32,10 @@
   </div>
 
 
-  <main class="app-shell">
+  <div class="hud">
 
     <!-- =================================================
-         TOPBAR mit Logo
+         TOPBAR
          ================================================= -->
     <header class="topbar">
       <div class="brand-block">
@@ -51,147 +44,211 @@
           src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252"
           alt="Druckelite24"
         />
-        <div class="brand-sub">Business Voice Assistant</div>
       </div>
-      <div class="status-pill" id="status">Offline</div>
+      <div class="top-center">
+        <div class="top-title">JARVIS OS</div>
+        <div class="top-sub">V5 · BUSINESS VOICE ASSISTANT</div>
+      </div>
+      <div class="top-right">
+        <div class="status-pill" id="status">Offline</div>
+        <div class="top-clock" id="hudClock">--:--:--</div>
+      </div>
     </header>
 
 
     <!-- =================================================
-         HUD-BÜHNE: Reaktor + Telemetrie
+         3-SPALTEN-COCKPIT
          ================================================= -->
-    <section class="stage">
+    <main class="cockpit">
 
-      <!-- Telemetrie links oben -->
-      <div class="hud-readout hud-top-left">
-        <div class="hud-label">SYS.TIME</div>
-        <div class="hud-value" id="hudClock">--:--:--</div>
-        <div class="hud-line" id="hudDate">--.--.----</div>
-      </div>
+      <!-- ============ LINKE PANEL-SPALTE ============ -->
+      <aside class="column column-left">
 
-      <!-- Telemetrie rechts oben -->
-      <div class="hud-readout hud-top-right">
-        <div class="hud-label">CORE</div>
-        <div class="hud-value" id="hudState">STANDBY</div>
-        <div class="hud-line">LUDWIGSHAFEN · DE</div>
-      </div>
+        <!-- SHOP LIVE (echte Shopify-Daten) -->
+        <section class="panel">
+          <div class="panel-head">
+            <span>SHOP · LIVE</span>
+            <span class="panel-dot" id="shopDot"></span>
+          </div>
+          <div class="stat-row">
+            <div class="stat">
+              <div class="stat-value" id="statOrders">—</div>
+              <div class="stat-label">BESTELLUNGEN HEUTE</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value" id="statRevenue">—</div>
+              <div class="stat-label">UMSATZ HEUTE</div>
+            </div>
+          </div>
+          <div class="stat-row">
+            <div class="stat">
+              <div class="stat-value stat-small" id="statAov">—</div>
+              <div class="stat-label">Ø BESTELLWERT</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value stat-small" id="statYesterday">—</div>
+              <div class="stat-label">GESTERN</div>
+            </div>
+          </div>
+          <div class="panel-foot" id="shopUpdated">WARTE AUF DATEN …</div>
+        </section>
 
-      <!-- Audio-Balken links unten -->
-      <div class="hud-readout hud-bottom-left">
-        <div class="hud-label">AUDIO</div>
-        <div class="eq" aria-hidden="true">
-          <span></span><span></span><span></span><span></span>
-          <span></span><span></span><span></span><span></span>
+        <!-- AUDIO-WELLE -->
+        <section class="panel">
+          <div class="panel-head"><span>AUDIO · SIGNAL</span></div>
+          <canvas class="wave" id="waveCanvas" width="260" height="56"></canvas>
+          <div class="eq" aria-hidden="true">
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+          </div>
+        </section>
+
+        <!-- PRODUKTION (Textil-Modul) -->
+        <section class="panel">
+          <div class="panel-head"><span>PRODUKTION · TEXTIL</span></div>
+          <div class="tex-module">
+            <svg class="tshirt" viewBox="0 0 100 100" aria-hidden="true">
+              <path d="M32 12 L20 20 L6 34 L16 46 L24 40 L24 90 L76 90 L76 40 L84 46 L94 34 L80 20 L68 12 C64 20 56 24 50 24 C44 24 36 20 32 12 Z"
+                fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" />
+              <rect class="print-zone" x="38" y="38" width="24" height="26" fill="none"
+                stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" />
+            </svg>
+            <div class="tex-lines">
+              <div class="tex-line"><span>DTF</span><i style="--w:86%"></i></div>
+              <div class="tex-line"><span>FLEX</span><i style="--w:64%"></i></div>
+              <div class="tex-line"><span>STICK</span><i style="--w:48%"></i></div>
+              <div class="tex-line"><span>SIEB</span><i style="--w:72%"></i></div>
+            </div>
+          </div>
+        </section>
+
+      </aside>
+
+
+      <!-- ============ ZENTRUM: REAKTOR ============ -->
+      <section class="stage">
+        <div class="stage-title">
+          <div class="eyebrow">DEIN PERSÖNLICHER ASSISTENT</div>
+          <h1>JARVIS</h1>
         </div>
-      </div>
 
-      <!-- Verbindung rechts unten -->
-      <div class="hud-readout hud-bottom-right">
-        <div class="hud-label">LINK</div>
-        <div class="hud-value hud-small">SHOPIFY · WETTER</div>
-        <div class="hud-line">GMAIL · KALENDER</div>
-      </div>
-
-
-      <div class="hero-copy">
-        <div class="eyebrow">DEIN PERSÖNLICHER ASSISTENT</div>
-        <h1>JARVIS</h1>
-      </div>
-
-
-      <!-- Reaktor -->
-      <div class="voice-panel" id="voicePanel">
-        <button
-          id="toggle"
-          class="voice-button"
-          type="button"
-          aria-label="JARVIS starten oder stoppen"
-        >
-          <span class="reactor-arc arc-one"></span>
-          <span class="reactor-arc arc-two"></span>
-          <span class="reactor-arc arc-three"></span>
-          <span class="reactor-ticks"></span>
-          <span class="voice-ring ring-one"></span>
-          <span class="voice-ring ring-two"></span>
-          <span class="voice-core"></span>
-        </button>
-        <div class="voice-text">
+        <div class="voice-panel" id="voicePanel">
+          <button
+            id="toggle"
+            class="voice-button"
+            type="button"
+            aria-label="JARVIS starten oder stoppen"
+          >
+            <span class="reactor-arc arc-one"></span>
+            <span class="reactor-arc arc-two"></span>
+            <span class="reactor-arc arc-three"></span>
+            <span class="reactor-ticks ticks-outer"></span>
+            <span class="reactor-ticks ticks-inner"></span>
+            <span class="voice-ring ring-one"></span>
+            <span class="voice-ring ring-two"></span>
+            <span class="voice-core">
+              <svg class="core-triangle" viewBox="0 0 100 100" aria-hidden="true">
+                <polygon points="50,16 88,80 12,80" fill="none"
+                  stroke="currentColor" stroke-width="7" stroke-linejoin="round" />
+                <polygon points="50,34 72,72 28,72" fill="currentColor" opacity="0.35" />
+              </svg>
+            </span>
+          </button>
           <div class="voice-log" id="log">Bereit.</div>
         </div>
-      </div>
 
-      <p class="hero-subline">
-        Sprich frei mit JARVIS über Shopify, Wetter,
-        Business, Ideen und deinen Alltag.
-      </p>
-    </section>
+        <div class="stage-foot">
+          <div class="core-state">CORE: <span id="hudState">STANDBY</span></div>
+          <div class="core-loc">LUDWIGSHAFEN AM RHEIN · DE</div>
+        </div>
+      </section>
+
+
+      <!-- ============ RECHTE PANEL-SPALTE ============ -->
+      <aside class="column column-right">
+
+        <!-- WETTER LIVE (echte Daten) -->
+        <section class="panel">
+          <div class="panel-head">
+            <span>WETTER · LUDWIGSHAFEN</span>
+            <span class="panel-dot" id="wxDot"></span>
+          </div>
+          <div class="wx-main">
+            <div class="wx-temp" id="wxTemp">—°</div>
+            <div class="wx-desc" id="wxDesc">…</div>
+          </div>
+          <div class="wx-grid">
+            <div class="wx-cell">
+              <span id="wxMax">—°</span><label>MAX</label>
+            </div>
+            <div class="wx-cell">
+              <span id="wxMin">—°</span><label>MIN</label>
+            </div>
+            <div class="wx-cell">
+              <span id="wxRain">—%</span><label>REGEN</label>
+            </div>
+            <div class="wx-cell">
+              <span id="wxWind">—</span><label>WIND KM/H</label>
+            </div>
+          </div>
+        </section>
+
+        <!-- SYSTEM-GAUGES -->
+        <section class="panel">
+          <div class="panel-head"><span>SYSTEM</span></div>
+          <div class="gauge-row">
+            <div class="gauge" style="--val: 78"><span>VOICE</span></div>
+            <div class="gauge" style="--val: 92"><span>LINK</span></div>
+            <div class="gauge" style="--val: 64"><span>CORE</span></div>
+          </div>
+          <div class="sys-lines">
+            <div class="sys-line"><span>SHOPIFY-BRÜCKE</span><b id="sysShop">…</b></div>
+            <div class="sys-line"><span>WETTERDIENST</span><b id="sysWx">…</b></div>
+            <div class="sys-line"><span>GMAIL</span><b class="pending">BALD</b></div>
+            <div class="sys-line"><span>KALENDER</span><b class="pending">BALD</b></div>
+          </div>
+        </section>
+
+        <!-- DATENSTROM -->
+        <section class="panel panel-grow">
+          <div class="panel-head"><span>DATENSTROM</span></div>
+          <div class="stream" id="dataStream" aria-hidden="true"></div>
+        </section>
+
+      </aside>
+    </main>
 
 
     <!-- =================================================
-         MODULE
+         COMMAND-LEISTE
          ================================================= -->
-    <section class="quick-grid">
-      <article class="quick-card">
-        <div class="quick-label">SHOP</div>
-        <div class="quick-value">Shopify</div>
-        <div class="quick-note">Bestellungen, Umsatz und Kennzahlen</div>
-      </article>
-      <article class="quick-card">
-        <div class="quick-label">KOMMUNIKATION</div>
-        <div class="quick-value">Gmail</div>
-        <div class="quick-note">Wichtige Nachrichten und Follow-ups</div>
-      </article>
-      <article class="quick-card">
-        <div class="quick-label">PLANUNG</div>
-        <div class="quick-value">Kalender</div>
-        <div class="quick-note">Termine, Fristen und Tagesplanung</div>
-      </article>
-      <article class="quick-card">
-        <div class="quick-label">LIVE</div>
-        <div class="quick-value">Wetter</div>
-        <div class="quick-note">Aktuelle Bedingungen und Prognosen</div>
-      </article>
-    </section>
-
-
-    <section class="command-panel">
-      <div class="command-title">Freies Gespräch</div>
-      <div class="command-list">
-        <div class="command-chip">„Wie viele Shopify-Bestellungen habe ich heute?“</div>
-        <div class="command-chip">„Wie hoch ist mein Umsatz heute?“</div>
-        <div class="command-chip">„Wie wird morgen das Wetter in Ludwigshafen?“</div>
-        <div class="command-chip">„Was hältst du von meiner Idee?“</div>
-      </div>
-      <div class="command-help">Einmal starten · danach frei sprechen</div>
-    </section>
-
-
-    <footer class="footer">
-      Druckelite24 · JARVIS V5
+    <footer class="command-bar">
+      <div class="command-chip">„Wie viele Bestellungen habe ich heute?“</div>
+      <div class="command-chip">„Wie hoch ist mein Umsatz?“</div>
+      <div class="command-chip">„Wie wird das Wetter morgen?“</div>
+      <div class="command-chip">„Was hältst du von meiner Idee?“</div>
     </footer>
-  </main>
 
-  <audio
-    id="remoteAudio"
-    autoplay
-    playsinline
-  ></audio>
+  </div>
+
+  <audio id="remoteAudio" autoplay playsinline></audio>
 
 
   <!-- ===================================================
-       HUD-SCRIPT
-       Nur Optik: Boot-Sequenz, Uhr, Parallax.
-       Die Voice-Logik bleibt komplett in app.js.
+       HUD-SCRIPT: Boot, Uhr, Live-Daten, Welle, Datenstrom
+       Voice-Logik bleibt komplett in app.js.
        =================================================== -->
   <script>
     (function () {
-      /* Boot-Sequenz ------------------------------------ */
+
+      /* ---------- Boot-Sequenz ---------- */
       var overlay = document.getElementById("bootOverlay");
       var linesEl = document.getElementById("bootLines");
       var barFill = document.getElementById("bootBarFill");
 
       var bootLines = [
-        "DRUCKELITE24 OS  ·  KERN WIRD GELADEN",
+        "DRUCKELITE24 OS · KERN WIRD GELADEN",
         "SPRACHMODUL ......... OK",
         "SHOPIFY-BRÜCKE ...... OK",
         "WETTERDIENST ........ OK",
@@ -199,112 +256,233 @@
         "JARVIS V5 BEREIT."
       ];
 
-      var lineIndex = 0;
-
+      var li = 0;
       function nextLine() {
         if (!linesEl) return;
-
-        if (lineIndex < bootLines.length) {
-          var div = document.createElement("div");
-          div.textContent = "> " + bootLines[lineIndex];
-          linesEl.appendChild(div);
-
-          lineIndex++;
-
-          if (barFill) {
-            barFill.style.width =
-              Math.round((lineIndex / bootLines.length) * 100) + "%";
-          }
-
-          setTimeout(nextLine, 260);
+        if (li < bootLines.length) {
+          var d = document.createElement("div");
+          d.textContent = "> " + bootLines[li];
+          linesEl.appendChild(d);
+          li++;
+          if (barFill) barFill.style.width = Math.round((li / bootLines.length) * 100) + "%";
+          setTimeout(nextLine, 240);
         } else {
           setTimeout(function () {
             if (overlay) {
               overlay.classList.add("boot-done");
-
-              setTimeout(function () {
-                overlay.remove();
-              }, 700);
+              setTimeout(function () { overlay.remove(); }, 700);
             }
-          }, 450);
+          }, 420);
         }
       }
-
       setTimeout(nextLine, 350);
 
 
-      /* Live-Uhr ---------------------------------------- */
+      /* ---------- Uhr ---------- */
       var clockEl = document.getElementById("hudClock");
-      var dateEl = document.getElementById("hudDate");
-
       function tick() {
-        var now = new Date();
-
         if (clockEl) {
-          clockEl.textContent = now.toLocaleTimeString("de-DE", {
+          clockEl.textContent = new Date().toLocaleTimeString("de-DE", {
             timeZone: "Europe/Berlin"
           });
         }
-
-        if (dateEl) {
-          dateEl.textContent = now.toLocaleDateString("de-DE", {
-            timeZone: "Europe/Berlin",
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric"
-          });
-        }
       }
-
       tick();
       setInterval(tick, 1000);
 
 
-      /* CORE-Anzeige folgt dem JARVIS-Zustand ----------- */
+      /* ---------- CORE-Status folgt JARVIS ---------- */
       var stateEl = document.getElementById("hudState");
-
       var stateNames = {
-        offline: "STANDBY",
-        connecting: "BOOT",
-        listening: "LISTENING",
-        hearing: "INPUT",
-        thinking: "PROCESSING",
-        speaking: "OUTPUT"
+        offline: "STANDBY", connecting: "BOOT", listening: "LISTENING",
+        hearing: "INPUT", thinking: "PROCESSING", speaking: "OUTPUT"
+      };
+      new MutationObserver(function () {
+        var s = document.body.dataset.jarvisState || "offline";
+        if (stateEl) stateEl.textContent = stateNames[s] || "STANDBY";
+      }).observe(document.body, { attributes: true, attributeFilter: ["data-jarvis-state"] });
+
+
+      /* ---------- ECHTE SHOPIFY-DATEN ---------- */
+      var euro = function (n) {
+        return Number(n).toLocaleString("de-DE", {
+          style: "currency", currency: "EUR", maximumFractionDigits: 0
+        });
       };
 
-      var observer = new MutationObserver(function () {
-        var s = document.body.dataset.jarvisState || "offline";
+      function setText(id, text) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = text;
+      }
 
-        if (stateEl) {
-          stateEl.textContent = stateNames[s] || "STANDBY";
+      function setDot(id, ok) {
+        var el = document.getElementById(id);
+        if (el) el.classList.toggle("ok", !!ok);
+      }
+
+      async function loadShop() {
+        try {
+          var r = await fetch("/api/shopify-summary", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ period: "today" })
+          });
+          var d = await r.json();
+          if (!r.ok || d.error) throw new Error(d.error || "Fehler");
+
+          setText("statOrders", d.orders);
+          setText("statRevenue", euro(d.revenue));
+          setText("statAov", euro(d.average_order_value));
+          setText("shopUpdated",
+            "AKTUALISIERT " + new Date().toLocaleTimeString("de-DE", {
+              timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit"
+            }) + " UHR");
+          setText("sysShop", "ONLINE");
+          setDot("shopDot", true);
+
+          // Gestern nachladen
+          var r2 = await fetch("/api/shopify-summary", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ period: "yesterday" })
+          });
+          var d2 = await r2.json();
+          if (r2.ok && !d2.error) {
+            setText("statYesterday", d2.orders + " · " + euro(d2.revenue));
+          }
+        } catch (e) {
+          setText("shopUpdated", "SHOP-DATEN NICHT ERREICHBAR");
+          setText("sysShop", "OFFLINE");
+          setDot("shopDot", false);
         }
-      });
+      }
 
-      observer.observe(document.body, {
-        attributes: true,
-        attributeFilter: ["data-jarvis-state"]
-      });
+      loadShop();
+      setInterval(loadShop, 5 * 60 * 1000); // alle 5 Minuten
 
 
-      /* Parallax: Reaktor folgt leicht der Maus --------- */
+      /* ---------- ECHTES WETTER ---------- */
+      var wxCodes = {
+        0: "KLAR", 1: "MEIST KLAR", 2: "TEILS BEWÖLKT", 3: "BEDECKT",
+        45: "NEBEL", 48: "NEBEL", 51: "NIESELN", 53: "NIESELN", 55: "NIESELN",
+        61: "REGEN", 63: "REGEN", 65: "STARKREGEN", 66: "EISREGEN", 67: "EISREGEN",
+        71: "SCHNEE", 73: "SCHNEE", 75: "SCHNEE", 77: "SCHNEE",
+        80: "SCHAUER", 81: "SCHAUER", 82: "SCHAUER",
+        85: "SCHNEE", 86: "SCHNEE", 95: "GEWITTER", 96: "GEWITTER", 99: "GEWITTER"
+      };
+
+      async function loadWeather() {
+        try {
+          var r = await fetch("/api/weather", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ location: "Ludwigshafen", day: "today" })
+          });
+          var d = await r.json();
+          if (!r.ok || d.error) throw new Error(d.error || "Fehler");
+
+          if (d.current && typeof d.current.temperature_2m === "number") {
+            setText("wxTemp", Math.round(d.current.temperature_2m) + "°");
+            setText("wxWind", Math.round(d.current.wind_speed_10m || 0));
+          }
+          var f = d.forecast || {};
+          setText("wxDesc", wxCodes[f.weather_code] || "—");
+          if (typeof f.max_temperature === "number")
+            setText("wxMax", Math.round(f.max_temperature) + "°");
+          if (typeof f.min_temperature === "number")
+            setText("wxMin", Math.round(f.min_temperature) + "°");
+          if (typeof f.precipitation_probability === "number")
+            setText("wxRain", f.precipitation_probability + "%");
+
+          setText("sysWx", "ONLINE");
+          setDot("wxDot", true);
+        } catch (e) {
+          setText("wxDesc", "NICHT ERREICHBAR");
+          setText("sysWx", "OFFLINE");
+          setDot("wxDot", false);
+        }
+      }
+
+      loadWeather();
+      setInterval(loadWeather, 15 * 60 * 1000); // alle 15 Minuten
+
+
+      /* ---------- WELLENFORM (Canvas) ---------- */
+      var canvas = document.getElementById("waveCanvas");
+      var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      if (canvas && canvas.getContext && !reduceMotion) {
+        var ctx = canvas.getContext("2d");
+        var t = 0;
+
+        function amplitudeForState() {
+          var s = document.body.dataset.jarvisState || "offline";
+          if (s === "speaking") return 18;
+          if (s === "hearing") return 14;
+          if (s === "thinking") return 8;
+          if (s === "listening") return 5;
+          if (s === "connecting") return 10;
+          return 2.5;
+        }
+
+        function drawWave() {
+          var w = canvas.width, h = canvas.height, mid = h / 2;
+          ctx.clearRect(0, 0, w, h);
+          ctx.beginPath();
+          var amp = amplitudeForState();
+          for (var x = 0; x <= w; x += 2) {
+            var y = mid
+              + Math.sin(x * 0.05 + t) * amp * Math.sin(x * 0.011 + t * 0.7)
+              + Math.sin(x * 0.13 + t * 1.7) * amp * 0.35;
+            if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.strokeStyle = getComputedStyle(document.body)
+            .getPropertyValue("--reactor-color").trim() || "#e70779";
+          ctx.lineWidth = 1.6;
+          ctx.shadowColor = ctx.strokeStyle;
+          ctx.shadowBlur = 6;
+          ctx.stroke();
+          t += 0.09;
+          requestAnimationFrame(drawWave);
+        }
+        drawWave();
+      }
+
+
+      /* ---------- DATENSTROM ---------- */
+      var stream = document.getElementById("dataStream");
+      var streamWords = [
+        "ORDER SYNC", "DTF QUEUE", "PICKLISTE", "SKU CHECK", "CDN OK",
+        "VAD 0.98", "TOKEN OK", "AUDIO 48K", "SSL OK", "PING 23MS",
+        "TEXTIL DB", "LAGER SYNC", "PRINT JOB", "RENDER OK", "SESSION"
+      ];
+
+      if (stream && !reduceMotion) {
+        setInterval(function () {
+          var d = document.createElement("div");
+          var word = streamWords[Math.floor(Math.random() * streamWords.length)];
+          var hex = Math.floor(Math.random() * 0xffff).toString(16).toUpperCase().padStart(4, "0");
+          d.textContent = "0x" + hex + " · " + word;
+          stream.prepend(d);
+          while (stream.children.length > 14) {
+            stream.removeChild(stream.lastChild);
+          }
+        }, 900);
+      }
+
+
+      /* ---------- Parallax ---------- */
       var panel = document.getElementById("voicePanel");
-
-      var reduceMotion = window.matchMedia(
-        "(prefers-reduced-motion: reduce)"
-      ).matches;
-
       if (panel && !reduceMotion) {
         document.addEventListener("mousemove", function (e) {
-          var x = (e.clientX / window.innerWidth - 0.5) * 14;
-          var y = (e.clientY / window.innerHeight - 0.5) * 10;
-
-          panel.style.transform =
-            "translate(" + x + "px, " + y + "px)";
+          var x = (e.clientX / window.innerWidth - 0.5) * 12;
+          var y = (e.clientY / window.innerHeight - 0.5) * 9;
+          panel.style.transform = "translate(" + x + "px, " + y + "px)";
         });
       }
     })();
   </script>
 
-  <script src="app.js?v=13"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>
