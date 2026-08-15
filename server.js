@@ -1,30 +1,55 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
-   V9.0 · OPENAI REALTIME / WEBRTC
+
+   V9.0.1 · OPENAI REALTIME / WEBRTC
+   FIX: SDP HANDSHAKE
+
    ========================================================= */
 
 import express from "express";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const JARVIS_VERSION = "V9.0";
+
+const PORT =
+  process.env.PORT || 3000;
+
+const JARVIS_VERSION =
+  "V9.0.1";
 
 
 /* =========================================================
    PUBLIC FILES
    ========================================================= */
 
-const PUBLIC_FILES = new Set([
-  "index.html",
-  "app.js",
-  "styles.css",
-  "Intro.mp3"
-]);
+const PUBLIC_FILES =
+  new Set([
+    "index.html",
+    "app.js",
+    "styles.css",
+    "Intro.mp3"
+  ]);
 
-app.get("/:file", (req, res, next) => {
-  if (!PUBLIC_FILES.has(req.params.file)) return next();
-  return res.sendFile(req.params.file, { root: "." });
-});
+
+app.get(
+  "/:file",
+  (req, res, next) => {
+
+    if (
+      !PUBLIC_FILES.has(
+        req.params.file
+      )
+    ) {
+      return next();
+    }
+
+    return res.sendFile(
+      req.params.file,
+      {
+        root: "."
+      }
+    );
+  }
+);
 
 
 /* =========================================================
@@ -34,18 +59,29 @@ app.get("/:file", (req, res, next) => {
 function normalize(text) {
   return String(text || "")
     .toLowerCase()
-    .replace(/[.,!?;:]/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(
+      /[.,!?;:]/g,
+      " "
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
     .trim();
 }
+
 
 function timeoutSignal(ms) {
   try {
     if (
-      typeof AbortSignal !== "undefined" &&
-      typeof AbortSignal.timeout === "function"
+      typeof AbortSignal !==
+        "undefined" &&
+      typeof AbortSignal.timeout ===
+        "function"
     ) {
-      return AbortSignal.timeout(ms);
+      return AbortSignal.timeout(
+        ms
+      );
     }
   } catch {}
 
@@ -54,93 +90,213 @@ function timeoutSignal(ms) {
 
 
 /* =========================================================
-   BERLIN DATE HELPERS
+   BERLIN DATE
    ========================================================= */
 
-function berlinDate(date = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Berlin",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).format(date);
+function berlinDate(
+  date = new Date()
+) {
+  return new Intl.DateTimeFormat(
+    "en-CA",
+    {
+      timeZone:
+        "Europe/Berlin",
+
+      year:
+        "numeric",
+
+      month:
+        "2-digit",
+
+      day:
+        "2-digit"
+    }
+  ).format(date);
 }
 
-function getBerlinHour(date = new Date()) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Europe/Berlin",
-    hour: "numeric",
-    hourCycle: "h23"
-  }).formatToParts(date);
 
-  const hourPart = parts.find(part => part.type === "hour");
-  const hour = Number(hourPart?.value);
+function getBerlinHour(
+  date = new Date()
+) {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-US",
+      {
+        timeZone:
+          "Europe/Berlin",
 
-  return Number.isNaN(hour) ? date.getHours() : hour;
+        hour:
+          "numeric",
+
+        hourCycle:
+          "h23"
+      }
+    ).formatToParts(date);
+
+  const hourPart =
+    parts.find(
+      part =>
+        part.type === "hour"
+    );
+
+  const hour =
+    Number(
+      hourPart?.value
+    );
+
+  return Number.isNaN(
+    hour
+  )
+    ? date.getHours()
+    : hour;
 }
 
-function nextDateString(dateString) {
-  const date = new Date(`${dateString}T12:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + 1);
-  return date.toISOString().slice(0, 10);
+
+function nextDateString(
+  dateString
+) {
+  const date =
+    new Date(
+      `${dateString}T12:00:00Z`
+    );
+
+  date.setUTCDate(
+    date.getUTCDate() + 1
+  );
+
+  return date
+    .toISOString()
+    .slice(0, 10);
 }
 
-function berlinUtcOffsetMinutes(date) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Europe/Berlin",
-    timeZoneName: "shortOffset"
-  }).formatToParts(date);
 
-  const offsetLabel =
-    parts.find(part => part.type === "timeZoneName")?.value || "GMT+0";
+function berlinUtcOffsetMinutes(
+  date
+) {
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-US",
+      {
+        timeZone:
+          "Europe/Berlin",
 
-  const match = offsetLabel.match(/GMT([+-]\d+)(?::(\d+))?/);
+        timeZoneName:
+          "shortOffset"
+      }
+    ).formatToParts(date);
 
-  if (!match) return 0;
+  const label =
+    parts.find(
+      part =>
+        part.type ===
+        "timeZoneName"
+    )?.value || "GMT+0";
 
-  const hours = Number(match[1]);
-  const minutes = Number(match[2] || 0);
+  const match =
+    label.match(
+      /GMT([+-]\d+)(?::(\d+))?/
+    );
+
+  if (!match) {
+    return 0;
+  }
+
+  const hours =
+    Number(match[1]);
+
+  const minutes =
+    Number(
+      match[2] || 0
+    );
 
   return hours >= 0
-    ? hours * 60 + minutes
-    : hours * 60 - minutes;
+    ? hours * 60 +
+        minutes
+    : hours * 60 -
+        minutes;
 }
 
-function berlinMidnightUtcIso(dateString) {
-  const noonGuess = new Date(`${dateString}T12:00:00Z`);
-  const offsetMinutes = berlinUtcOffsetMinutes(noonGuess);
+
+function berlinMidnightUtcIso(
+  dateString
+) {
+  const noonGuess =
+    new Date(
+      `${dateString}T12:00:00Z`
+    );
+
+  const offsetMinutes =
+    berlinUtcOffsetMinutes(
+      noonGuess
+    );
 
   const utcMillis =
-    Date.parse(`${dateString}T00:00:00Z`) -
-    offsetMinutes * 60000;
+    Date.parse(
+      `${dateString}T00:00:00Z`
+    ) -
+    offsetMinutes *
+      60000;
 
-  return new Date(utcMillis).toISOString();
+  return new Date(
+    utcMillis
+  ).toISOString();
 }
 
-function getPeriodDates(period) {
-  const today = berlinDate();
 
-  if (period === "yesterday") {
-    const date = new Date(`${today}T12:00:00Z`);
-    date.setUTCDate(date.getUTCDate() - 1);
+function getPeriodDates(
+  period
+) {
+  const today =
+    berlinDate();
 
-    const yesterday = date.toISOString().slice(0, 10);
+  if (
+    period === "yesterday"
+  ) {
+    const date =
+      new Date(
+        `${today}T12:00:00Z`
+      );
+
+    date.setUTCDate(
+      date.getUTCDate() - 1
+    );
+
+    const yesterday =
+      date
+        .toISOString()
+        .slice(0, 10);
 
     return {
-      start: berlinMidnightUtcIso(yesterday),
-      end: berlinMidnightUtcIso(today)
+      start:
+        berlinMidnightUtcIso(
+          yesterday
+        ),
+
+      end:
+        berlinMidnightUtcIso(
+          today
+        )
     };
   }
 
   return {
-    start: berlinMidnightUtcIso(today),
-    end: berlinMidnightUtcIso(nextDateString(today))
+    start:
+      berlinMidnightUtcIso(
+        today
+      ),
+
+    end:
+      berlinMidnightUtcIso(
+        nextDateString(
+          today
+        )
+      )
   };
 }
 
 
 /* =========================================================
-   JARVIS PERSONALITY
+   JARVIS INSTRUCTIONS
    ========================================================= */
 
 const JARVIS_INSTRUCTIONS = `
@@ -148,12 +304,12 @@ Du bist JARVIS, der persönliche Assistent und Business-Sparringspartner von Mat
 
 SPRACHE:
 - Antworte ausschließlich auf Deutsch.
-- Natürliches, klares Hochdeutsch.
-- Wechsle nur dann in eine andere Sprache, wenn Mattl es ausdrücklich verlangt.
+- Natürliches klares Hochdeutsch.
+- Nur auf ausdrücklichen Wunsch eine andere Sprache.
 
 NAME:
 - Der Benutzer heißt Mattl.
-- Sprich den Namen mit hörbarem T aus: Mat-tl.
+- Sprich Mattl mit hörbarem T aus.
 - Nicht Maddl.
 
 CHARAKTER:
@@ -165,34 +321,20 @@ CHARAKTER:
 - locker
 - trocken humorvoll
 - gelegentlich frech
-- kein Butler-Stil
+- kein Butler
 - kein Callcenter
 - kein künstliches Dauerlob
 
-SPRACHGESPRÄCH:
-- Du befindest dich in einem direkten Sprachgespräch mit Mattl.
-- Antworte natürlich gesprochen.
-- Beginne möglichst schnell mit der eigentlichen Antwort.
+GESPRÄCH:
+- Du führst ein echtes direktes Sprachgespräch mit Mattl.
+- Antworte schnell und direkt.
 - Kurze Fragen bekommen kurze Antworten.
+- Standardmäßig 1 bis 5 gesprochene Sätze.
 - Keine unnötigen Einleitungen.
-- Keine langen Monologe, wenn sie nicht nötig sind.
-- Standardmäßig ungefähr 1 bis 5 gesprochene Sätze.
-- Wenn Mattl ausführliche Informationen verlangt, darfst du ausführlicher antworten.
-- Stelle nicht nach jeder Antwort eine Gegenfrage.
-- Wenn Mattl dich unterbricht, akzeptiere die Unterbrechung und reagiere auf seine neue Aussage.
+- Keine unnötigen Rückfragen.
+- Wenn Mattl dich unterbricht, akzeptiere die Unterbrechung sofort.
 - Keine Markdown-Tabellen.
-- Keine technischen Erklärungen über interne APIs, sofern Mattl nicht ausdrücklich danach fragt.
-
-ZAHLEN:
-- Geldbeträge natürlich auf Deutsch aussprechen.
-- 1234.56 EUR bedeutet 1234 Euro 56.
-- Prozentwerte natürlich aussprechen.
-- Vermeide rohe URLs.
-
-AKTUELLE INFORMATIONEN:
-- Erfinde niemals aktuelle Zahlen.
-- Shopify-, E-Mail-, Wetter- und Business-Zahlen dürfen nur verwendet werden, wenn echte Live-Daten bereitgestellt wurden.
-- Wenn aktuelle Daten fehlen, sag das ehrlich.
+- Keine Links vorlesen.
 
 DRUCKELITE24:
 Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
@@ -204,7 +346,6 @@ Bereiche:
 - Gastro
 - Arbeitsbekleidung
 - Events
-- personalisierte Textilien
 - DTF
 - Textildruck
 - Shopify
@@ -216,22 +357,27 @@ SHOPIFY:
 Es gibt genau einen verbundenen Shopify-Shop:
 Druckelite24.
 
-Wenn Mattl von
-- meinem Shop
-- unserem Shop
+Wenn Mattl sagt:
+- mein Shop
+- unser Shop
 - Shopify
 - Bestellungen
 - Umsatz
-- Verkäufen
-spricht, ist Druckelite24 gemeint.
+- Verkäufe
+
+ist Druckelite24 gemeint.
 
 BUSINESS:
-Bei passenden Themen darfst du wie ein
-Geschäftsführer,
-E-Commerce-Manager,
-Verkaufsleiter,
-Performance-Marketer
-und Datenanalyst denken.
+Bei passenden Fragen denke auch wie:
+- Geschäftsführer
+- E-Commerce-Manager
+- Verkaufsleiter
+- Performance-Marketer
+- Datenanalyst
+
+AKTUELLE DATEN:
+Erfinde niemals aktuelle Zahlen.
+Shopify, E-Mails, Wetter, Bestellungen und andere Live-Werte dürfen nur aus echten Live-Daten stammen.
 
 SICHERHEIT:
 Vor kritischen Aktionen braucht Mattl ausdrückliche Zustimmung:
@@ -240,121 +386,277 @@ Vor kritischen Aktionen braucht Mattl ausdrückliche Zustimmung:
 - Kampagnen ändern
 - Bestellungen stornieren
 - Rückerstattungen
-- Nachrichten versenden
-- E-Mails versenden
+- Nachrichten senden
+- E-Mails senden
 - Daten löschen
-
-PROAKTIVE HINWEISE:
-Wenn du von selbst einen Business-Hinweis oder eine Erinnerung ausgibst:
-- sprich Mattl direkt an
-- halte dich kurz
-- tu nicht so, als hätte Mattl gerade etwas gefragt
-- trockener Humor ist erlaubt
 `;
 
 
 /* =========================================================
-   OPENAI REALTIME · WEBRTC
-   MUSS VOR express.json() STEHEN
+   REALTIME WEBRTC
+
+   WICHTIG:
+   MUSS VOR express.json STEHEN.
    ========================================================= */
 
 app.post(
   "/api/realtime-session",
+
   express.text({
-    type: ["application/sdp", "text/plain"],
+    type: [
+      "application/sdp",
+      "text/plain"
+    ],
+
     limit: "1mb"
   }),
+
   async (req, res) => {
+
     try {
-      if (!process.env.OPENAI_API_KEY) {
-        return res.status(500).send("OPENAI_API_KEY fehlt.");
+
+      if (
+        !process.env
+          .OPENAI_API_KEY
+      ) {
+        return res
+          .status(500)
+          .send(
+            "OPENAI_API_KEY fehlt."
+          );
       }
 
-      const sdp = String(req.body || "").trim();
 
-      if (!sdp) {
-        return res.status(400).send("SDP fehlt.");
+      /*
+       * ABSICHTLICH NICHT trimmen.
+       * SDP wird exakt weitergegeben.
+       */
+      const sdp =
+        req.body;
+
+
+      console.log(
+        "[REALTIME] Body Typ:",
+        typeof sdp
+      );
+
+
+      console.log(
+        "[REALTIME] SDP Länge:",
+        typeof sdp === "string"
+          ? sdp.length
+          : 0
+      );
+
+
+      console.log(
+        "[REALTIME] SDP Anfang:",
+        typeof sdp === "string"
+          ? JSON.stringify(
+              sdp.slice(
+                0,
+                100
+              )
+            )
+          : "KEIN STRING"
+      );
+
+
+      if (
+        typeof sdp !==
+          "string" ||
+        sdp.length === 0
+      ) {
+        return res
+          .status(400)
+          .send(
+            "Kein SDP empfangen."
+          );
       }
+
+
+      if (
+        !sdp.startsWith(
+          "v=0"
+        )
+      ) {
+        return res
+          .status(400)
+          .send(
+            "Ungültiges SDP: beginnt nicht mit v=0."
+          );
+      }
+
+
+      if (
+        !sdp.includes(
+          "m=audio"
+        )
+      ) {
+        return res
+          .status(400)
+          .send(
+            "Ungültiges SDP: keine Audiospur."
+          );
+      }
+
 
       const realtimeModel =
-        process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1";
+        process.env
+          .OPENAI_REALTIME_MODEL ||
+        "gpt-realtime-2.1";
+
 
       const realtimeVoice =
-        process.env.OPENAI_REALTIME_VOICE || "cedar";
+        process.env
+          .OPENAI_REALTIME_VOICE ||
+        "cedar";
 
-      const sessionConfig = {
-        type: "realtime",
-        model: realtimeModel,
-        instructions: JARVIS_INSTRUCTIONS,
 
-        output_modalities: ["audio"],
+      /*
+       * Absichtlich einfache,
+       * robuste Session-Konfiguration.
+       */
+      const sessionConfig =
+        JSON.stringify({
+          type: "realtime",
 
-        audio: {
-          input: {
-            turn_detection: {
-              type: "server_vad"
+          model:
+            realtimeModel,
+
+          instructions:
+            JARVIS_INSTRUCTIONS,
+
+          audio: {
+            output: {
+              voice:
+                realtimeVoice
             }
-          },
-          output: {
-            voice: realtimeVoice
           }
-        }
-      };
+        });
 
-      const form = new FormData();
 
-      form.set("sdp", sdp);
-      form.set("session", JSON.stringify(sessionConfig));
+      const form =
+        new FormData();
+
+
+      /*
+       * OFFIZIELLER FLOW:
+       * SDP exakt als multipart Feld.
+       */
+      form.set(
+        "sdp",
+        sdp
+      );
+
+
+      form.set(
+        "session",
+        sessionConfig
+      );
+
 
       console.log(
-        `Realtime Session startet: ${realtimeModel} / ${realtimeVoice}`
+        `[REALTIME] Sende SDP an OpenAI. Modell=${realtimeModel}, Stimme=${realtimeVoice}`
       );
 
-      const startedAt = Date.now();
 
-      const response = await fetch(
-        "https://api.openai.com/v1/realtime/calls",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
-          },
-          body: form,
-          signal: timeoutSignal(20000)
-        }
-      );
+      const start =
+        Date.now();
 
-      const answerSdp = await response.text();
+
+      const response =
+        await fetch(
+          "https://api.openai.com/v1/realtime/calls",
+          {
+            method: "POST",
+
+            headers: {
+              Authorization:
+                `Bearer ${process.env.OPENAI_API_KEY}`
+            },
+
+            body:
+              form,
+
+            signal:
+              timeoutSignal(
+                20000
+              )
+          }
+        );
+
+
+      const answerSdp =
+        await response.text();
+
 
       console.log(
-        `[TIMING] Realtime Session: ${Date.now() - startedAt}ms`
+        `[REALTIME] OpenAI Antwort nach ${
+          Date.now() -
+          start
+        }ms`
       );
+
 
       if (!response.ok) {
         console.error(
-          "Realtime OpenAI Fehler:",
+          "[REALTIME] OpenAI Fehler:",
           response.status,
           answerSdp
         );
 
         return res
-          .status(response.status)
-          .send(answerSdp || "Realtime-Verbindung fehlgeschlagen.");
+          .status(
+            response.status
+          )
+          .send(
+            answerSdp
+          );
       }
 
-      res.status(200);
-      res.setHeader("Content-Type", "application/sdp");
 
-      return res.send(answerSdp);
+      console.log(
+        "[REALTIME] Answer SDP Länge:",
+        answerSdp.length
+      );
+
+
+      console.log(
+        "[REALTIME] Answer SDP Anfang:",
+        JSON.stringify(
+          answerSdp.slice(
+            0,
+            100
+          )
+        )
+      );
+
+
+      res.status(200);
+
+      res.setHeader(
+        "Content-Type",
+        "application/sdp"
+      );
+
+      return res.send(
+        answerSdp
+      );
 
     } catch (error) {
-      console.error("Realtime session error:", error);
 
-      return res.status(500).send(
-        error.name === "TimeoutError"
-          ? "Realtime-Verbindung hat zu lange gebraucht."
-          : error.message || "Realtime-Verbindung fehlgeschlagen."
+      console.error(
+        "[REALTIME] Endpoint Fehler:",
+        error
       );
+
+      return res
+        .status(500)
+        .send(
+          error.message ||
+          "Realtime-Verbindung fehlgeschlagen."
+        );
     }
   }
 );
@@ -362,114 +664,173 @@ app.post(
 
 /* =========================================================
    JSON
+   ERST NACH REALTIME
    ========================================================= */
 
-app.use(express.json({ limit: "2mb" }));
+app.use(
+  express.json({
+    limit: "2mb"
+  })
+);
 
 
 /* =========================================================
-   RESPONSES API HELPERS
+   RESPONSES HELPERS
    ========================================================= */
 
-function extractResponseText(data) {
+function extractResponseText(
+  data
+) {
   if (!data) return "";
 
-  const direct = String(data.output_text || "").trim();
-  if (direct) return direct;
+  const direct =
+    String(
+      data.output_text ||
+      ""
+    ).trim();
+
+  if (direct) {
+    return direct;
+  }
 
   const pieces = [];
 
-  for (const item of data.output || []) {
-    if (item?.type !== "message") continue;
+  for (
+    const item of
+    data.output || []
+  ) {
+    if (
+      item?.type !==
+      "message"
+    ) {
+      continue;
+    }
 
-    for (const content of item.content || []) {
+    for (
+      const content of
+      item.content || []
+    ) {
       if (
-        content?.type === "output_text" &&
+        content?.type ===
+          "output_text" &&
         content?.text
       ) {
-        pieces.push(content.text);
+        pieces.push(
+          content.text
+        );
       }
     }
   }
 
-  return pieces.join(" ").trim();
+  return pieces
+    .join(" ")
+    .trim();
 }
 
 
-async function requestOpenAIResponse({
-  inputText,
-  previousResponseId,
-  maxOutputTokens = 1200,
-  reasoningEffort = "minimal",
-  enableWebSearch = false
+/* =========================================================
+   TEXT RESPONSE
+   ========================================================= */
+
+async function createJarvisResponse({
+  message,
+  liveData = null
 }) {
-  const body = {
-    model:
-      process.env.OPENAI_TEXT_MODEL ||
-      "gpt-5-mini",
+  if (
+    !process.env
+      .OPENAI_API_KEY
+  ) {
+    throw new Error(
+      "OPENAI_API_KEY fehlt."
+    );
+  }
 
-    instructions:
-      JARVIS_INSTRUCTIONS,
+  let input =
+    String(
+      message || ""
+    ).trim();
 
-    input:
-      inputText,
+  if (!input) {
+    throw new Error(
+      "Leere Nachricht."
+    );
+  }
 
-    max_output_tokens:
-      maxOutputTokens,
+  if (liveData) {
+    input += `
 
-    reasoning: {
-      effort:
-        reasoningEffort
-    },
+LIVE-DATEN:
+${JSON.stringify(
+  liveData,
+  null,
+  2
+)}
 
-    text: {
-      format: {
-        type: "text"
-      }
-    },
+Nutze für aktuelle Werte ausschließlich diese Daten.
+`;
+  }
 
-    store: true
-  };
-
-  if (enableWebSearch) {
-    body.tools = [
+  const response =
+    await fetch(
+      "https://api.openai.com/v1/responses",
       {
-        type: "web_search"
+        method: "POST",
+
+        headers: {
+          Authorization:
+            `Bearer ${process.env.OPENAI_API_KEY}`,
+
+          "Content-Type":
+            "application/json"
+        },
+
+        body:
+          JSON.stringify({
+            model:
+              process.env
+                .OPENAI_TEXT_MODEL ||
+              "gpt-5-mini",
+
+            instructions:
+              JARVIS_INSTRUCTIONS,
+
+            input,
+
+            reasoning: {
+              effort:
+                "minimal"
+            },
+
+            max_output_tokens:
+              1200,
+
+            store:
+              false
+          }),
+
+        signal:
+          timeoutSignal(
+            30000
+          )
       }
-    ];
-  }
+    );
 
-  if (previousResponseId) {
-    body.previous_response_id =
-      previousResponseId;
-  }
 
-  const response = await fetch(
-    "https://api.openai.com/v1/responses",
-    {
-      method: "POST",
-      headers: {
-        Authorization:
-          `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type":
-          "application/json"
-      },
-      body: JSON.stringify(body),
-      signal: timeoutSignal(45000)
-    }
-  );
+  const raw =
+    await response.text();
 
-  const raw = await response.text();
 
   let data;
 
   try {
-    data = JSON.parse(raw);
+    data =
+      JSON.parse(raw);
   } catch {
     throw new Error(
-      "OpenAI hat keine gültige JSON-Antwort geliefert."
+      "Ungültige OpenAI-Antwort."
     );
   }
+
 
   if (!response.ok) {
     throw new Error(
@@ -478,98 +839,24 @@ async function requestOpenAIResponse({
     );
   }
 
-  return data;
-}
+
+  const text =
+    extractResponseText(
+      data
+    );
 
 
-async function createJarvisResponse({
-  message,
-  previousResponseId = null,
-  liveData = null
-}) {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY fehlt.");
-  }
-
-  let inputText =
-    String(message || "").trim();
-
-  if (!inputText) {
+  if (!text) {
     throw new Error(
-      "Leere Benutzernachricht."
+      "Keine Antwort erzeugt."
     );
   }
 
-  if (liveData) {
-    inputText += `
-
-LIVE-DATEN:
-${JSON.stringify(liveData, null, 2)}
-
-Nutze ausschließlich diese Live-Daten für aktuelle Werte.
-Erfinde keine weiteren aktuellen Zahlen.`;
-  }
-
-  const fastPath =
-    inputText.startsWith("[SYSTEM-HINWEIS") ||
-    [
-      "shopify",
-      "weather",
-      "note_saved",
-      "notes_list",
-      "reminder_set",
-      "reminders_list",
-      "emails_list"
-    ].includes(liveData?.type);
-
-  const reasoningEffort =
-    fastPath ? "minimal" : "low";
-
-  const enableWebSearch =
-    !fastPath;
-
-  let data =
-    await requestOpenAIResponse({
-      inputText,
-      previousResponseId,
-      maxOutputTokens: 1200,
-      reasoningEffort,
-      enableWebSearch
-    });
-
-  let outputText =
-    extractResponseText(data);
-
-  if (
-    !outputText ||
-    data.status === "incomplete"
-  ) {
-    data =
-      await requestOpenAIResponse({
-        inputText:
-          `${inputText}
-
-Antworte jetzt direkt und kurz auf Deutsch.`,
-
-        previousResponseId,
-        maxOutputTokens: 2400,
-        reasoningEffort,
-        enableWebSearch
-      });
-
-    outputText =
-      extractResponseText(data);
-  }
-
-  if (!outputText) {
-    throw new Error(
-      "OpenAI hat keinen Antworttext geliefert."
-    );
-  }
 
   return {
-    text: outputText,
-    response_id: data.id || null
+    text,
+    response_id:
+      data.id || null
   };
 }
 
@@ -583,6 +870,7 @@ let shopifyTokenCache = {
   expiresAt: 0
 };
 
+
 async function getShopifyAccessToken() {
   if (
     shopifyTokenCache.token &&
@@ -593,14 +881,19 @@ async function getShopifyAccessToken() {
     return shopifyTokenCache.token;
   }
 
+
   const domain =
-    process.env.SHOPIFY_STORE_DOMAIN;
+    process.env
+      .SHOPIFY_STORE_DOMAIN;
 
   const clientId =
-    process.env.SHOPIFY_CLIENT_ID;
+    process.env
+      .SHOPIFY_CLIENT_ID;
 
   const clientSecret =
-    process.env.SHOPIFY_CLIENT_SECRET;
+    process.env
+      .SHOPIFY_CLIENT_SECRET;
+
 
   if (
     !domain ||
@@ -612,31 +905,45 @@ async function getShopifyAccessToken() {
     );
   }
 
+
   const params =
     new URLSearchParams({
       grant_type:
         "client_credentials",
+
       client_id:
         clientId,
+
       client_secret:
         clientSecret
     });
 
-  const response = await fetch(
-    `https://${domain}/admin/oauth/access_token`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/x-www-form-urlencoded"
-      },
-      body: params,
-      signal: timeoutSignal(10000)
-    }
-  );
+
+  const response =
+    await fetch(
+      `https://${domain}/admin/oauth/access_token`,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/x-www-form-urlencoded"
+        },
+
+        body:
+          params,
+
+        signal:
+          timeoutSignal(
+            10000
+          )
+      }
+    );
+
 
   const data =
     await response.json();
+
 
   if (
     !response.ok ||
@@ -647,19 +954,23 @@ async function getShopifyAccessToken() {
     );
   }
 
+
   const expiresIn =
     Number(
       data.expires_in ||
       86399
     );
 
+
   shopifyTokenCache = {
     token:
       data.access_token,
+
     expiresAt:
       Date.now() +
       expiresIn * 1000
   };
+
 
   return data.access_token;
 }
@@ -669,25 +980,35 @@ async function getShopifyAccessToken() {
    SHOPIFY SUMMARY
    ========================================================= */
 
-async function getShopifySummary(period = "today") {
+async function getShopifySummary(
+  period = "today"
+) {
   const domain =
-    process.env.SHOPIFY_STORE_DOMAIN;
+    process.env
+      .SHOPIFY_STORE_DOMAIN;
 
   const apiVersion =
-    process.env.SHOPIFY_API_VERSION ||
+    process.env
+      .SHOPIFY_API_VERSION ||
     "2026-07";
 
   const token =
     await getShopifyAccessToken();
 
-  const { start, end } =
-    getPeriodDates(period);
+  const {
+    start,
+    end
+  } =
+    getPeriodDates(
+      period
+    );
 
   const startDate =
     new Date(start);
 
   const endDate =
     new Date(end);
+
 
   const query = `
     query JarvisOrders {
@@ -712,23 +1033,38 @@ async function getShopifySummary(period = "today") {
     }
   `;
 
-  const response = await fetch(
-    `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/json",
-        "X-Shopify-Access-Token":
-          token
-      },
-      body: JSON.stringify({ query }),
-      signal: timeoutSignal(10000)
-    }
-  );
+
+  const response =
+    await fetch(
+      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+      {
+        method:
+          "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          "X-Shopify-Access-Token":
+            token
+        },
+
+        body:
+          JSON.stringify({
+            query
+          }),
+
+        signal:
+          timeoutSignal(
+            10000
+          )
+      }
+    );
+
 
   const data =
     await response.json();
+
 
   if (
     !response.ok ||
@@ -739,28 +1075,42 @@ async function getShopifySummary(period = "today") {
     );
   }
 
+
   const orders =
-    data.data?.orders?.nodes ||
-    [];
+    data.data?.orders
+      ?.nodes || [];
+
 
   const valid =
-    orders.filter(order => {
-      if (order.cancelledAt) {
-        return false;
+    orders.filter(
+      order => {
+        if (
+          order.cancelledAt
+        ) {
+          return false;
+        }
+
+        const created =
+          new Date(
+            order.createdAt
+          );
+
+        return (
+          created >=
+            startDate &&
+          created <
+            endDate
+        );
       }
+    );
 
-      const created =
-        new Date(order.createdAt);
-
-      return (
-        created >= startDate &&
-        created < endDate
-      );
-    });
 
   const revenue =
     valid.reduce(
-      (total, order) =>
+      (
+        total,
+        order
+      ) =>
         total +
         Number(
           order
@@ -772,6 +1122,7 @@ async function getShopifySummary(period = "today") {
       0
     );
 
+
   const currency =
     valid[0]
       ?.currentTotalPriceSet
@@ -779,29 +1130,46 @@ async function getShopifySummary(period = "today") {
       ?.currencyCode ||
     "EUR";
 
+
   const average =
     valid.length
       ? revenue /
         valid.length
       : 0;
 
+
   return {
     configured: true,
-    shop: "Druckelite24",
+
+    shop:
+      "Druckelite24",
+
     period,
-    orders: valid.length,
-    revenue: Number(
-      revenue.toFixed(2)
-    ),
+
+    orders:
+      valid.length,
+
+    revenue:
+      Number(
+        revenue.toFixed(2)
+      ),
+
     average_order_value:
       Number(
         average.toFixed(2)
       ),
+
     currency,
-    source: "Shopify"
+
+    source:
+      "Shopify"
   };
 }
 
+
+/* =========================================================
+   SHOPIFY SUMMARY ENDPOINT
+   ========================================================= */
 
 app.post(
   "/api/shopify-summary",
@@ -820,14 +1188,19 @@ app.post(
       );
 
     } catch (error) {
+      console.error(
+        "Shopify summary:",
+        error
+      );
+
       return res
         .status(500)
         .json({
-          configured: false,
-          shop: "Druckelite24",
+          configured:
+            false,
+
           error:
-            error.message ||
-            "Shopify-Abfrage fehlgeschlagen."
+            error.message
         });
     }
   }
@@ -840,14 +1213,17 @@ app.post(
 
 async function getShopifyOpenOrders() {
   const domain =
-    process.env.SHOPIFY_STORE_DOMAIN;
+    process.env
+      .SHOPIFY_STORE_DOMAIN;
 
   const apiVersion =
-    process.env.SHOPIFY_API_VERSION ||
+    process.env
+      .SHOPIFY_API_VERSION ||
     "2026-07";
 
   const token =
     await getShopifyAccessToken();
+
 
   const query = `
     query JarvisOpenOrders {
@@ -866,23 +1242,38 @@ async function getShopifyOpenOrders() {
     }
   `;
 
-  const response = await fetch(
-    `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/json",
-        "X-Shopify-Access-Token":
-          token
-      },
-      body: JSON.stringify({ query }),
-      signal: timeoutSignal(10000)
-    }
-  );
+
+  const response =
+    await fetch(
+      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+      {
+        method:
+          "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          "X-Shopify-Access-Token":
+            token
+        },
+
+        body:
+          JSON.stringify({
+            query
+          }),
+
+        signal:
+          timeoutSignal(
+            10000
+          )
+      }
+    );
+
 
   const data =
     await response.json();
+
 
   if (
     !response.ok ||
@@ -893,65 +1284,88 @@ async function getShopifyOpenOrders() {
     );
   }
 
+
   const orders =
     (
-      data.data?.orders?.nodes ||
-      []
+      data.data?.orders
+        ?.nodes || []
     ).filter(
       order =>
         !order.cancelledAt
     );
+
 
   const oldest =
     orders.length
       ? orders[0]
       : null;
 
+
   return {
-    count: orders.length,
+    count:
+      orders.length,
+
     oldest_order_name:
-      oldest?.name || null,
+      oldest?.name ||
+      null,
+
     oldest_order_created_at:
-      oldest?.createdAt || null
+      oldest?.createdAt ||
+      null
   };
 }
 
 
 /* =========================================================
-   SHOP ID / METAFIELDS
+   SHOP ID
    ========================================================= */
 
 async function getShopId() {
   const domain =
-    process.env.SHOPIFY_STORE_DOMAIN;
+    process.env
+      .SHOPIFY_STORE_DOMAIN;
 
   const apiVersion =
-    process.env.SHOPIFY_API_VERSION ||
+    process.env
+      .SHOPIFY_API_VERSION ||
     "2026-07";
 
   const token =
     await getShopifyAccessToken();
 
-  const response = await fetch(
-    `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/json",
-        "X-Shopify-Access-Token":
-          token
-      },
-      body: JSON.stringify({
-        query:
-          "query { shop { id } }"
-      }),
-      signal: timeoutSignal(10000)
-    }
-  );
+
+  const response =
+    await fetch(
+      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+      {
+        method:
+          "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          "X-Shopify-Access-Token":
+            token
+        },
+
+        body:
+          JSON.stringify({
+            query:
+              "query { shop { id } }"
+          }),
+
+        signal:
+          timeoutSignal(
+            10000
+          )
+      }
+    );
+
 
   const data =
     await response.json();
+
 
   if (
     !response.ok ||
@@ -963,20 +1377,30 @@ async function getShopId() {
     );
   }
 
+
   return data.data.shop.id;
 }
 
 
-async function getJarvisMetafield(key) {
+/* =========================================================
+   METAFIELDS
+   ========================================================= */
+
+async function getJarvisMetafield(
+  key
+) {
   const domain =
-    process.env.SHOPIFY_STORE_DOMAIN;
+    process.env
+      .SHOPIFY_STORE_DOMAIN;
 
   const apiVersion =
-    process.env.SHOPIFY_API_VERSION ||
+    process.env
+      .SHOPIFY_API_VERSION ||
     "2026-07";
 
   const token =
     await getShopifyAccessToken();
+
 
   const query = `
     query JarvisMeta {
@@ -991,23 +1415,38 @@ async function getJarvisMetafield(key) {
     }
   `;
 
-  const response = await fetch(
-    `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/json",
-        "X-Shopify-Access-Token":
-          token
-      },
-      body: JSON.stringify({ query }),
-      signal: timeoutSignal(10000)
-    }
-  );
+
+  const response =
+    await fetch(
+      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+      {
+        method:
+          "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          "X-Shopify-Access-Token":
+            token
+        },
+
+        body:
+          JSON.stringify({
+            query
+          }),
+
+        signal:
+          timeoutSignal(
+            10000
+          )
+      }
+    );
+
 
   const data =
     await response.json();
+
 
   if (
     !response.ok ||
@@ -1018,17 +1457,25 @@ async function getJarvisMetafield(key) {
     );
   }
 
+
   const raw =
     data.data?.shop
-      ?.metafield?.value;
+      ?.metafield
+      ?.value;
 
-  if (!raw) return [];
+
+  if (!raw) {
+    return [];
+  }
+
 
   try {
     const parsed =
       JSON.parse(raw);
 
-    return Array.isArray(parsed)
+    return Array.isArray(
+      parsed
+    )
       ? parsed
       : [];
 
@@ -1043,10 +1490,12 @@ async function saveJarvisMetafield(
   value
 ) {
   const domain =
-    process.env.SHOPIFY_STORE_DOMAIN;
+    process.env
+      .SHOPIFY_STORE_DOMAIN;
 
   const apiVersion =
-    process.env.SHOPIFY_API_VERSION ||
+    process.env
+      .SHOPIFY_API_VERSION ||
     "2026-07";
 
   const token =
@@ -1054,6 +1503,7 @@ async function saveJarvisMetafield(
 
   const shopId =
     await getShopId();
+
 
   const mutation = `
     mutation JarvisSaveMeta(
@@ -1074,44 +1524,70 @@ async function saveJarvisMetafield(
     }
   `;
 
+
   const variables = {
     metafields: [
       {
-        ownerId: shopId,
-        namespace: "jarvis",
+        ownerId:
+          shopId,
+
+        namespace:
+          "jarvis",
+
         key,
-        type: "json",
+
+        type:
+          "json",
+
         value:
-          JSON.stringify(value)
+          JSON.stringify(
+            value
+          )
       }
     ]
   };
 
-  const response = await fetch(
-    `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/json",
-        "X-Shopify-Access-Token":
-          token
-      },
-      body: JSON.stringify({
-        query: mutation,
-        variables
-      }),
-      signal: timeoutSignal(10000)
-    }
-  );
+
+  const response =
+    await fetch(
+      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+      {
+        method:
+          "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          "X-Shopify-Access-Token":
+            token
+        },
+
+        body:
+          JSON.stringify({
+            query:
+              mutation,
+
+            variables
+          }),
+
+        signal:
+          timeoutSignal(
+            10000
+          )
+      }
+    );
+
 
   const data =
     await response.json();
+
 
   const errors =
     data.data
       ?.metafieldsSet
       ?.userErrors;
+
 
   if (
     !response.ok ||
@@ -1138,7 +1614,10 @@ async function getNotes() {
   );
 }
 
-async function saveNotes(notes) {
+
+async function saveNotes(
+  notes
+) {
   return saveJarvisMetafield(
     "notes",
     notes
@@ -1156,12 +1635,16 @@ async function getReminders() {
   );
 }
 
-async function saveReminders(reminders) {
+
+async function saveReminders(
+  reminders
+) {
   return saveJarvisMetafield(
     "reminders",
     reminders
   );
 }
+
 
 async function checkAndFireDueReminders() {
   const reminders =
@@ -1169,6 +1652,7 @@ async function checkAndFireDueReminders() {
 
   const now =
     Date.now();
+
 
   const due =
     reminders.filter(
@@ -1179,9 +1663,11 @@ async function checkAndFireDueReminders() {
         ).getTime() <= now
     );
 
+
   if (!due.length) {
     return [];
   }
+
 
   const dueIds =
     new Set(
@@ -1191,43 +1677,31 @@ async function checkAndFireDueReminders() {
       )
     );
 
+
   const kept =
-    reminders
-      .map(reminder =>
+    reminders.map(
+      reminder =>
         dueIds.has(
           reminder.id
         )
           ? {
               ...reminder,
-              fired: true,
+
+              fired:
+                true,
+
               fired_at:
                 new Date()
                   .toISOString()
             }
           : reminder
-      )
-      .filter(reminder => {
-        if (!reminder.fired) {
-          return true;
-        }
+    );
 
-        const firedAt =
-          reminder.fired_at
-            ? new Date(
-                reminder.fired_at
-              ).getTime()
-            : now;
 
-        return (
-          now - firedAt <
-          24 *
-            60 *
-            60 *
-            1000
-        );
-      });
+  await saveReminders(
+    kept
+  );
 
-  await saveReminders(kept);
 
   return due;
 }
@@ -1244,12 +1718,17 @@ app.post(
       const due =
         await checkAndFireDueReminders();
 
+
       if (!due.length) {
         return res.json({
-          ok: true,
-          hasNotice: false
+          ok:
+            true,
+
+          hasNotice:
+            false
         });
       }
+
 
       const text =
         due
@@ -1259,22 +1738,30 @@ app.post(
           )
           .join("; ");
 
+
       return res.json({
-        ok: true,
-        hasNotice: true,
+        ok:
+          true,
+
+        hasNotice:
+          true,
+
         text:
           `Mattl, Erinnerung: ${text}.`
       });
 
     } catch (error) {
       console.error(
-        "Reminder check:",
+        "Reminder Check:",
         error
       );
 
       return res.json({
-        ok: true,
-        hasNotice: false
+        ok:
+          true,
+
+        hasNotice:
+          false
       });
     }
   }
@@ -1286,17 +1773,27 @@ app.post(
    ========================================================= */
 
 let gmailTokenCache = {
-  token: null,
-  expiresAt: 0
+  token:
+    null,
+
+  expiresAt:
+    0
 };
+
 
 function isGmailConfigured() {
   return Boolean(
-    process.env.GOOGLE_CLIENT_ID &&
-    process.env.GOOGLE_CLIENT_SECRET &&
-    process.env.GOOGLE_REFRESH_TOKEN
+    process.env
+      .GOOGLE_CLIENT_ID &&
+
+    process.env
+      .GOOGLE_CLIENT_SECRET &&
+
+    process.env
+      .GOOGLE_REFRESH_TOKEN
   );
 }
+
 
 async function getGmailAccessToken() {
   if (
@@ -1308,52 +1805,76 @@ async function getGmailAccessToken() {
     return gmailTokenCache.token;
   }
 
-  if (!isGmailConfigured()) {
+
+  if (
+    !isGmailConfigured()
+  ) {
     throw new Error(
-      "Gmail ist nicht vollständig konfiguriert."
+      "Gmail ist nicht konfiguriert."
     );
   }
+
 
   const params =
     new URLSearchParams({
       client_id:
-        process.env.GOOGLE_CLIENT_ID,
+        process.env
+          .GOOGLE_CLIENT_ID,
+
       client_secret:
-        process.env.GOOGLE_CLIENT_SECRET,
+        process.env
+          .GOOGLE_CLIENT_SECRET,
+
       refresh_token:
-        process.env.GOOGLE_REFRESH_TOKEN,
+        process.env
+          .GOOGLE_REFRESH_TOKEN,
+
       grant_type:
         "refresh_token"
     });
 
-  const response = await fetch(
-    "https://oauth2.googleapis.com/token",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type":
-          "application/x-www-form-urlencoded"
-      },
-      body: params,
-      signal: timeoutSignal(10000)
-    }
-  );
+
+  const response =
+    await fetch(
+      "https://oauth2.googleapis.com/token",
+      {
+        method:
+          "POST",
+
+        headers: {
+          "Content-Type":
+            "application/x-www-form-urlencoded"
+        },
+
+        body:
+          params,
+
+        signal:
+          timeoutSignal(
+            10000
+          )
+      }
+    );
+
 
   const data =
     await response.json();
+
 
   if (
     !response.ok ||
     !data.access_token
   ) {
     throw new Error(
-      "Gmail-Authentifizierung fehlgeschlagen."
+      "Gmail Auth fehlgeschlagen."
     );
   }
+
 
   gmailTokenCache = {
     token:
       data.access_token,
+
     expiresAt:
       Date.now() +
       Number(
@@ -1363,13 +1884,19 @@ async function getGmailAccessToken() {
         1000
   };
 
+
   return data.access_token;
 }
 
 
+/* =========================================================
+   GET NEW EMAILS
+   ========================================================= */
+
 async function getNewEmails() {
   const token =
     await getGmailAccessToken();
+
 
   const listResponse =
     await fetch(
@@ -1379,13 +1906,18 @@ async function getNewEmails() {
           Authorization:
             `Bearer ${token}`
         },
+
         signal:
-          timeoutSignal(10000)
+          timeoutSignal(
+            10000
+          )
       }
     );
 
+
   const listData =
     await listResponse.json();
+
 
   if (!listResponse.ok) {
     throw new Error(
@@ -1393,16 +1925,23 @@ async function getNewEmails() {
     );
   }
 
+
   const refs =
-    listData.messages || [];
+    listData.messages ||
+    [];
+
 
   if (!refs.length) {
     return [];
   }
 
+
   const emails = [];
 
-  for (const ref of refs) {
+
+  for (
+    const ref of refs
+  ) {
     try {
       const response =
         await fetch(
@@ -1412,40 +1951,55 @@ async function getNewEmails() {
               Authorization:
                 `Bearer ${token}`
             },
+
             signal:
-              timeoutSignal(10000)
+              timeoutSignal(
+                10000
+              )
           }
         );
 
+
       const data =
         await response.json();
+
 
       if (!response.ok) {
         continue;
       }
 
+
       const headers =
-        data.payload?.headers ||
-        [];
+        data.payload
+          ?.headers || [];
+
 
       const subject =
         headers.find(
-          h =>
-            h.name === "Subject"
+          item =>
+            item.name ===
+            "Subject"
         )?.value ||
         "(kein Betreff)";
 
+
       const from =
         headers.find(
-          h =>
-            h.name === "From"
+          item =>
+            item.name ===
+            "From"
         )?.value ||
         "unbekannt";
 
+
       emails.push({
-        id: ref.id,
+        id:
+          ref.id,
+
         subject,
+
         from,
+
         snippet:
           data.snippet || ""
       });
@@ -1458,49 +2012,265 @@ async function getNewEmails() {
     }
   }
 
+
   return emails;
 }
+
+
+/* =========================================================
+   WEATHER
+   ========================================================= */
+
+async function getWeatherData(
+  location =
+    "Ludwigshafen am Rhein"
+) {
+  let placeName =
+    String(
+      location || ""
+    ).trim();
+
+
+  if (!placeName) {
+    placeName =
+      "Ludwigshafen am Rhein";
+  }
+
+
+  const geo =
+    new URL(
+      "https://geocoding-api.open-meteo.com/v1/search"
+    );
+
+
+  geo.searchParams.set(
+    "name",
+    placeName
+  );
+
+  geo.searchParams.set(
+    "count",
+    "5"
+  );
+
+  geo.searchParams.set(
+    "language",
+    "de"
+  );
+
+  geo.searchParams.set(
+    "format",
+    "json"
+  );
+
+
+  const geoResponse =
+    await fetch(
+      geo,
+      {
+        signal:
+          timeoutSignal(
+            8000
+          )
+      }
+    );
+
+
+  const geoData =
+    await geoResponse.json();
+
+
+  const candidates =
+    geoData.results ||
+    [];
+
+
+  if (!candidates.length) {
+    throw new Error(
+      "Ort nicht gefunden."
+    );
+  }
+
+
+  const place =
+    candidates.find(
+      item =>
+        item.country_code ===
+        "DE"
+    ) ||
+    candidates[0];
+
+
+  const weather =
+    new URL(
+      "https://api.open-meteo.com/v1/forecast"
+    );
+
+
+  weather.searchParams.set(
+    "latitude",
+    String(
+      place.latitude
+    )
+  );
+
+  weather.searchParams.set(
+    "longitude",
+    String(
+      place.longitude
+    )
+  );
+
+  weather.searchParams.set(
+    "current",
+    "temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m"
+  );
+
+  weather.searchParams.set(
+    "daily",
+    "temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+  );
+
+  weather.searchParams.set(
+    "timezone",
+    "auto"
+  );
+
+  weather.searchParams.set(
+    "forecast_days",
+    "2"
+  );
+
+
+  const response =
+    await fetch(
+      weather,
+      {
+        signal:
+          timeoutSignal(
+            8000
+          )
+      }
+    );
+
+
+  const data =
+    await response.json();
+
+
+  return {
+    source:
+      "Open-Meteo",
+
+    location: {
+      name:
+        place.name,
+
+      region:
+        place.admin1 || "",
+
+      country:
+        place.country || ""
+    },
+
+    current:
+      data.current,
+
+    forecast: {
+      max_temperature:
+        data.daily
+          ?.temperature_2m_max
+          ?.[0],
+
+      min_temperature:
+        data.daily
+          ?.temperature_2m_min
+          ?.[0],
+
+      precipitation_probability:
+        data.daily
+          ?.precipitation_probability_max
+          ?.[0]
+    }
+  };
+}
+
+
+/* =========================================================
+   WEATHER ENDPOINT
+   ========================================================= */
+
+app.post(
+  "/api/weather",
+  async (req, res) => {
+    try {
+      return res.json(
+        await getWeatherData(
+          req.body?.location ||
+          "Ludwigshafen am Rhein"
+        )
+      );
+
+    } catch (error) {
+      return res
+        .status(500)
+        .json({
+          error:
+            error.message
+        });
+    }
+  }
+);
 
 
 /* =========================================================
    PROACTIVE CHECK
    ========================================================= */
 
-let lastBriefingDate = null;
+let lastBriefingDate =
+  null;
+
 
 let lastProactiveNotice = {
-  unfulfilledCount: null,
-  notifiedAt: 0
+  unfulfilledCount:
+    null,
+
+  notifiedAt:
+    0
 };
 
-const PROACTIVE_REMINDER_COOLDOWN_MS =
-  2 * 60 * 60 * 1000;
 
 const notifiedEmailIds =
   new Set();
 
 
+const PROACTIVE_REMINDER_COOLDOWN_MS =
+  2 *
+  60 *
+  60 *
+  1000;
+
+
 app.post(
   "/api/jarvis-checkin",
   async (req, res) => {
+
     try {
+
       const today =
         berlinDate();
 
       const hour =
         getBerlinHour();
 
-      const morning =
-        hour >= 5 &&
-        hour < 11;
 
-
-      /* MORNING BRIEFING */
+      /* Morgenbriefing */
 
       if (
-        today !==
-          lastBriefingDate &&
-        morning
+        hour >= 5 &&
+        hour < 11 &&
+        lastBriefingDate !==
+          today
       ) {
         try {
           const yesterday =
@@ -1508,43 +2278,59 @@ app.post(
               "yesterday"
             );
 
-          const openOrders =
+          const open =
             await getShopifyOpenOrders();
 
-          const message =
-            `[SYSTEM-HINWEIS] Morgen-Briefing: Gestern ${yesterday.revenue} ${yesterday.currency} Umsatz bei ${yesterday.orders} Bestellungen. Aktuell ${openOrders.count} unbearbeitete Bestellungen. Gib Mattl ein kurzes Morgen-Briefing.`;
+          const weather =
+            await getWeatherData();
+
 
           const result =
             await createJarvisResponse({
-              message
+              message:
+                `[SYSTEM-HINWEIS] Morgen-Briefing für Mattl. ` +
+                `Gestern: ${yesterday.revenue} Euro Umsatz bei ${yesterday.orders} Bestellungen. ` +
+                `Aktuell ${open.count} unbearbeitete Bestellungen. ` +
+                `Temperatur aktuell ${weather.current?.temperature_2m} Grad. ` +
+                `Fasse das locker in maximal vier Sätzen zusammen.`
             });
+
 
           lastBriefingDate =
             today;
 
+
           return res.json({
-            ok: true,
-            hasNotice: true,
-            text: result.text
+            ok:
+              true,
+
+            hasNotice:
+              true,
+
+            text:
+              result.text
           });
 
         } catch (error) {
-          console.error(
-            "Morning Briefing:",
+          console.warn(
+            "Morning briefing:",
             error
           );
         }
       }
 
 
-      /* EMAILS */
+      /* Gmail */
 
-      if (isGmailConfigured()) {
+      if (
+        isGmailConfigured()
+      ) {
         try {
           const emails =
             await getNewEmails();
 
-          const newEmails =
+
+          const unseen =
             emails.filter(
               email =>
                 !notifiedEmailIds.has(
@@ -1552,170 +2338,152 @@ app.post(
                 )
             );
 
-          if (newEmails.length) {
+
+          if (
+            unseen.length
+          ) {
             for (
               const email of
-              newEmails
+              unseen
             ) {
               notifiedEmailIds.add(
                 email.id
               );
             }
 
-            const list =
-              newEmails
+
+            const emailText =
+              unseen
                 .map(
                   email =>
-                    `${email.from}, Betreff ${email.subject}`
+                    `Von ${email.from}, Betreff ${email.subject}`
                 )
                 .join("; ");
+
 
             const result =
               await createJarvisResponse({
                 message:
-                  `[SYSTEM-HINWEIS] Es gibt ${newEmails.length} neue ungelesene E-Mails: ${list}. Weise Mattl kurz darauf hin.`
+                  `[SYSTEM-HINWEIS] ${unseen.length} neue ungelesene E-Mails: ${emailText}. Weise Mattl kurz darauf hin.`
               });
 
+
             return res.json({
-              ok: true,
-              hasNotice: true,
-              text: result.text
+              ok:
+                true,
+
+              hasNotice:
+                true,
+
+              text:
+                result.text
             });
           }
 
         } catch (error) {
-          console.error(
-            "Gmail check:",
+          console.warn(
+            "Gmail Check:",
             error
           );
         }
       }
 
 
-      /* OPEN ORDERS */
+      /* offene Bestellungen */
 
-      const openOrders =
+      const open =
         await getShopifyOpenOrders();
 
-      if (!openOrders.count) {
+
+      if (!open.count) {
         lastProactiveNotice = {
-          unfulfilledCount: 0,
+          unfulfilledCount:
+            0,
+
           notifiedAt:
             Date.now()
         };
 
+
         return res.json({
-          ok: true,
-          hasNotice: false
+          ok:
+            true,
+
+          hasNotice:
+            false
         });
       }
+
 
       const changed =
         lastProactiveNotice
           .unfulfilledCount !==
-        openOrders.count;
+        open.count;
 
-      const cooldownElapsed =
+
+      const cooldown =
         Date.now() -
           lastProactiveNotice
             .notifiedAt >
         PROACTIVE_REMINDER_COOLDOWN_MS;
 
+
       if (
         !changed &&
-        !cooldownElapsed
+        !cooldown
       ) {
         return res.json({
-          ok: true,
-          hasNotice: false
+          ok:
+            true,
+
+          hasNotice:
+            false
         });
       }
 
+
       lastProactiveNotice = {
         unfulfilledCount:
-          openOrders.count,
+          open.count,
+
         notifiedAt:
           Date.now()
       };
 
+
       const result =
         await createJarvisResponse({
           message:
-            `[SYSTEM-HINWEIS] Bei Druckelite24 gibt es aktuell ${openOrders.count} unbearbeitete Bestellungen. Sprich Mattl kurz darauf an.`
+            `[SYSTEM-HINWEIS] Aktuell gibt es ${open.count} unbearbeitete Bestellungen bei Druckelite24. Sag Mattl kurz Bescheid.`
         });
 
+
       return res.json({
-        ok: true,
-        hasNotice: true,
-        text: result.text
+        ok:
+          true,
+
+        hasNotice:
+          true,
+
+        text:
+          result.text
       });
+
 
     } catch (error) {
       console.error(
-        "Proactive check:",
+        "Checkin:",
         error
       );
 
-      return res.json({
-        ok: true,
-        hasNotice: false
-      });
-    }
-  }
-);
-
-
-/* =========================================================
-   LEGACY CHAT
-   Bleibt noch vorhanden.
-   ========================================================= */
-
-app.post(
-  "/api/jarvis-chat",
-  async (req, res) => {
-    try {
-      const message =
-        String(
-          req.body?.message ||
-          ""
-        ).trim();
-
-      if (!message) {
-        return res
-          .status(400)
-          .json({
-            ok: false,
-            error:
-              "Nachricht fehlt."
-          });
-      }
-
-      const result =
-        await createJarvisResponse({
-          message
-        });
 
       return res.json({
-        ok: true,
-        text: result.text,
-        response_id:
-          result.response_id
+        ok:
+          true,
+
+        hasNotice:
+          false
       });
-
-    } catch (error) {
-      console.error(
-        "Legacy chat:",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          ok: false,
-          error:
-            error.message ||
-            "JARVIS konnte nicht antworten."
-        });
     }
   }
 );
@@ -1728,48 +2496,51 @@ app.post(
 app.get(
   "/health",
   (req, res) => {
+
     return res.json({
-      ok: true,
+      ok:
+        true,
 
       version:
         `JARVIS ${JARVIS_VERSION}`,
 
       architecture:
-        "browser -> webrtc -> openai realtime",
+        "WebRTC OpenAI Realtime",
 
-      realtime: true,
+      realtime:
+        true,
 
       realtime_model:
-        process.env.OPENAI_REALTIME_MODEL ||
+        process.env
+          .OPENAI_REALTIME_MODEL ||
         "gpt-realtime-2.1",
 
       realtime_voice:
-        process.env.OPENAI_REALTIME_VOICE ||
+        process.env
+          .OPENAI_REALTIME_VOICE ||
         "cedar",
 
       transport:
         "WebRTC",
 
-      language:
-        "de",
-
-      connected_shop:
-        "Druckelite24",
-
       openai_configured:
         Boolean(
-          process.env.OPENAI_API_KEY
+          process.env
+            .OPENAI_API_KEY
         ),
-
-      gmail_configured:
-        isGmailConfigured(),
 
       shopify_configured:
         Boolean(
-          process.env.SHOPIFY_STORE_DOMAIN &&
-          process.env.SHOPIFY_CLIENT_ID &&
-          process.env.SHOPIFY_CLIENT_SECRET
-        )
+          process.env
+            .SHOPIFY_STORE_DOMAIN &&
+          process.env
+            .SHOPIFY_CLIENT_ID &&
+          process.env
+            .SHOPIFY_CLIENT_SECRET
+        ),
+
+      gmail_configured:
+        isGmailConfigured()
     });
   }
 );
@@ -1779,12 +2550,17 @@ app.get(
    ROOT
    ========================================================= */
 
-app.get("/", (req, res) => {
-  return res.sendFile(
-    "index.html",
-    { root: "." }
-  );
-});
+app.get(
+  "/",
+  (req, res) => {
+    return res.sendFile(
+      "index.html",
+      {
+        root: "."
+      }
+    );
+  }
+);
 
 
 /* =========================================================
@@ -1795,37 +2571,39 @@ app.listen(
   PORT,
   "0.0.0.0",
   () => {
+
     console.log(
       `JARVIS ${JARVIS_VERSION} läuft auf Port ${PORT}`
     );
 
     console.log(
-      "Realtime: AKTIVIERT"
+      "Realtime: AKTIV"
     );
 
     console.log(
-      `Realtime Modell: ${
-        process.env.OPENAI_REALTIME_MODEL ||
+      `Modell: ${
+        process.env
+          .OPENAI_REALTIME_MODEL ||
         "gpt-realtime-2.1"
       }`
     );
 
     console.log(
-      `Realtime Stimme: ${
-        process.env.OPENAI_REALTIME_VOICE ||
+      `Stimme: ${
+        process.env
+          .OPENAI_REALTIME_VOICE ||
         "cedar"
       }`
     );
 
     console.log(
-      "Transport: WebRTC"
-    );
-
-    console.log(
       `Shopify: ${
-        process.env.SHOPIFY_STORE_DOMAIN &&
-        process.env.SHOPIFY_CLIENT_ID &&
-        process.env.SHOPIFY_CLIENT_SECRET
+        process.env
+            .SHOPIFY_STORE_DOMAIN &&
+        process.env
+            .SHOPIFY_CLIENT_ID &&
+        process.env
+            .SHOPIFY_CLIENT_SECRET
           ? "verbunden"
           : "nicht verbunden"
       }`
