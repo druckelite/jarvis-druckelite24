@@ -2,8 +2,18 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V7.8 · PROAKTIVER HINWEIS
-   (Basis: V7.7, überarbeitet am 15.08.2026)
+   V7.9 · INTRO-MUSIK + ECHTE LAUTSTÄRKE-ANGLEICHUNG
+   (Basis: V7.8, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN GEGENÜBER V7.8:
+   13. Die Startzeremonie-Kürzung aus V7.6 hatte die Intro-Musik
+       praktisch unhörbar gemacht (nur noch 500ms, bevor sie schon
+       wieder ausgeblendet wurde). Jetzt 1200ms - Mittelweg zwischen
+       hörbarer Musik und schnellem Start.
+   14. Lautstärke-Normalisierung von Spitzenpegel auf RMS
+       (durchschnittliche Lautstärke) umgestellt - der Spitzenpegel
+       allein hat nicht gereicht, um alle Sätze gleich LAUT wirken zu
+       lassen, nur gleich laut im lautesten Moment.
 
    ÄNDERUNGEN GEGENÜBER V7.7:
    12. JARVIS meldet sich jetzt auch von sich aus, ohne dass Mattl ihn
@@ -144,9 +154,12 @@ let introFadeTimer = null;
 /* ============ SETTINGS · INTRO ============ */
 const INTRO_START = 4;
 const INTRO_START_VOLUME = 0.28;
-// War 2000ms - nur noch kurz anspielen, damit JARVIS schneller
-// zum eigentlichen Zuhören kommt.
-const INTRO_VOICE_DELAY_MS = 500;
+// War 2000ms, dann auf 500ms gekürzt für einen schnelleren Start -
+// dabei ist die Musik aber praktisch untergegangen, weil sie kaum
+// noch Zeit hatte, bevor sie schon wieder ausgeblendet wurde. 1200ms
+// ist der Mittelweg: Musik ist wieder hörbar, Start bleibt trotzdem
+// spürbar schneller als ursprünglich (2000ms).
+const INTRO_VOICE_DELAY_MS = 1200;
 const INTRO_BACKGROUND_VOLUME = 0.025;
 const INTRO_DUCK_DURATION_MS = 1500;
 const INTRO_FADE_DURATION_MS = 7000;
@@ -1019,22 +1032,46 @@ function playBlob(blob) {
         const arrayBuffer = await blob.arrayBuffer();
         const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
 
-        // FIX: Statt nur den Anfang kurz anzuheben, wird jeder Satz
-        // gemessen (Spitzenpegel) und auf ein einheitliches Ziel
-        // normalisiert. So klingt JARVIS bei jedem Satz gleich laut,
-        // egal ob es der erste oder der letzte ist.
+        // FIX V7.6: Spitzenpegel-Normalisierung hat nicht gereicht.
+        // Zwei Sätze können denselben Spitzenwert haben (einen einzelnen
+        // lauten Ton) und trotzdem unterschiedlich LAUT WIRKEN, weil die
+        // durchschnittliche Lautstärke (RMS) unterschiedlich ist. Jetzt
+        // wird auf den RMS-Wert normalisiert - das bildet die gefühlte
+        // Lautstärke viel besser ab. Der Spitzenwert wird trotzdem
+        // weiter mitgemessen, damit die Verstärkung nicht übersteuert
+        // (kein Knacksen/Verzerren).
+        let sumSquares = 0;
+        let sampleCount = 0;
         let peak = 0;
+
         for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
           const data = audioBuffer.getChannelData(channel);
-          for (let i = 0; i < data.length; i += 8) {
-            const abs = Math.abs(data[i]);
+          for (let i = 0; i < data.length; i += 4) {
+            const sample = data[i];
+            const abs = Math.abs(sample);
             if (abs > peak) peak = abs;
+            sumSquares += sample * sample;
+            sampleCount++;
           }
         }
 
-        const TARGET_PEAK = 0.9;
-        const MAX_GAIN = 4;
-        const gainValue = peak > 0.001 ? Math.min(TARGET_PEAK / peak, MAX_GAIN) : 1;
+        const rms = sampleCount > 0 ? Math.sqrt(sumSquares / sampleCount) : 0;
+
+        // Zielwert für die durchschnittliche Lautstärke - falls JARVIS
+        // insgesamt zu leise oder zu laut wirkt, hier anpassen.
+        const TARGET_RMS = 0.18;
+        const MAX_GAIN = 8;
+
+        let gainValue = rms > 0.0005 ? Math.min(TARGET_RMS / rms, MAX_GAIN) : 1;
+
+        // Sicherheitsnetz gegen Verzerrung: Verstärkung kappen, falls sie
+        // den Spitzenwert über die Hörbarkeitsgrenze treiben würde.
+        if (peak > 0) {
+          const projectedPeak = peak * gainValue;
+          if (projectedPeak > 0.98) {
+            gainValue = 0.98 / peak;
+          }
+        }
 
         const source = ctx.createBufferSource();
         source.buffer = audioBuffer;
