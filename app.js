@@ -25,8 +25,15 @@ const SILENCE_MS = 1100;
 const SPEECH_THRESHOLD = 0.035;
 const MIN_RECORDING_MS = 500;
 
+const INTRO_START = 4;
+const INTRO_END = 10;
+
 let recordingStartedAt = 0;
 let speechDetected = false;
+
+/* =========================================================
+   UI
+   ========================================================= */
 
 function setStatus(text) {
   if (!statusEl) return;
@@ -55,6 +62,10 @@ function setButtonActive(value) {
   }
 }
 
+/* =========================================================
+   GREETING
+   ========================================================= */
+
 function getGreeting() {
   const hour = Number(
     new Intl.DateTimeFormat(
@@ -78,6 +89,104 @@ function getGreeting() {
   return "Guten Abend, Mattl.";
 }
 
+/* =========================================================
+   INTRO SOUND
+   ========================================================= */
+
+async function playIntro() {
+  return new Promise((resolve) => {
+    const intro = new Audio("/Intro.mp3");
+
+    intro.preload = "auto";
+    intro.volume = 1;
+
+    let finished = false;
+
+    const finish = () => {
+      if (finished) return;
+
+      finished = true;
+
+      try {
+        intro.pause();
+      } catch {}
+
+      intro.removeEventListener(
+        "timeupdate",
+        handleTime
+      );
+
+      intro.removeEventListener(
+        "error",
+        handleError
+      );
+
+      resolve();
+    };
+
+    const handleTime = () => {
+      if (intro.currentTime >= INTRO_END) {
+        finish();
+      }
+    };
+
+    const handleError = (error) => {
+      console.error(
+        "Intro sound error:",
+        error
+      );
+
+      finish();
+    };
+
+    intro.addEventListener(
+      "timeupdate",
+      handleTime
+    );
+
+    intro.addEventListener(
+      "error",
+      handleError
+    );
+
+    intro.addEventListener(
+      "loadedmetadata",
+      async () => {
+        try {
+          intro.currentTime = INTRO_START;
+
+          await intro.play();
+
+          setLog(
+            "JARVIS startet …"
+          );
+        } catch (error) {
+          console.error(
+            "Intro play error:",
+            error
+          );
+
+          finish();
+        }
+      },
+      { once: true }
+    );
+
+    /*
+     * Sicherheits-Fallback:
+     * Falls der Browser timeupdate nicht sauber liefert.
+     */
+    setTimeout(
+      finish,
+      7000
+    );
+  });
+}
+
+/* =========================================================
+   SPEAK
+   ========================================================= */
+
 async function speak(text) {
   const sentence = String(text || "").trim();
 
@@ -97,9 +206,11 @@ async function speak(text) {
       "/api/speak",
       {
         method: "POST",
+
         headers: {
           "Content-Type": "application/json"
         },
+
         body: JSON.stringify({
           text: sentence
         })
@@ -120,7 +231,9 @@ async function speak(text) {
     }
 
     const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
+
+    const url =
+      URL.createObjectURL(blob);
 
     remoteAudio.srcObject = null;
     remoteAudio.src = url;
@@ -153,6 +266,10 @@ async function speak(text) {
   }
 }
 
+/* =========================================================
+   TRANSCRIBE
+   ========================================================= */
+
 async function transcribe(audioBlob) {
   setLog("Verstehe …");
 
@@ -161,11 +278,13 @@ async function transcribe(audioBlob) {
       "/api/transcribe",
       {
         method: "POST",
+
         headers: {
           "Content-Type":
             audioBlob.type ||
             "audio/webm"
         },
+
         body: audioBlob
       }
     );
@@ -195,6 +314,10 @@ async function transcribe(audioBlob) {
   ).trim();
 }
 
+/* =========================================================
+   ASK JARVIS
+   ========================================================= */
+
 async function askJarvis(message) {
   setLog("Denke nach …");
 
@@ -203,10 +326,11 @@ async function askJarvis(message) {
       "/api/ask",
       {
         method: "POST",
+
         headers: {
-          "Content-Type":
-            "application/json"
+          "Content-Type": "application/json"
         },
+
         body: JSON.stringify({
           message,
           history
@@ -263,6 +387,10 @@ async function askJarvis(message) {
   return reply;
 }
 
+/* =========================================================
+   PROCESS RECORDING
+   ========================================================= */
+
 async function processRecording(blob) {
   if (
     processing ||
@@ -278,7 +406,9 @@ async function processRecording(blob) {
       await transcribe(blob);
 
     if (!transcript) {
-      setLog("JARVIS hört zu.");
+      setLog(
+        "JARVIS hört zu."
+      );
 
       processing = false;
 
@@ -324,6 +454,10 @@ async function processRecording(blob) {
   }
 }
 
+/* =========================================================
+   AUDIO LEVEL
+   ========================================================= */
+
 function getAudioLevel() {
   if (!analyser) {
     return 0;
@@ -357,6 +491,10 @@ function getAudioLevel() {
     sum / buffer.length
   );
 }
+
+/* =========================================================
+   SILENCE DETECTION
+   ========================================================= */
 
 function monitorSilence() {
   if (
@@ -425,6 +563,10 @@ function stopListeningMonitor() {
     silenceTimer = null;
   }
 }
+
+/* =========================================================
+   CONTINUOUS LISTENING
+   ========================================================= */
 
 async function startContinuousListening() {
   if (
@@ -565,8 +707,13 @@ async function startContinuousListening() {
 
     recording = true;
 
-    setStatus("Online");
-    setButtonActive(true);
+    setStatus(
+      "Online"
+    );
+
+    setButtonActive(
+      true
+    );
 
     setLog(
       "JARVIS hört zu."
@@ -587,6 +734,10 @@ async function startContinuousListening() {
     await stopJarvis();
   }
 }
+
+/* =========================================================
+   AUTO STOP
+   ========================================================= */
 
 function stopRecordingAutomatically() {
   if (
@@ -625,6 +776,10 @@ function stopRecordingAutomatically() {
   }
 }
 
+/* =========================================================
+   START JARVIS
+   ========================================================= */
+
 async function startJarvis() {
   if (
     active ||
@@ -650,17 +805,44 @@ async function startJarvis() {
   );
 
   try {
+    /*
+     * 1. Eigenes Intro:
+     * Sekunde 4 bis 10
+     */
+    await playIntro();
+
+    /*
+     * 2. Begrüßung
+     */
     await speak(
       getGreeting()
     );
 
   } catch (error) {
-    console.error(error);
+    console.error(
+      "Start error:",
+      error
+    );
+
+    /*
+     * Selbst wenn Intro scheitert:
+     * JARVIS soll trotzdem weiterlaufen.
+     */
+    if (
+      active &&
+      !speaking
+    ) {
+      await startContinuousListening();
+    }
 
   } finally {
     button.disabled = false;
   }
 }
+
+/* =========================================================
+   STOP JARVIS
+   ========================================================= */
 
 async function stopJarvis() {
   active = false;
@@ -718,10 +900,22 @@ async function stopJarvis() {
     remoteAudio.srcObject = null;
   } catch {}
 
-  setButtonActive(false);
-  setStatus("Offline");
-  setLog("Bereit.");
+  setButtonActive(
+    false
+  );
+
+  setStatus(
+    "Offline"
+  );
+
+  setLog(
+    "Bereit."
+  );
 }
+
+/* =========================================================
+   BUTTON
+   ========================================================= */
 
 button.addEventListener(
   "click",
@@ -734,6 +928,10 @@ button.addEventListener(
     await startJarvis();
   }
 );
+
+/* =========================================================
+   CLEANUP
+   ========================================================= */
 
 window.addEventListener(
   "pagehide",
