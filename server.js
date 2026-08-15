@@ -7,7 +7,7 @@ app.use(express.static("."));
 app.use(express.json({ limit: "1mb" }));
 
 /* =========================================================
-   HELPERS
+   DATE HELPERS
    ========================================================= */
 
 function berlinDate() {
@@ -20,16 +20,24 @@ function berlinDate() {
 }
 
 function dateRange(period = "today") {
-  const base = new Date(`${berlinDate()}T00:00:00+02:00`);
+  const base =
+    new Date(`${berlinDate()}T00:00:00+02:00`);
 
   if (period === "yesterday") {
-    base.setUTCDate(base.getUTCDate() - 1);
+    base.setUTCDate(
+      base.getUTCDate() - 1
+    );
   }
 
-  const start = new Date(base);
-  const end = new Date(base);
+  const start =
+    new Date(base);
 
-  end.setUTCDate(end.getUTCDate() + 1);
+  const end =
+    new Date(base);
+
+  end.setUTCDate(
+    end.getUTCDate() + 1
+  );
 
   return {
     start: start.toISOString(),
@@ -38,26 +46,24 @@ function dateRange(period = "today") {
 }
 
 /* =========================================================
-   JARVIS V2 INSTRUCTIONS
+   JARVIS V2
    ========================================================= */
 
 const JARVIS_INSTRUCTIONS = `
-Du bist JARVIS V2, der persönliche Voice- und Business-Assistent von Mattl.
+Du bist JARVIS V2, Mattls persönlicher Voice- und Business-Assistent.
 
-SPRACHE – ABSOLUTE REGEL
+SPRACHE
 - Sprich ausschließlich Deutsch.
-- Beginne jede Unterhaltung auf Deutsch.
-- Verwende kein Englisch, außer Mattl verlangt ausdrücklich eine andere Sprache.
-- Wenn Spracheingabe unklar ist, frage kurz auf Deutsch nach.
-- Erfinde niemals eine Interpretation, wenn du Mattl nicht verstanden hast.
+- Nur wenn Mattl ausdrücklich eine andere Sprache verlangt, darfst du wechseln.
+- Wenn du etwas nicht verstanden hast, frage kurz auf Deutsch nach.
 
 AUSSPRACHE
 - Der Benutzer heißt Mattl.
-- Sprich: Mat-tl.
-- Das T muss hörbar bleiben.
-- Nicht "Maddl".
+- Sprich ungefähr: Mat-tl.
+- Das T soll hörbar sein.
+- Nicht Maddl.
 
-STIMME UND CHARAKTER
+STIMME
 - Ruhig.
 - Souverän.
 - Warm.
@@ -65,80 +71,63 @@ STIMME UND CHARAKTER
 - Kontrolliert.
 - Natürliches Hochdeutsch.
 - Kein starker Akzent.
-- Keine Callcenter-Stimme.
-- Keine hektischen Antworten.
-- Kurze natürliche Pausen.
+- Kein Callcenter-Stil.
+
+ANTWORTEN
+- Beantworte zuerst exakt die Frage.
+- Sei standardmäßig kurz und präzise.
+- Keine ungefragten langen Monologe.
+- Keine automatischen Anschlussfragen.
+- Wenn die Antwort fertig ist, schweige.
+- Keine themenfremden Vorschläge.
 
 PERSÖNLICHKEIT
 - Intelligent.
 - Direkt.
 - Vorausschauend.
 - Lösungsorientiert.
-- Trocken humorvoll.
-- Gelegentlich frech oder sarkastisch.
-- Bei wichtigen Problemen sofort ernst und präzise.
+- Gelegentlich trocken, frech oder sarkastisch.
+- Bei wichtigen Problemen sofort ernst.
 - Sehr selten darfst du sagen:
   "Du bist der beste Chef."
-- Nicht schleimen.
 
-ANTWORTVERHALTEN
-- Beantworte zuerst exakt die gestellte Frage.
-- Standardmäßig kurz und präzise.
-- Keine ungefragten langen Monologe.
-- Keine automatischen Anschlussfragen.
-- Wenn die Antwort fertig ist: schweigen und auf Mattl warten.
-- Wenn Mattl sagt "sag nur ...", sag ausschließlich den verlangten Inhalt.
+LIVE-DATEN
+Bei Shopify-Fragen MUSST du get_shopify_summary verwenden.
 
-WICHTIGSTE REGEL: LIVE-DATEN
-Du darfst aktuelle Geschäftsdaten NIEMALS erfinden.
-
-Wenn Mattl nach folgenden Dingen fragt, MUSST du das passende Tool benutzen:
-
-SHOPIFY:
+Dazu gehören insbesondere:
 - Umsatz
+- Shopify
 - Bestellungen
-- Shop
 - Verkäufe
+- Shop-Umsatz
 - Bestellwert
-=> get_shopify_summary
 
-E-MAIL:
-- Mail
-- Mails
-- E-Mail
-- Postfach
-- Kundenmail
-=> get_important_emails
+Bei E-Mail-Fragen:
+get_important_emails verwenden.
 
-KALENDER:
-- Kalender
-- Termine
-- was steht heute an
-=> get_calendar_today
+Bei Kalender- oder Terminfragen:
+get_calendar_today verwenden.
 
-WETTER:
-- Wetter
-- Temperatur
-- Regen
-- Prognose
-=> get_weather
+Bei Wetterfragen:
+get_weather verwenden.
 
-ABSOLUT VERBOTEN:
-Wenn Mattl nach Shopify fragt, darfst du niemals Reisen,
-Urlaub, Hotels, Orte oder andere themenfremde Dinge vorschlagen.
+Erfinde niemals Live-Daten.
 
-Wenn ein Tool nicht verbunden ist:
-sage genau, dass diese Verbindung noch fehlt.
+Wenn eine Verbindung fehlt:
+sage das offen.
 
-Beispiel:
-"Mattl, Shopify ist im Voice-JARVIS noch nicht verbunden."
-
-Erfinde niemals Ersatzdaten.
+ABSOLUT VERBOTEN
+Bei Shopify-Fragen:
+- keine Reisen
+- keine Workouts
+- keine Kalorien
+- keine Hotels
+- keine themenfremden Ratschläge
 
 DRUCKELITE24
 Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
 
-Relevante Themen:
+Wichtige Themen:
 - Firmenbekleidung
 - Vereinsbekleidung
 - Teamsport
@@ -150,46 +139,23 @@ Relevante Themen:
 - Shopify
 - E-Commerce
 
-PROAKTIVITÄT
-Du darfst eigene Ideen haben.
-
-Aber:
-- Erst die Frage beantworten.
-- Danach höchstens EIN kurzer sinnvoller Hinweis.
-- Nur wenn er wirklich relevant ist.
-
-Beispiel:
-"Mattl, die Conversion ist stabil, aber der Traffic ist gefallen.
-Ich würde zuerst die Trafficquelle prüfen."
+PROAKTIV
+Du darfst nach der eigentlichen Antwort höchstens EINEN kurzen,
+wirklich relevanten Hinweis geben.
 
 SICHERHEIT
-Analysieren, lesen und Empfehlungen geben ist erlaubt.
+Lesen, analysieren und Empfehlungen geben ist erlaubt.
 
-Für kritische Aktionen brauchst du vorher Mattls Zustimmung:
+Vor kritischen Aktionen brauchst du Mattls Zustimmung:
 - Geld ausgeben
-- Ads-Budget ändern
+- Werbebudget ändern
 - Kampagnen pausieren
-- Mails senden
 - Nachrichten senden
-- Preise verändern
+- E-Mails senden
+- Preise ändern
 - Bestellungen stornieren
 - Rückerstattungen
 - Daten löschen
-
-ZIEL
-Du bist kein allgemeiner Zufallsgenerator.
-Du bist Mattls persönlicher Assistent.
-
-Wenn du etwas nicht weißt:
-sag es.
-
-Wenn ein Tool gebraucht wird:
-benutze es.
-
-Wenn ein Tool fehlt:
-sage es.
-
-Niemals raten.
 `;
 
 /* =========================================================
@@ -201,7 +167,7 @@ const tools = [
     type: "function",
     name: "get_shopify_summary",
     description:
-      "MUSS für alle Fragen zu Shopify, Umsatz, Verkäufen und Bestellungen verwendet werden.",
+      "Liest echte aktuelle Shopify-Daten. Für alle Fragen zu Umsatz, Bestellungen, Verkäufen oder Shopify verwenden.",
     parameters: {
       type: "object",
       properties: {
@@ -219,7 +185,7 @@ const tools = [
     type: "function",
     name: "get_important_emails",
     description:
-      "MUSS für Fragen zu aktuellen oder wichtigen E-Mails verwendet werden.",
+      "Liest wichtige aktuelle E-Mails.",
     parameters: {
       type: "object",
       properties: {
@@ -238,7 +204,7 @@ const tools = [
     type: "function",
     name: "get_calendar_today",
     description:
-      "MUSS für Fragen zu heutigen Terminen und Kalender verwendet werden.",
+      "Liest heutige Kalendereinträge.",
     parameters: {
       type: "object",
       properties: {},
@@ -250,7 +216,7 @@ const tools = [
     type: "function",
     name: "get_weather",
     description:
-      "MUSS für aktuelle Wetterfragen verwendet werden.",
+      "Liest echtes Wetter für heute oder morgen.",
     parameters: {
       type: "object",
       properties: {
@@ -274,7 +240,6 @@ const tools = [
 
 app.post(
   "/session",
-
   express.text({
     type: "application/sdp",
     limit: "1mb"
@@ -288,7 +253,10 @@ app.post(
           .send("OPENAI_API_KEY fehlt.");
       }
 
-      if (!req.body || typeof req.body !== "string") {
+      if (
+        !req.body ||
+        typeof req.body !== "string"
+      ) {
         return res
           .status(400)
           .send("SDP Offer fehlt.");
@@ -318,23 +286,21 @@ app.post(
             },
 
             transcription: {
-              model: "gpt-4o-mini-transcribe",
+              model:
+                "gpt-4o-mini-transcribe",
+
               language: "de",
+
               prompt:
-                "Ausschließlich deutsche Sprache. Benutzer heißt Mattl. Geschäft: Druckelite24, Shopify, E-Commerce, DTF und Textildruck."
+                "Deutsch. Benutzer heißt Mattl. Druckelite24, Shopify, DTF, Textildruck und E-Commerce."
             },
 
             turn_detection: {
               type: "server_vad",
-
               threshold: 0.80,
-
               prefix_padding_ms: 300,
-
               silence_duration_ms: 850,
-
               create_response: true,
-
               interrupt_response: true
             }
           },
@@ -357,14 +323,9 @@ app.post(
       form.append(
         "session",
         new Blob(
-          [
-            JSON.stringify(
-              session
-            )
-          ],
+          [JSON.stringify(session)],
           {
-            type:
-              "application/json"
+            type: "application/json"
           }
         )
       );
@@ -420,6 +381,349 @@ app.post(
 );
 
 /* =========================================================
+   SHOPIFY AUTH
+   ========================================================= */
+
+let shopifyTokenCache = {
+  token: null,
+  expiresAt: 0
+};
+
+async function getShopifyAccessToken() {
+  /*
+   * Vorhandenen Token verwenden,
+   * solange er noch mindestens 5 Minuten gültig ist.
+   */
+  if (
+    shopifyTokenCache.token &&
+    Date.now() <
+      shopifyTokenCache.expiresAt -
+        5 * 60 * 1000
+  ) {
+    return shopifyTokenCache.token;
+  }
+
+  const domain =
+    process.env.SHOPIFY_STORE_DOMAIN;
+
+  const clientId =
+    process.env.SHOPIFY_CLIENT_ID;
+
+  const clientSecret =
+    process.env.SHOPIFY_CLIENT_SECRET;
+
+  if (
+    !domain ||
+    !clientId ||
+    !clientSecret
+  ) {
+    throw new Error(
+      "Shopify-Zugangsdaten fehlen in Render."
+    );
+  }
+
+  const params =
+    new URLSearchParams({
+      grant_type:
+        "client_credentials",
+
+      client_id:
+        clientId,
+
+      client_secret:
+        clientSecret
+    });
+
+  const response =
+    await fetch(
+      `https://${domain}/admin/oauth/access_token`,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/x-www-form-urlencoded"
+        },
+
+        body: params
+      }
+    );
+
+  const data =
+    await response.json();
+
+  if (!response.ok) {
+    console.error(
+      "Shopify token error:",
+      data
+    );
+
+    throw new Error(
+      "Shopify-Authentifizierung fehlgeschlagen."
+    );
+  }
+
+  if (!data.access_token) {
+    throw new Error(
+      "Shopify hat keinen Access Token geliefert."
+    );
+  }
+
+  /*
+   * Shopify liefert expires_in in Sekunden.
+   */
+  const expiresIn =
+    Number(
+      data.expires_in ||
+      86399
+    );
+
+  shopifyTokenCache = {
+    token:
+      data.access_token,
+
+    expiresAt:
+      Date.now() +
+      expiresIn * 1000
+  };
+
+  console.log(
+    "Shopify access token refreshed."
+  );
+
+  return data.access_token;
+}
+
+/* =========================================================
+   SHOPIFY SUMMARY
+   ========================================================= */
+
+app.post(
+  "/api/shopify-summary",
+
+  async (req, res) => {
+    try {
+      const domain =
+        process.env.SHOPIFY_STORE_DOMAIN;
+
+      const apiVersion =
+        process.env.SHOPIFY_API_VERSION ||
+        "2026-07";
+
+      if (!domain) {
+        return res
+          .status(503)
+          .json({
+            configured: false,
+
+            message:
+              "SHOPIFY_STORE_DOMAIN fehlt."
+          });
+      }
+
+      const accessToken =
+        await getShopifyAccessToken();
+
+      const period =
+        req.body?.period ===
+        "yesterday"
+          ? "yesterday"
+          : "today";
+
+      const {
+        start,
+        end
+      } =
+        dateRange(period);
+
+      const queryString =
+        `created_at:>=${start} created_at:<${end}`;
+
+      const query = `
+        query JarvisOrders($query: String!) {
+          orders(
+            first: 100,
+            query: $query,
+            sortKey: CREATED_AT
+          ) {
+            nodes {
+              name
+              createdAt
+              cancelledAt
+              displayFinancialStatus
+
+              currentTotalPriceSet {
+                shopMoney {
+                  amount
+                  currencyCode
+                }
+              }
+            }
+          }
+        }
+      `;
+
+      const response =
+        await fetch(
+          `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+
+              "X-Shopify-Access-Token":
+                accessToken
+            },
+
+            body:
+              JSON.stringify({
+                query,
+
+                variables: {
+                  query:
+                    queryString
+                }
+              })
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (
+        !response.ok ||
+        data.errors
+      ) {
+        console.error(
+          "Shopify GraphQL error:",
+          data
+        );
+
+        return res
+          .status(502)
+          .json({
+            configured: true,
+
+            error:
+              data.errors ||
+              data
+          });
+      }
+
+      const orders =
+        data.data
+          ?.orders
+          ?.nodes || [];
+
+      const validOrders =
+        orders.filter(
+          order =>
+            !order.cancelledAt
+        );
+
+      const revenue =
+        validOrders.reduce(
+          (
+            total,
+            order
+          ) =>
+            total +
+            Number(
+              order
+                .currentTotalPriceSet
+                ?.shopMoney
+                ?.amount || 0
+            ),
+          0
+        );
+
+      const currency =
+        validOrders[0]
+          ?.currentTotalPriceSet
+          ?.shopMoney
+          ?.currencyCode ||
+        "EUR";
+
+      const averageOrderValue =
+        validOrders.length
+          ? revenue /
+            validOrders.length
+          : 0;
+
+      return res.json({
+        configured: true,
+
+        period,
+
+        orders:
+          validOrders.length,
+
+        revenue:
+          Number(
+            revenue.toFixed(2)
+          ),
+
+        average_order_value:
+          Number(
+            averageOrderValue.toFixed(2)
+          ),
+
+        currency,
+
+        source:
+          "Shopify Admin GraphQL API"
+      });
+
+    } catch (error) {
+      console.error(
+        "Shopify summary error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          configured: false,
+
+          error:
+            error.message ||
+            "Shopify-Abfrage fehlgeschlagen."
+        });
+    }
+  }
+);
+
+/* =========================================================
+   GOOGLE PLACEHOLDERS
+   ========================================================= */
+
+app.post(
+  "/api/important-emails",
+  (req, res) => {
+    res.status(503).json({
+      configured: false,
+
+      message:
+        "Gmail wird als Nächstes verbunden."
+    });
+  }
+);
+
+app.post(
+  "/api/calendar-today",
+  (req, res) => {
+    res.status(503).json({
+      configured: false,
+
+      message:
+        "Google Kalender wird als Nächstes verbunden."
+    });
+  }
+);
+
+/* =========================================================
    WEATHER
    ========================================================= */
 
@@ -434,7 +738,8 @@ app.post(
         ).trim();
 
       const day =
-        req.body?.day === "tomorrow"
+        req.body?.day ===
+        "tomorrow"
           ? "tomorrow"
           : "today";
 
@@ -499,12 +804,15 @@ app.post(
         place =
           candidates.find(
             x =>
-              x.country_code === "DE" &&
+              x.country_code ===
+                "DE" &&
               String(
                 x.admin1 || ""
               )
                 .toLowerCase()
-                .includes("rheinland")
+                .includes(
+                  "rheinland"
+                )
           );
       }
 
@@ -523,12 +831,16 @@ app.post(
 
       weather.searchParams.set(
         "latitude",
-        String(place.latitude)
+        String(
+          place.latitude
+        )
       );
 
       weather.searchParams.set(
         "longitude",
-        String(place.longitude)
+        String(
+          place.longitude
+        )
       );
 
       weather.searchParams.set(
@@ -538,7 +850,7 @@ app.post(
 
       weather.searchParams.set(
         "daily",
-        "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+        "temperature_2m_max,temperature_2m_min,precipitation_probability_max"
       );
 
       weather.searchParams.set(
@@ -621,473 +933,6 @@ app.post(
 );
 
 /* =========================================================
-   SHOPIFY
-   ========================================================= */
-
-app.post(
-  "/api/shopify-summary",
-
-  async (req, res) => {
-    const domain =
-      process.env.SHOPIFY_STORE_DOMAIN;
-
-    const token =
-      process.env.SHOPIFY_ADMIN_ACCESS_TOKEN;
-
-    const apiVersion =
-      process.env.SHOPIFY_API_VERSION ||
-      "2026-07";
-
-    if (!domain || !token) {
-      return res
-        .status(503)
-        .json({
-          configured: false,
-
-          message:
-            "Shopify ist im Voice-JARVIS noch nicht verbunden."
-        });
-    }
-
-    try {
-      const period =
-        req.body?.period === "yesterday"
-          ? "yesterday"
-          : "today";
-
-      const {
-        start,
-        end
-      } =
-        dateRange(period);
-
-      const shopifyQuery =
-        `created_at:>=${start} created_at:<${end}`;
-
-      const query = `
-        query JarvisOrders($query: String!) {
-          orders(
-            first: 100,
-            query: $query,
-            sortKey: CREATED_AT
-          ) {
-            nodes {
-              cancelledAt
-
-              currentTotalPriceSet {
-                shopMoney {
-                  amount
-                  currencyCode
-                }
-              }
-            }
-          }
-        }
-      `;
-
-      const response =
-        await fetch(
-          `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-          {
-            method: "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-
-              "X-Shopify-Access-Token":
-                token
-            },
-
-            body:
-              JSON.stringify({
-                query,
-
-                variables: {
-                  query:
-                    shopifyQuery
-                }
-              })
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (
-        !response.ok ||
-        data.errors
-      ) {
-        return res
-          .status(502)
-          .json({
-            error:
-              data.errors ||
-              data
-          });
-      }
-
-      const orders =
-        data.data
-          ?.orders
-          ?.nodes || [];
-
-      const valid =
-        orders.filter(
-          order =>
-            !order.cancelledAt
-        );
-
-      const revenue =
-        valid.reduce(
-          (sum, order) =>
-            sum +
-            Number(
-              order
-                .currentTotalPriceSet
-                ?.shopMoney
-                ?.amount || 0
-            ),
-          0
-        );
-
-      return res.json({
-        configured: true,
-
-        period,
-
-        orders:
-          valid.length,
-
-        revenue:
-          Number(
-            revenue.toFixed(2)
-          ),
-
-        currency:
-          valid[0]
-            ?.currentTotalPriceSet
-            ?.shopMoney
-            ?.currencyCode ||
-          "EUR"
-      });
-
-    } catch (error) {
-      console.error(
-        "Shopify error:",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          error:
-            "Shopify-Abfrage fehlgeschlagen."
-        });
-    }
-  }
-);
-
-/* =========================================================
-   GOOGLE AUTH
-   ========================================================= */
-
-async function googleAccessToken() {
-  const clientId =
-    process.env.GOOGLE_CLIENT_ID;
-
-  const clientSecret =
-    process.env.GOOGLE_CLIENT_SECRET;
-
-  const refreshToken =
-    process.env.GOOGLE_REFRESH_TOKEN;
-
-  if (
-    !clientId ||
-    !clientSecret ||
-    !refreshToken
-  ) {
-    return null;
-  }
-
-  const params =
-    new URLSearchParams({
-      client_id: clientId,
-      client_secret: clientSecret,
-      refresh_token: refreshToken,
-      grant_type: "refresh_token"
-    });
-
-  const response =
-    await fetch(
-      "https://oauth2.googleapis.com/token",
-      {
-        method: "POST",
-
-        headers: {
-          "Content-Type":
-            "application/x-www-form-urlencoded"
-        },
-
-        body: params
-      }
-    );
-
-  if (!response.ok) {
-    throw new Error(
-      "Google OAuth fehlgeschlagen."
-    );
-  }
-
-  return (
-    await response.json()
-  ).access_token;
-}
-
-/* =========================================================
-   GMAIL
-   ========================================================= */
-
-app.post(
-  "/api/important-emails",
-
-  async (req, res) => {
-    try {
-      const token =
-        await googleAccessToken();
-
-      if (!token) {
-        return res
-          .status(503)
-          .json({
-            configured: false,
-
-            message:
-              "Gmail ist im Voice-JARVIS noch nicht verbunden."
-          });
-      }
-
-      const limit =
-        Math.min(
-          Math.max(
-            Number(
-              req.body?.limit || 3
-            ),
-            1
-          ),
-          10
-        );
-
-      const q =
-        encodeURIComponent(
-          "newer_than:2d -in:spam -in:trash -category:promotions"
-        );
-
-      const response =
-        await fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=${limit}`,
-          {
-            headers: {
-              Authorization:
-                `Bearer ${token}`
-            }
-          }
-        );
-
-      const data =
-        await response.json();
-
-      const emails = [];
-
-      for (
-        const item of
-        data.messages || []
-      ) {
-        const messageResponse =
-          await fetch(
-            `https://gmail.googleapis.com/gmail/v1/users/me/messages/${item.id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
-            {
-              headers: {
-                Authorization:
-                  `Bearer ${token}`
-              }
-            }
-          );
-
-        if (!messageResponse.ok) {
-          continue;
-        }
-
-        const message =
-          await messageResponse.json();
-
-        const headers =
-          Object.fromEntries(
-            (
-              message.payload
-                ?.headers || []
-            ).map(
-              h => [
-                h.name.toLowerCase(),
-                h.value
-              ]
-            )
-          );
-
-        emails.push({
-          from:
-            headers.from || "",
-
-          subject:
-            headers.subject || "",
-
-          date:
-            headers.date || "",
-
-          snippet:
-            message.snippet || ""
-        });
-      }
-
-      return res.json({
-        configured: true,
-        emails
-      });
-
-    } catch (error) {
-      console.error(
-        "Gmail error:",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          error:
-            "Gmail-Abfrage fehlgeschlagen."
-        });
-    }
-  }
-);
-
-/* =========================================================
-   CALENDAR
-   ========================================================= */
-
-app.post(
-  "/api/calendar-today",
-
-  async (req, res) => {
-    try {
-      const token =
-        await googleAccessToken();
-
-      if (!token) {
-        return res
-          .status(503)
-          .json({
-            configured: false,
-
-            message:
-              "Google Kalender ist im Voice-JARVIS noch nicht verbunden."
-          });
-      }
-
-      const today =
-        berlinDate();
-
-      const start =
-        new Date(
-          `${today}T00:00:00+02:00`
-        );
-
-      const end =
-        new Date(start);
-
-      end.setUTCDate(
-        end.getUTCDate() + 1
-      );
-
-      const url =
-        new URL(
-          "https://www.googleapis.com/calendar/v3/calendars/primary/events"
-        );
-
-      url.searchParams.set(
-        "timeMin",
-        start.toISOString()
-      );
-
-      url.searchParams.set(
-        "timeMax",
-        end.toISOString()
-      );
-
-      url.searchParams.set(
-        "singleEvents",
-        "true"
-      );
-
-      url.searchParams.set(
-        "orderBy",
-        "startTime"
-      );
-
-      const response =
-        await fetch(
-          url,
-          {
-            headers: {
-              Authorization:
-                `Bearer ${token}`
-            }
-          }
-        );
-
-      const data =
-        await response.json();
-
-      const events =
-        (data.items || [])
-          .map(
-            event => ({
-              title:
-                event.summary ||
-                "(ohne Titel)",
-
-              start:
-                event.start
-                  ?.dateTime ||
-                event.start
-                  ?.date,
-
-              location:
-                event.location || ""
-            })
-          );
-
-      return res.json({
-        configured: true,
-        events
-      });
-
-    } catch (error) {
-      console.error(
-        "Calendar error:",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          error:
-            "Kalender-Abfrage fehlgeschlagen."
-        });
-    }
-  }
-);
-
-/* =========================================================
    HEALTH
    ========================================================= */
 
@@ -1096,9 +941,24 @@ app.get(
   (req, res) => {
     res.json({
       ok: true,
-      version: "JARVIS V2",
-      language: "de",
-      voice: "cedar"
+      version:
+        "JARVIS V2",
+
+      language:
+        "de",
+
+      voice:
+        "cedar",
+
+      shopify_configured:
+        Boolean(
+          process.env
+            .SHOPIFY_STORE_DOMAIN &&
+          process.env
+            .SHOPIFY_CLIENT_ID &&
+          process.env
+            .SHOPIFY_CLIENT_SECRET
+        )
     });
   }
 );
@@ -1108,7 +968,9 @@ app.get(
   (req, res) => {
     res.sendFile(
       "index.html",
-      { root: "." }
+      {
+        root: "."
+      }
     );
   }
 );
