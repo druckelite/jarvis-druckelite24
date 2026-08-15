@@ -2,20 +2,35 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V6.1 · TRANSCRIPTION FALLBACK
+   V7.0 · MEDIARECORDER PIPELINE
+
+   =========================================================
+   ARCHITEKTUR
+   =========================================================
+
+   Browser-Mikrofon
+        ↓
+   MediaRecorder
+        ↓
+   /api/transcribe
+        ↓
+   OpenAI Transcription
+        ↓
+   /api/jarvis-chat
+        ↓
+   OpenAI Responses API
+        ↓
+   /api/elevenlabs-tts
+        ↓
+   ElevenLabs · einzige Stimme
 
    ---------------------------------------------------------
-   ARCHITEKTUR
-   ---------------------------------------------------------
-   1. OpenAI Realtime hört NUR zu
-   2. OpenAI Realtime transkribiert
-   3. KEIN response.create
-   4. /api/jarvis-chat erzeugt Textantwort
-   5. ElevenLabs ist die EINZIGE Stimme
-   6. Kein cedar
-   7. Transcription-Deltas werden gesammelt
-   8. Fallback, falls completed-Event zu spät kommt
-   ========================================================= */
+   KEIN OPENAI REALTIME
+   KEIN CEDAR
+   KEIN WEBRTC
+   KEIN response.create
+   =========================================================
+*/
 
 
 /* =========================================================
@@ -25,145 +40,138 @@
 const button =
   document.querySelector("#toggle");
 
+
 const statusEl =
   document.querySelector("#status");
 
+
 const logEl =
   document.querySelector("#log");
+
 
 const remoteAudio =
   document.querySelector("#remoteAudio");
 
 
 /* =========================================================
-   REALTIME CONNECTION
+   STATE
    ========================================================= */
 
-let pc = null;
+let active =
+  false;
 
-let dc = null;
 
-let localStream = null;
+let starting =
+  false;
 
-let active = false;
 
-let connecting = false;
+let assistantSpeaking =
+  false;
+
+
+let processing =
+  false;
 
 
 /* =========================================================
-   JARVIS STATE
+   MICROPHONE
    ========================================================= */
 
-let assistantSpeaking = false;
+let micStream =
+  null;
 
-let waitingForAssistant = false;
 
-let chatInProgress = false;
+let mediaRecorder =
+  null;
+
+
+let audioChunks =
+  [];
+
+
+/* =========================================================
+   AUDIO ANALYSIS
+   ========================================================= */
+
+let audioContext =
+  null;
+
+
+let analyser =
+  null;
+
+
+let sourceNode =
+  null;
+
+
+let silenceCheckTimer =
+  null;
+
+
+let recordingStartedAt =
+  0;
+
+
+let lastVoiceAt =
+  0;
 
 
 /* =========================================================
    CONVERSATION
    ========================================================= */
 
-let previousResponseId = null;
-
-
-/* =========================================================
-   TRANSCRIPTION
-   ========================================================= */
-
-/*
- * Bereits vollständig verarbeitete
- * Realtime-Items.
- */
-const processedItemIds =
-  new Set();
-
-
-const MAX_PROCESSED_ITEMS =
-  100;
-
-
-/*
- * Partielle Transkripte.
- *
- * Key:
- * OpenAI item_id
- *
- * Value:
- * bisher empfangener Text
- */
-const transcriptBuffers =
-  new Map();
-
-
-/*
- * Letztes Item, das Sprache
- * geliefert hat.
- */
-let latestTranscriptItemId =
+let previousResponseId =
   null;
-
-
-/*
- * Fallback-Timer.
- *
- * Falls completed nicht kommt,
- * verwenden wir nach einigen
- * Sekunden die bereits empfangenen
- * Delta-Texte.
- */
-let transcriptFallbackTimer =
-  null;
-
-
-let transcriptRecoveryTimer =
-  null;
-
-
-/*
- * Dedupe ohne item_id.
- */
-let lastTranscriptText =
-  "";
-
-let lastTranscriptTime =
-  0;
 
 
 /* =========================================================
    ELEVENLABS
    ========================================================= */
 
-let elevenAudio = null;
-
-let elevenObjectUrl = null;
-
-let elevenPlaybackSettled = false;
+let elevenAudio =
+  null;
 
 
-/* =========================================================
-   INTRO
-   ========================================================= */
+let elevenObjectUrl =
+  null;
 
-let introAudio = null;
 
-let introFadeTimer = null;
+let ttsController =
+  null;
 
 
 /* =========================================================
    NETWORK
    ========================================================= */
 
-let chatController = null;
+let transcriptionController =
+  null;
 
-let ttsController = null;
+
+let chatController =
+  null;
+
+
+/* =========================================================
+   INTRO
+   ========================================================= */
+
+let introAudio =
+  null;
+
+
+let introFadeTimer =
+  null;
 
 
 /* =========================================================
    SETTINGS
    ========================================================= */
 
+/*
+ * Intro.
+ */
 const INTRO_START =
   4;
 
@@ -189,38 +197,54 @@ const INTRO_FADE_DURATION_MS =
 
 
 /*
- * Nach Ende der Jarvis-Stimme
- * kurze Echo-Sicherheitszeit.
+ * Sprachaufnahme.
+ */
+const MIN_RECORDING_MS =
+  500;
+
+
+/*
+ * Nach dieser Stille gilt der Satz
+ * als beendet.
+ */
+const SILENCE_DURATION_MS =
+  900;
+
+
+/*
+ * Unterhalb dieses Pegels
+ * behandeln wir das Signal als leise.
+ *
+ * Je nach Mikrofon kann später
+ * feinjustiert werden.
+ */
+const SILENCE_THRESHOLD =
+  0.018;
+
+
+/*
+ * Sicherheitslimit:
+ * Kein Turn darf endlos aufnehmen.
+ */
+const MAX_RECORDING_MS =
+  30000;
+
+
+/*
+ * Nach Jarvis-Ausgabe kurze Pause
+ * gegen Lautsprecher-Echo.
  */
 const LISTENING_RESUME_DELAY_MS =
   700;
 
 
 /*
- * Nach speech_stopped warten wir
- * maximal so lange auf completed.
- *
- * Wenn schon Delta-Text vorhanden
- * ist, verwenden wir diesen.
+ * Requests.
  */
-const TRANSCRIPT_FALLBACK_MS =
-  3500;
+const TRANSCRIPTION_TIMEOUT_MS =
+  30000;
 
 
-/*
- * Absolute Obergrenze.
- *
- * JARVIS darf niemals dauerhaft
- * auf "Verarbeite Sprache …"
- * stehen bleiben.
- */
-const TRANSCRIPT_RECOVERY_MS =
-  8000;
-
-
-/*
- * Netzwerk.
- */
 const CHAT_TIMEOUT_MS =
   45000;
 
@@ -316,157 +340,6 @@ function sleep(ms) {
         ms
       );
     }
-  );
-}
-
-
-function addProcessedItemId(
-  itemId
-) {
-
-  if (!itemId) {
-    return;
-  }
-
-
-  processedItemIds.add(
-    itemId
-  );
-
-
-  if (
-    processedItemIds.size >
-    MAX_PROCESSED_ITEMS
-  ) {
-
-    const oldest =
-      processedItemIds
-        .values()
-        .next()
-        .value;
-
-
-    processedItemIds.delete(
-      oldest
-    );
-  }
-}
-
-
-/* =========================================================
-   TRANSCRIPTION TIMERS
-   ========================================================= */
-
-function clearTranscriptTimers() {
-
-  if (
-    transcriptFallbackTimer
-  ) {
-
-    clearTimeout(
-      transcriptFallbackTimer
-    );
-
-
-    transcriptFallbackTimer =
-      null;
-  }
-
-
-  if (
-    transcriptRecoveryTimer
-  ) {
-
-    clearTimeout(
-      transcriptRecoveryTimer
-    );
-
-
-    transcriptRecoveryTimer =
-      null;
-  }
-}
-
-
-/* =========================================================
-   MICROPHONE
-   ========================================================= */
-
-function setMicrophoneEnabled(
-  enabled
-) {
-
-  if (!localStream) {
-    return;
-  }
-
-
-  const tracks =
-    localStream.getAudioTracks();
-
-
-  for (
-    const track of
-    tracks
-  ) {
-
-    track.enabled =
-      enabled;
-  }
-
-
-  console.log(
-    "Microphone:",
-    enabled
-      ? "ENABLED"
-      : "MUTED"
-  );
-}
-
-
-function muteMicrophone() {
-
-  setMicrophoneEnabled(
-    false
-  );
-}
-
-
-function resumeListening() {
-
-  if (!active) {
-    return;
-  }
-
-
-  if (
-    assistantSpeaking ||
-    chatInProgress
-  ) {
-
-    return;
-  }
-
-
-  clearTranscriptTimers();
-
-
-  waitingForAssistant =
-    false;
-
-
-  setJarvisState(
-    "listening"
-  );
-
-
-  setMicrophoneEnabled(
-    true
-  );
-
-
-  setLog(
-    "JARVIS hört zu."
   );
 }
 
@@ -985,38 +858,36 @@ function fadeIntroOut() {
 
 function stopElevenAudio() {
 
-  const audio =
-    elevenAudio;
+  if (
+    elevenAudio
+  ) {
 
-
-  elevenAudio =
-    null;
-
-
-  if (audio) {
-
-    audio.onended =
+    elevenAudio.onended =
       null;
 
 
-    audio.onerror =
+    elevenAudio.onerror =
       null;
 
 
     try {
 
-      audio.pause();
+      elevenAudio.pause();
 
     } catch {}
 
 
     try {
 
-      audio.removeAttribute(
+      elevenAudio.removeAttribute(
         "src"
       );
 
     } catch {}
+
+
+    elevenAudio =
+      null;
   }
 
 
@@ -1024,21 +895,873 @@ function stopElevenAudio() {
     elevenObjectUrl
   ) {
 
-    const oldUrl =
-      elevenObjectUrl;
+    try {
+
+      URL.revokeObjectURL(
+        elevenObjectUrl
+      );
+
+    } catch {}
 
 
     elevenObjectUrl =
       null;
+  }
+}
+
+
+/* =========================================================
+   MICROPHONE CLEANUP
+   ========================================================= */
+
+function stopSilenceMonitor() {
+
+  if (
+    silenceCheckTimer
+  ) {
+
+    clearInterval(
+      silenceCheckTimer
+    );
+
+
+    silenceCheckTimer =
+      null;
+  }
+}
+
+
+function stopAudioAnalysis() {
+
+  stopSilenceMonitor();
+
+
+  if (
+    sourceNode
+  ) {
+
+    try {
+
+      sourceNode.disconnect();
+
+    } catch {}
+
+
+    sourceNode =
+      null;
+  }
+
+
+  analyser =
+    null;
+
+
+  if (
+    audioContext
+  ) {
+
+    try {
+
+      audioContext.close();
+
+    } catch {}
+
+
+    audioContext =
+      null;
+  }
+}
+
+
+function stopMicrophoneTracks() {
+
+  if (
+    micStream
+  ) {
+
+    try {
+
+      for (
+        const track of
+        micStream.getTracks()
+      ) {
+
+        track.stop();
+      }
+
+    } catch {}
+
+
+    micStream =
+      null;
+  }
+}
+
+
+/* =========================================================
+   AUDIO LEVEL
+   ========================================================= */
+
+function getAudioLevel() {
+
+  if (
+    !analyser
+  ) {
+
+    return 0;
+  }
+
+
+  const data =
+    new Uint8Array(
+      analyser.fftSize
+    );
+
+
+  analyser.getByteTimeDomainData(
+    data
+  );
+
+
+  let sum =
+    0;
+
+
+  for (
+    let i = 0;
+    i < data.length;
+    i++
+  ) {
+
+    const normalized =
+      (
+        data[i] -
+        128
+      ) /
+      128;
+
+
+    sum +=
+      normalized *
+      normalized;
+  }
+
+
+  return Math.sqrt(
+    sum /
+    data.length
+  );
+}
+
+
+/* =========================================================
+   START AUDIO ANALYSIS
+   ========================================================= */
+
+async function startAudioAnalysis() {
+
+  if (
+    !micStream
+  ) {
+
+    return;
+  }
+
+
+  stopAudioAnalysis();
+
+
+  const AudioContextClass =
+    window.AudioContext ||
+    window.webkitAudioContext;
+
+
+  if (
+    !AudioContextClass
+  ) {
+
+    console.warn(
+      "AudioContext nicht verfügbar."
+    );
+
+
+    return;
+  }
+
+
+  audioContext =
+    new AudioContextClass();
+
+
+  if (
+    audioContext.state ===
+    "suspended"
+  ) {
+
+    try {
+
+      await audioContext.resume();
+
+    } catch {}
+  }
+
+
+  analyser =
+    audioContext
+      .createAnalyser();
+
+
+  analyser.fftSize =
+    1024;
+
+
+  sourceNode =
+    audioContext
+      .createMediaStreamSource(
+        micStream
+      );
+
+
+  sourceNode.connect(
+    analyser
+  );
+}
+
+
+/* =========================================================
+   RECORDING MIME TYPE
+   ========================================================= */
+
+function getSupportedMimeType() {
+
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/ogg"
+  ];
+
+
+  for (
+    const type of
+    candidates
+  ) {
+
+    if (
+      MediaRecorder.isTypeSupported(
+        type
+      )
+    ) {
+
+      return type;
+    }
+  }
+
+
+  return "";
+}
+
+
+/* =========================================================
+   START RECORDING
+   ========================================================= */
+
+async function startRecordingTurn() {
+
+  if (
+    !active ||
+    processing ||
+    assistantSpeaking
+  ) {
+
+    return;
+  }
+
+
+  if (
+    !micStream
+  ) {
+
+    return;
+  }
+
+
+  if (
+    mediaRecorder &&
+    mediaRecorder.state !==
+      "inactive"
+  ) {
+
+    return;
+  }
+
+
+  audioChunks =
+    [];
+
+
+  const mimeType =
+    getSupportedMimeType();
+
+
+  try {
+
+    mediaRecorder =
+      mimeType
+
+        ? new MediaRecorder(
+            micStream,
+            {
+              mimeType
+            }
+          )
+
+        : new MediaRecorder(
+            micStream
+          );
+
+
+  } catch (error) {
+
+    console.error(
+      "MediaRecorder error:",
+      error
+    );
+
+
+    setLog(
+      "Audioaufnahme konnte nicht gestartet werden."
+    );
+
+
+    return;
+  }
+
+
+  mediaRecorder.ondataavailable =
+    event => {
+
+      if (
+        event.data &&
+        event.data.size >
+          0
+      ) {
+
+        audioChunks.push(
+          event.data
+        );
+      }
+    };
+
+
+  mediaRecorder.onstop =
+    async () => {
+
+      stopSilenceMonitor();
+
+
+      const duration =
+        Date.now() -
+        recordingStartedAt;
+
+
+      if (
+        !active
+      ) {
+
+        return;
+      }
+
+
+      if (
+        duration <
+        MIN_RECORDING_MS
+      ) {
+
+        setTimeout(
+          () => {
+
+            if (
+              active &&
+              !processing &&
+              !assistantSpeaking
+            ) {
+
+              startRecordingTurn();
+            }
+
+          },
+          300
+        );
+
+
+        return;
+      }
+
+
+      const blob =
+        new Blob(
+          audioChunks,
+          {
+            type:
+              mediaRecorder.mimeType ||
+              "audio/webm"
+          }
+        );
+
+
+      audioChunks =
+        [];
+
+
+      if (
+        blob.size <
+        1000
+      ) {
+
+        setLog(
+          "Ich höre zu …"
+        );
+
+
+        setTimeout(
+          () => {
+
+            if (
+              active &&
+              !processing &&
+              !assistantSpeaking
+            ) {
+
+              startRecordingTurn();
+            }
+
+          },
+          300
+        );
+
+
+        return;
+      }
+
+
+      await processRecordedAudio(
+        blob
+      );
+    };
+
+
+  recordingStartedAt =
+    Date.now();
+
+
+  lastVoiceAt =
+    Date.now();
+
+
+  setJarvisState(
+    "listening"
+  );
+
+
+  setLog(
+    "JARVIS hört zu."
+  );
+
+
+  mediaRecorder.start(
+    250
+  );
+
+
+  startSilenceMonitor();
+}
+
+
+/* =========================================================
+   SILENCE MONITOR
+   ========================================================= */
+
+function startSilenceMonitor() {
+
+  stopSilenceMonitor();
+
+
+  silenceCheckTimer =
+    setInterval(
+      () => {
+
+        if (
+          !mediaRecorder ||
+          mediaRecorder.state !==
+            "recording"
+        ) {
+
+          return;
+        }
+
+
+        const now =
+          Date.now();
+
+
+        const level =
+          getAudioLevel();
+
+
+        if (
+          level >
+          SILENCE_THRESHOLD
+        ) {
+
+          lastVoiceAt =
+            now;
+
+
+          setJarvisState(
+            "hearing"
+          );
+
+
+          setLog(
+            "Ich höre zu …"
+          );
+        }
+
+
+        const recordingDuration =
+          now -
+          recordingStartedAt;
+
+
+        const silenceDuration =
+          now -
+          lastVoiceAt;
+
+
+        /*
+         * Satzende nach kurzer Stille.
+         */
+        if (
+          recordingDuration >
+            MIN_RECORDING_MS &&
+          silenceDuration >
+            SILENCE_DURATION_MS
+        ) {
+
+          try {
+
+            mediaRecorder.stop();
+
+          } catch {}
+
+
+          return;
+        }
+
+
+        /*
+         * Sicherheitslimit.
+         */
+        if (
+          recordingDuration >
+          MAX_RECORDING_MS
+        ) {
+
+          try {
+
+            mediaRecorder.stop();
+
+          } catch {}
+        }
+
+      },
+      100
+    );
+}
+
+
+/* =========================================================
+   TRANSCRIPTION
+   ========================================================= */
+
+async function transcribeAudio(
+  blob
+) {
+
+  if (
+    transcriptionController
+  ) {
+
+    try {
+
+      transcriptionController.abort();
+
+    } catch {}
+  }
+
+
+  transcriptionController =
+    new AbortController();
+
+
+  const timeout =
+    setTimeout(
+      () => {
+
+        try {
+
+          transcriptionController?.abort();
+
+        } catch {}
+
+      },
+      TRANSCRIPTION_TIMEOUT_MS
+    );
+
+
+  try {
+
+    const response =
+      await fetch(
+        "/api/transcribe",
+        {
+          method:
+            "POST",
+
+          headers: {
+
+            "Content-Type":
+              blob.type ||
+              "audio/webm"
+          },
+
+          body:
+            blob,
+
+          signal:
+            transcriptionController.signal
+        }
+      );
+
+
+    clearTimeout(
+      timeout
+    );
+
+
+    const raw =
+      await response.text();
+
+
+    let data;
 
 
     try {
 
-      URL.revokeObjectURL(
-        oldUrl
+      data =
+        JSON.parse(
+          raw
+        );
+
+    } catch {
+
+      throw new Error(
+        raw ||
+        "Ungültige Transkriptionsantwort."
       );
+    }
+
+
+    if (
+      !response.ok
+    ) {
+
+      throw new Error(
+        data.error ||
+        `HTTP ${response.status}`
+      );
+    }
+
+
+    const text =
+      String(
+        data.text ||
+        ""
+      ).trim();
+
+
+    if (
+      !text
+    ) {
+
+      throw new Error(
+        "Keine verständliche Sprache erkannt."
+      );
+    }
+
+
+    return text;
+
+
+  } catch (error) {
+
+    clearTimeout(
+      timeout
+    );
+
+
+    throw error;
+  }
+}
+
+
+/* =========================================================
+   JARVIS CHAT
+   ========================================================= */
+
+async function askJarvis(
+  transcript
+) {
+
+  if (
+    chatController
+  ) {
+
+    try {
+
+      chatController.abort();
 
     } catch {}
+  }
+
+
+  chatController =
+    new AbortController();
+
+
+  const timeout =
+    setTimeout(
+      () => {
+
+        try {
+
+          chatController?.abort();
+
+        } catch {}
+
+      },
+      CHAT_TIMEOUT_MS
+    );
+
+
+  try {
+
+    const response =
+      await fetch(
+        "/api/jarvis-chat",
+        {
+          method:
+            "POST",
+
+          headers: {
+
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+
+              message:
+                transcript,
+
+              previous_response_id:
+                previousResponseId
+            }),
+
+          signal:
+            chatController.signal
+        }
+      );
+
+
+    clearTimeout(
+      timeout
+    );
+
+
+    const raw =
+      await response.text();
+
+
+    let data;
+
+
+    try {
+
+      data =
+        JSON.parse(
+          raw
+        );
+
+    } catch {
+
+      throw new Error(
+        raw ||
+        "Ungültige JARVIS-Antwort."
+      );
+    }
+
+
+    if (
+      !response.ok
+    ) {
+
+      throw new Error(
+        data.error ||
+        `HTTP ${response.status}`
+      );
+    }
+
+
+    const answer =
+      String(
+        data.text ||
+        ""
+      ).trim();
+
+
+    if (
+      !answer
+    ) {
+
+      throw new Error(
+        "JARVIS hat keinen Antworttext geliefert."
+      );
+    }
+
+
+    if (
+      data.response_id
+    ) {
+
+      previousResponseId =
+        data.response_id;
+    }
+
+
+    return answer;
+
+
+  } catch (error) {
+
+    clearTimeout(
+      timeout
+    );
+
+
+    throw error;
   }
 }
 
@@ -1061,17 +1784,6 @@ async function speakWithElevenLabs(
   if (
     !cleanText
   ) {
-
-    assistantSpeaking =
-      false;
-
-
-    chatInProgress =
-      false;
-
-
-    resumeListening();
-
 
     return;
   }
@@ -1096,31 +1808,6 @@ async function speakWithElevenLabs(
     new AbortController();
 
 
-  elevenPlaybackSettled =
-    false;
-
-
-  assistantSpeaking =
-    false;
-
-
-  waitingForAssistant =
-    true;
-
-
-  muteMicrophone();
-
-
-  setJarvisState(
-    "thinking"
-  );
-
-
-  setLog(
-    "JARVIS bereitet die Stimme vor …"
-  );
-
-
   const timeout =
     setTimeout(
       () => {
@@ -1137,6 +1824,16 @@ async function speakWithElevenLabs(
 
 
   try {
+
+    setJarvisState(
+      "thinking"
+    );
+
+
+    setLog(
+      "JARVIS bereitet die Stimme vor …"
+    );
+
 
     const response =
       await fetch(
@@ -1198,7 +1895,9 @@ async function speakWithElevenLabs(
     }
 
 
-    if (!active) {
+    if (
+      !active
+    ) {
 
       return;
     }
@@ -1210,21 +1909,17 @@ async function speakWithElevenLabs(
       );
 
 
-    const audio =
+    elevenAudio =
       new Audio(
         elevenObjectUrl
       );
 
 
-    elevenAudio =
-      audio;
-
-
-    audio.preload =
+    elevenAudio.preload =
       "auto";
 
 
-    audio.volume =
+    elevenAudio.volume =
       1;
 
 
@@ -1242,122 +1937,58 @@ async function speakWithElevenLabs(
     );
 
 
-    audio.onended =
-      () => {
+    await new Promise(
+      async (
+        resolve,
+        reject
+      ) => {
 
         if (
-          elevenPlaybackSettled
+          !elevenAudio
         ) {
+
+          resolve();
 
           return;
         }
 
 
-        elevenPlaybackSettled =
-          true;
-
-
-        assistantSpeaking =
-          false;
-
-
-        chatInProgress =
-          false;
-
-
-        stopElevenAudio();
-
-
-        setTimeout(
+        elevenAudio.onended =
           () => {
 
-            if (active) {
-
-              resumeListening();
-            }
-
-          },
-          LISTENING_RESUME_DELAY_MS
-        );
-      };
+            resolve();
+          };
 
 
-    audio.onerror =
-      event => {
+        elevenAudio.onerror =
+          event => {
 
-        if (
-          elevenPlaybackSettled
-        ) {
+            reject(
+              new Error(
+                "ElevenLabs-Audio konnte nicht abgespielt werden."
+              )
+            );
+          };
 
-          return;
+
+        try {
+
+          await elevenAudio.play();
+
+        } catch (error) {
+
+          reject(
+            error
+          );
         }
-
-
-        elevenPlaybackSettled =
-          true;
-
-
-        console.error(
-          "ElevenLabs Playback error:",
-          event
-        );
-
-
-        assistantSpeaking =
-          false;
-
-
-        chatInProgress =
-          false;
-
-
-        stopElevenAudio();
-
-
-        setLog(
-          "Sprachausgabe fehlgeschlagen."
-        );
-
-
-        setTimeout(
-          () => {
-
-            if (active) {
-
-              resumeListening();
-            }
-
-          },
-          500
-        );
-      };
-
-
-    await audio.play();
-
-
-  } catch (error) {
-
-    clearTimeout(
-      timeout
+      }
     );
 
 
-    if (
-      elevenPlaybackSettled
-    ) {
+  } finally {
 
-      return;
-    }
-
-
-    elevenPlaybackSettled =
-      true;
-
-
-    console.error(
-      "ElevenLabs error:",
-      error
+    clearTimeout(
+      timeout
     );
 
 
@@ -1365,267 +1996,90 @@ async function speakWithElevenLabs(
       false;
 
 
-    chatInProgress =
-      false;
-
-
     stopElevenAudio();
-
-
-    if (
-      error.name ===
-      "AbortError"
-    ) {
-
-      setLog(
-        "Sprachausgabe abgebrochen."
-      );
-
-    } else {
-
-      setLog(
-        "ElevenLabs konnte nicht sprechen."
-      );
-    }
-
-
-    setTimeout(
-      () => {
-
-        if (active) {
-
-          resumeListening();
-        }
-
-      },
-      500
-    );
   }
 }
 
 
 /* =========================================================
-   START GREETING
+   PROCESS RECORDED AUDIO
    ========================================================= */
 
-async function requestStartupGreeting() {
-
-  const greeting =
-    getGreeting();
-
-
-  chatInProgress =
-    true;
-
-
-  await speakWithElevenLabs(
-    greeting
-  );
-}
-
-
-/* =========================================================
-   CHAT REQUEST
-   ========================================================= */
-
-async function sendTranscriptToJarvis(
-  transcript
+async function processRecordedAudio(
+  blob
 ) {
 
-  const cleanTranscript =
-    String(
-      transcript ||
-      ""
-    ).trim();
-
-
   if (
-    !cleanTranscript ||
-    !active
+    !active ||
+    processing
   ) {
-
-    chatInProgress =
-      false;
-
-
-    resumeListening();
-
 
     return;
   }
 
 
-  if (
-    chatInProgress
-  ) {
-
-    console.warn(
-      "Chat ignoriert: JARVIS verarbeitet bereits einen Turn."
-    );
-
-
-    return;
-  }
-
-
-  clearTranscriptTimers();
-
-
-  chatInProgress =
+  processing =
     true;
-
-
-  waitingForAssistant =
-    true;
-
-
-  assistantSpeaking =
-    false;
-
-
-  muteMicrophone();
-
-
-  setJarvisState(
-    "thinking"
-  );
-
-
-  setLog(
-    "Denke nach …"
-  );
-
-
-  console.log(
-    "Mattl:",
-    cleanTranscript
-  );
-
-
-  if (
-    chatController
-  ) {
-
-    try {
-
-      chatController.abort();
-
-    } catch {}
-  }
-
-
-  chatController =
-    new AbortController();
-
-
-  const timeout =
-    setTimeout(
-      () => {
-
-        try {
-
-          chatController?.abort();
-
-        } catch {}
-
-      },
-      CHAT_TIMEOUT_MS
-    );
 
 
   try {
 
-    const response =
-      await fetch(
-        "/api/jarvis-chat",
-        {
-          method:
-            "POST",
-
-          headers: {
-
-            "Content-Type":
-              "application/json"
-          },
-
-          body:
-            JSON.stringify({
-
-              message:
-                cleanTranscript,
-
-              previous_response_id:
-                previousResponseId
-            }),
-
-          signal:
-            chatController.signal
-        }
-      );
-
-
-    clearTimeout(
-      timeout
+    setJarvisState(
+      "thinking"
     );
 
 
-    const raw =
-      await response.text();
+    setLog(
+      "Verarbeite Sprache …"
+    );
 
 
-    let data;
-
-
-    try {
-
-      data =
-        JSON.parse(
-          raw
-        );
-
-    } catch {
-
-      throw new Error(
-        raw ||
-        "Ungültige Serverantwort."
+    const transcript =
+      await transcribeAudio(
+        blob
       );
-    }
 
 
     if (
-      !response.ok
+      !active
     ) {
 
-      throw new Error(
-        data.error ||
-        `HTTP ${response.status}`
-      );
+      return;
     }
+
+
+    console.log(
+      "Mattl:",
+      transcript
+    );
+
+
+    setLog(
+      `Verstanden: ${transcript}`
+    );
+
+
+    await sleep(
+      150
+    );
+
+
+    setLog(
+      "Denke nach …"
+    );
 
 
     const answer =
-      String(
-        data.text ||
-        ""
-      ).trim();
-
-
-    if (
-      !answer
-    ) {
-
-      throw new Error(
-        "JARVIS hat keinen Antworttext geliefert."
+      await askJarvis(
+        transcript
       );
-    }
 
 
     if (
-      data.response_id
+      !active
     ) {
 
-      previousResponseId =
-        data.response_id;
+      return;
     }
 
 
@@ -1642,27 +2096,10 @@ async function sendTranscriptToJarvis(
 
   } catch (error) {
 
-    clearTimeout(
-      timeout
-    );
-
-
     console.error(
-      "JARVIS Chat error:",
+      "JARVIS turn error:",
       error
     );
-
-
-    chatInProgress =
-      false;
-
-
-    waitingForAssistant =
-      false;
-
-
-    assistantSpeaking =
-      false;
 
 
     if (
@@ -1671,7 +2108,7 @@ async function sendTranscriptToJarvis(
     ) {
 
       setLog(
-        "Antwort hat zu lange gedauert."
+        "Vorgang wurde abgebrochen."
       );
 
     } else {
@@ -1682,547 +2119,42 @@ async function sendTranscriptToJarvis(
     }
 
 
-    setTimeout(
-      () => {
-
-        if (active) {
-
-          resumeListening();
-        }
-
-      },
-      700
-    );
-  }
-}
-
-
-/* =========================================================
-   TRANSCRIPT PROCESSOR
-   ========================================================= */
-
-async function processTranscript(
-  transcript,
-  itemId = ""
-) {
-
-  const cleanTranscript =
-    String(
-      transcript ||
-      ""
-    ).trim();
-
-
-  if (
-    !cleanTranscript
-  ) {
-
-    return false;
-  }
-
-
-  clearTranscriptTimers();
-
-
-  /*
-   * Item bereits beantwortet?
-   */
-  if (
-    itemId &&
-    processedItemIds.has(
-      itemId
-    )
-  ) {
-
-    return false;
-  }
-
-
-  if (
-    itemId
-  ) {
-
-    addProcessedItemId(
-      itemId
+    await sleep(
+      1200
     );
 
 
-    transcriptBuffers.delete(
-      itemId
-    );
-  }
+  } finally {
 
+    processing =
+      false;
 
-  /*
-   * Fallback-Dedupe.
-   */
-  const now =
-    Date.now();
 
+    assistantSpeaking =
+      false;
 
-  if (
-    !itemId &&
-    cleanTranscript ===
-      lastTranscriptText &&
-    now -
-      lastTranscriptTime <
-      3000
-  ) {
 
-    return false;
-  }
-
-
-  lastTranscriptText =
-    cleanTranscript;
-
-
-  lastTranscriptTime =
-    now;
-
-
-  setLog(
-    `Verstanden: ${cleanTranscript}`
-  );
-
-
-  /*
-   * Wichtig:
-   *
-   * Erst jetzt wird chatInProgress
-   * freigegeben und anschließend
-   * der Chat gestartet.
-   */
-  chatInProgress =
-    false;
-
-
-  waitingForAssistant =
-    true;
-
-
-  await sendTranscriptToJarvis(
-    cleanTranscript
-  );
-
-
-  return true;
-}
-
-
-/* =========================================================
-   COMPLETED TRANSCRIPT
-   ========================================================= */
-
-async function handleCompletedTranscript(
-  event
-) {
-
-  const transcript =
-    String(
-      event.transcript ||
-      ""
-    ).trim();
-
-
-  const itemId =
-    String(
-      event.item_id ||
-      ""
-    ).trim();
-
-
-  /*
-   * completed gewinnt immer
-   * gegenüber dem Delta-Fallback.
-   */
-  if (
-    itemId &&
-    processedItemIds.has(
-      itemId
-    )
-  ) {
-
-    return;
-  }
-
-
-  if (
-    transcript
-  ) {
-
-    await processTranscript(
-      transcript,
-      itemId
-    );
-
-
-    return;
-  }
-
-
-  /*
-   * Falls completed leer sein sollte,
-   * versuchen wir den Delta-Buffer.
-   */
-  if (
-    itemId &&
-    transcriptBuffers.has(
-      itemId
-    )
-  ) {
-
-    const buffered =
-      transcriptBuffers.get(
-        itemId
-      );
-
-
-    await processTranscript(
-      buffered,
-      itemId
-    );
-  }
-}
-
-
-/* =========================================================
-   TRANSCRIPTION DELTA
-   ========================================================= */
-
-function handleTranscriptDelta(
-  event
-) {
-
-  const itemId =
-    String(
-      event.item_id ||
-      ""
-    ).trim();
-
-
-  const delta =
-    String(
-      event.delta ||
-      ""
-    );
-
-
-  if (
-    !delta
-  ) {
-
-    return;
-  }
-
-
-  if (
-    itemId &&
-    processedItemIds.has(
-      itemId
-    )
-  ) {
-
-    return;
-  }
-
-
-  if (
-    itemId
-  ) {
-
-    latestTranscriptItemId =
-      itemId;
-
-
-    const current =
-      transcriptBuffers.get(
-        itemId
-      ) ||
-      "";
-
-
-    transcriptBuffers.set(
-      itemId,
-      current +
-      delta
-    );
-
-
-    return;
-  }
-
-
-  /*
-   * Seltenes Fallback ohne item_id.
-   */
-  const fallbackId =
-    "__latest__";
-
-
-  const current =
-    transcriptBuffers.get(
-      fallbackId
-    ) ||
-    "";
-
-
-  transcriptBuffers.set(
-    fallbackId,
-    current +
-    delta
-  );
-}
-
-
-/* =========================================================
-   TRANSCRIPT FALLBACK
-   ========================================================= */
-
-async function useBufferedTranscriptFallback() {
-
-  if (
-    !active ||
-    chatInProgress ||
-    assistantSpeaking
-  ) {
-
-    return;
-  }
-
-
-  let itemId =
-    latestTranscriptItemId;
-
-
-  let text =
-    "";
-
-
-  /*
-   * Erst das letzte bekannte
-   * echte Item versuchen.
-   */
-  if (
-    itemId
-  ) {
-
-    text =
-      String(
-        transcriptBuffers.get(
-          itemId
-        ) ||
-        ""
-      ).trim();
-  }
-
-
-  /*
-   * Falls dieses leer ist,
-   * neuesten nicht verarbeiteten
-   * Buffer suchen.
-   */
-  if (!text) {
-
-    const entries =
-      Array.from(
-        transcriptBuffers.entries()
-      )
-        .reverse();
-
-
-    for (
-      const [
-        candidateId,
-        candidateText
-      ] of
-      entries
+    if (
+      active
     ) {
 
-      if (
-        candidateId !==
-          "__latest__" &&
-        processedItemIds.has(
-          candidateId
-        )
-      ) {
+      setTimeout(
+        () => {
 
-        continue;
-      }
+          if (
+            active &&
+            !processing &&
+            !assistantSpeaking
+          ) {
 
+            startRecordingTurn();
+          }
 
-      const clean =
-        String(
-          candidateText ||
-          ""
-        ).trim();
-
-
-      if (
-        clean
-      ) {
-
-        itemId =
-          candidateId ===
-            "__latest__"
-            ? ""
-            : candidateId;
-
-
-        text =
-          clean;
-
-
-        break;
-      }
+        },
+        LISTENING_RESUME_DELAY_MS
+      );
     }
   }
-
-
-  if (
-    !text
-  ) {
-
-    console.warn(
-      "Noch kein Transkript für Fallback vorhanden."
-    );
-
-
-    return;
-  }
-
-
-  console.warn(
-    "Completed-Event verspätet – Delta-Transkript wird verwendet:",
-    text
-  );
-
-
-  await processTranscript(
-    text,
-    itemId
-  );
-}
-
-
-/* =========================================================
-   SPEECH STOPPED
-   ========================================================= */
-
-function startTranscriptWaiting() {
-
-  clearTranscriptTimers();
-
-
-  waitingForAssistant =
-    true;
-
-
-  muteMicrophone();
-
-
-  setJarvisState(
-    "thinking"
-  );
-
-
-  setLog(
-    "Verarbeite Sprache …"
-  );
-
-
-  /*
-   * Nach 3,5 Sekunden:
-   *
-   * Wenn completed fehlt,
-   * verwenden wir die bisher
-   * empfangenen Transkript-Deltas.
-   */
-  transcriptFallbackTimer =
-    setTimeout(
-      async () => {
-
-        transcriptFallbackTimer =
-          null;
-
-
-        await useBufferedTranscriptFallback();
-
-      },
-      TRANSCRIPT_FALLBACK_MS
-    );
-
-
-  /*
-   * Nach 8 Sekunden darf JARVIS
-   * definitiv nicht hängen bleiben.
-   */
-  transcriptRecoveryTimer =
-    setTimeout(
-      async () => {
-
-        transcriptRecoveryTimer =
-          null;
-
-
-        if (
-          chatInProgress ||
-          assistantSpeaking
-        ) {
-
-          return;
-        }
-
-
-        /*
-         * Noch ein letzter Versuch.
-         */
-        await useBufferedTranscriptFallback();
-
-
-        /*
-         * Falls auch kein Delta vorhanden:
-         * sauber zurück zum Zuhören.
-         */
-        if (
-          !chatInProgress &&
-          !assistantSpeaking
-        ) {
-
-          console.warn(
-            "Kein verwertbares Transkript erhalten."
-          );
-
-
-          waitingForAssistant =
-            false;
-
-
-          setLog(
-            "Ich habe dich nicht verstanden. Versuch es nochmal."
-          );
-
-
-          setTimeout(
-            () => {
-
-              if (
-                active &&
-                !chatInProgress &&
-                !assistantSpeaking
-              ) {
-
-                resumeListening();
-              }
-
-            },
-            900
-          );
-        }
-
-      },
-      TRANSCRIPT_RECOVERY_MS
-    );
 }
 
 
@@ -2234,52 +2166,15 @@ async function startJarvis() {
 
   if (
     active ||
-    connecting
+    starting
   ) {
 
     return;
   }
 
 
-  connecting =
+  starting =
     true;
-
-
-  previousResponseId =
-    null;
-
-
-  processedItemIds.clear();
-
-
-  transcriptBuffers.clear();
-
-
-  latestTranscriptItemId =
-    null;
-
-
-  clearTranscriptTimers();
-
-
-  lastTranscriptText =
-    "";
-
-
-  lastTranscriptTime =
-    0;
-
-
-  chatInProgress =
-    false;
-
-
-  assistantSpeaking =
-    false;
-
-
-  waitingForAssistant =
-    false;
 
 
   if (
@@ -2291,13 +2186,13 @@ async function startJarvis() {
   }
 
 
-  setStatus(
-    "Verbinde …"
+  setJarvisState(
+    "connecting"
   );
 
 
-  setJarvisState(
-    "connecting"
+  setStatus(
+    "Verbinde …"
   );
 
 
@@ -2313,456 +2208,22 @@ async function startJarvis() {
 
   try {
 
-    /*
-     * =====================================================
-     * INTRO
-     * =====================================================
-     */
-
-    await startIntro();
+    previousResponseId =
+      null;
 
 
-    /*
-     * =====================================================
-     * WEBRTC
-     * =====================================================
-     */
+    processing =
+      false;
 
-    pc =
-      new RTCPeerConnection();
+
+    assistantSpeaking =
+      false;
 
 
     /*
-     * OpenAI Audio wird niemals
-     * abgespielt.
+     * Mikrofon holen.
      */
-    pc.ontrack =
-      event => {
-
-        console.warn(
-          "OpenAI Remote-Audiotrack ignoriert."
-        );
-
-
-        try {
-
-          event.track.enabled =
-            false;
-
-        } catch {}
-
-
-        if (
-          remoteAudio
-        ) {
-
-          try {
-
-            remoteAudio.pause();
-
-
-            remoteAudio.srcObject =
-              null;
-
-
-            remoteAudio.muted =
-              true;
-
-
-            remoteAudio.volume =
-              0;
-
-          } catch {}
-        }
-      };
-
-
-    if (
-      remoteAudio
-    ) {
-
-      remoteAudio.muted =
-        true;
-
-
-      remoteAudio.volume =
-        0;
-    }
-
-
-    pc.onconnectionstatechange =
-      () => {
-
-        const state =
-          pc?.connectionState;
-
-
-        console.log(
-          "Peer:",
-          state
-        );
-
-
-        if (
-          state ===
-          "failed"
-        ) {
-
-          setLog(
-            "Voice-Verbindung fehlgeschlagen."
-          );
-        }
-      };
-
-
-    /*
-     * =====================================================
-     * DATA CHANNEL
-     * =====================================================
-     */
-
-    dc =
-      pc.createDataChannel(
-        "oai-events"
-      );
-
-
-    dc.onopen =
-      async () => {
-
-        console.log(
-          "Realtime Transkription verbunden."
-        );
-
-
-        active =
-          true;
-
-
-        connecting =
-          false;
-
-
-        if (
-          button
-        ) {
-
-          button.disabled =
-            false;
-        }
-
-
-        setStatus(
-          "Online"
-        );
-
-
-        muteMicrophone();
-
-
-        setLog(
-          "JARVIS startet …"
-        );
-
-
-        await sleep(
-          INTRO_VOICE_DELAY_MS
-        );
-
-
-        if (
-          !active
-        ) {
-
-          return;
-        }
-
-
-        duckIntro();
-
-
-        await requestStartupGreeting();
-      };
-
-
-    dc.onerror =
-      error => {
-
-        console.error(
-          "DataChannel error:",
-          error
-        );
-
-
-        setLog(
-          "Transkriptionsverbindung gestört."
-        );
-      };
-
-
-    dc.onclose =
-      () => {
-
-        console.log(
-          "Realtime DataChannel geschlossen."
-        );
-
-
-        if (
-          active ||
-          connecting
-        ) {
-
-          stopJarvis();
-        }
-      };
-
-
-    dc.onmessage =
-      async message => {
-
-        let event;
-
-
-        try {
-
-          event =
-            JSON.parse(
-              message.data
-            );
-
-        } catch {
-
-          return;
-        }
-
-
-        console.log(
-          "Realtime:",
-          event.type
-        );
-
-
-        /* =================================================
-           USER SPRICHT
-           ================================================= */
-
-        if (
-          event.type ===
-          "input_audio_buffer.speech_started"
-        ) {
-
-          if (
-            assistantSpeaking ||
-            chatInProgress ||
-            waitingForAssistant
-          ) {
-
-            return;
-          }
-
-
-          /*
-           * Neuer Turn:
-           * alten Delta-Buffer nicht
-           * versehentlich übernehmen.
-           */
-          latestTranscriptItemId =
-            null;
-
-
-          setJarvisState(
-            "hearing"
-          );
-
-
-          setLog(
-            "Ich höre zu …"
-          );
-        }
-
-
-        /* =================================================
-           USER IST FERTIG
-           ================================================= */
-
-        if (
-          event.type ===
-          "input_audio_buffer.speech_stopped"
-        ) {
-
-          /*
-           * Falls speech_stopped eine
-           * item_id enthält, merken.
-           */
-          if (
-            event.item_id
-          ) {
-
-            latestTranscriptItemId =
-              String(
-                event.item_id
-              );
-          }
-
-
-          /*
-           * KEINE KI-Antwort starten.
-           *
-           * Nur auf Transkription warten.
-           */
-          startTranscriptWaiting();
-        }
-
-
-        /* =================================================
-           TRANSCRIPTION DELTA
-           ================================================= */
-
-        if (
-          event.type ===
-          "conversation.item.input_audio_transcription.delta"
-        ) {
-
-          handleTranscriptDelta(
-            event
-          );
-        }
-
-
-        /* =================================================
-           TRANSCRIPTION COMPLETED
-           ================================================= */
-
-        if (
-          event.type ===
-          "conversation.item.input_audio_transcription.completed"
-        ) {
-
-          await handleCompletedTranscript(
-            event
-          );
-        }
-
-
-        /* =================================================
-           TRANSCRIPTION FAILED
-           ================================================= */
-
-        if (
-          event.type ===
-          "conversation.item.input_audio_transcription.failed"
-        ) {
-
-          console.error(
-            "Transcription failed:",
-            event
-          );
-
-
-          /*
-           * Vielleicht haben wir trotz
-           * failed bereits Deltas.
-           */
-          await useBufferedTranscriptFallback();
-
-
-          if (
-            !chatInProgress &&
-            !assistantSpeaking
-          ) {
-
-            clearTranscriptTimers();
-
-
-            waitingForAssistant =
-              false;
-
-
-            setLog(
-              "Ich habe dich nicht verstanden."
-            );
-
-
-            setTimeout(
-              () => {
-
-                if (
-                  active
-                ) {
-
-                  resumeListening();
-                }
-
-              },
-              700
-            );
-          }
-        }
-
-
-        /* =================================================
-           REALTIME ERROR
-           ================================================= */
-
-        if (
-          event.type ===
-          "error"
-        ) {
-
-          console.error(
-            "Realtime error:",
-            event
-          );
-
-
-          /*
-           * Nicht sofort abbrechen.
-           *
-           * Falls schon Delta-Text da ist,
-           * versuchen wir diesen.
-           */
-          await useBufferedTranscriptFallback();
-
-
-          if (
-            !assistantSpeaking &&
-            !chatInProgress
-          ) {
-
-            setLog(
-              event.error?.message ||
-              "Transkriptionsfehler."
-            );
-
-
-            setTimeout(
-              () => {
-
-                if (
-                  active &&
-                  !chatInProgress &&
-                  !assistantSpeaking
-                ) {
-
-                  resumeListening();
-                }
-
-              },
-              700
-            );
-          }
-        }
-      };
-
-
-    /*
-     * =====================================================
-     * MICROPHONE
-     * =====================================================
-     */
-
-    localStream =
+    micStream =
       await navigator
         .mediaDevices
         .getUserMedia({
@@ -2783,76 +2244,70 @@ async function startJarvis() {
         });
 
 
-    muteMicrophone();
-
-
-    for (
-      const track of
-      localStream.getAudioTracks()
-    ) {
-
-      pc.addTrack(
-        track,
-        localStream
-      );
-    }
+    await startAudioAnalysis();
 
 
     /*
-     * =====================================================
-     * WEBRTC OFFER
-     * =====================================================
+     * Intro.
      */
-
-    const offer =
-      await pc.createOffer();
+    await startIntro();
 
 
-    await pc.setLocalDescription(
-      offer
+    active =
+      true;
+
+
+    setStatus(
+      "Online"
     );
 
 
-    const response =
-      await fetch(
-        "/session",
-        {
-          method:
-            "POST",
-
-          headers: {
-
-            "Content-Type":
-              "application/sdp"
-          },
-
-          body:
-            offer.sdp
-        }
-      );
+    await sleep(
+      INTRO_VOICE_DELAY_MS
+    );
 
 
     if (
-      !response.ok
+      !active
     ) {
 
-      throw new Error(
-        await response.text()
-      );
+      return;
     }
 
 
-    const answer =
-      await response.text();
+    duckIntro();
 
 
-    await pc.setRemoteDescription({
-      type:
-        "answer",
+    /*
+     * Begrüßung.
+     */
+    processing =
+      true;
 
-      sdp:
-        answer
-    });
+
+    await speakWithElevenLabs(
+      getGreeting()
+    );
+
+
+    processing =
+      false;
+
+
+    if (
+      !active
+    ) {
+
+      return;
+    }
+
+
+    await sleep(
+      LISTENING_RESUME_DELAY_MS
+    );
+
+
+    startRecordingTurn();
 
 
   } catch (error) {
@@ -2863,7 +2318,23 @@ async function startJarvis() {
     );
 
 
-    await stopJarvis();
+    active =
+      false;
+
+
+    setJarvisState(
+      "offline"
+    );
+
+
+    setStatus(
+      "Offline"
+    );
+
+
+    setButtonActive(
+      false
+    );
 
 
     setLog(
@@ -2871,9 +2342,15 @@ async function startJarvis() {
     );
 
 
+    stopMicrophoneTracks();
+
+
+    stopAudioAnalysis();
+
+
   } finally {
 
-    connecting =
+    starting =
       false;
 
 
@@ -2898,7 +2375,11 @@ async function stopJarvis() {
     false;
 
 
-  connecting =
+  starting =
+    false;
+
+
+  processing =
     false;
 
 
@@ -2906,42 +2387,61 @@ async function stopJarvis() {
     false;
 
 
-  waitingForAssistant =
-    false;
-
-
-  chatInProgress =
-    false;
-
-
   previousResponseId =
     null;
 
 
-  processedItemIds.clear();
-
-
-  transcriptBuffers.clear();
-
-
-  latestTranscriptItemId =
-    null;
-
-
-  clearTranscriptTimers();
-
-
-  lastTranscriptText =
-    "";
-
-
-  lastTranscriptTime =
-    0;
+  stopSilenceMonitor();
 
 
   /*
-   * Chat abbrechen.
+   * Recorder stoppen.
    */
+  if (
+    mediaRecorder &&
+    mediaRecorder.state !==
+      "inactive"
+  ) {
+
+    try {
+
+      mediaRecorder.onstop =
+        null;
+
+
+      mediaRecorder.stop();
+
+    } catch {}
+  }
+
+
+  mediaRecorder =
+    null;
+
+
+  audioChunks =
+    [];
+
+
+  /*
+   * Requests abbrechen.
+   */
+  if (
+    transcriptionController
+  ) {
+
+    try {
+
+      transcriptionController.abort();
+
+    } catch {}
+
+
+    transcriptionController =
+      null;
+  }
+
+
   if (
     chatController
   ) {
@@ -2958,9 +2458,6 @@ async function stopJarvis() {
   }
 
 
-  /*
-   * ElevenLabs Request abbrechen.
-   */
   if (
     ttsController
   ) {
@@ -2977,86 +2474,27 @@ async function stopJarvis() {
   }
 
 
-  elevenPlaybackSettled =
-    true;
-
-
+  /*
+   * Audio.
+   */
   stopElevenAudio();
 
 
   stopIntro();
 
 
-  muteMicrophone();
-
-
   /*
-   * DataChannel.
+   * Mikro.
    */
-  try {
+  stopAudioAnalysis();
 
-    if (
-      dc &&
-      dc.readyState !==
-        "closed"
-    ) {
 
-      dc.close();
-    }
-
-  } catch {}
+  stopMicrophoneTracks();
 
 
   /*
-   * Peer.
-   */
-  try {
-
-    if (
-      pc
-    ) {
-
-      pc.close();
-    }
-
-  } catch {}
-
-
-  /*
-   * Mikrofon.
-   */
-  try {
-
-    if (
-      localStream
-    ) {
-
-      for (
-        const track of
-        localStream.getTracks()
-      ) {
-
-        track.stop();
-      }
-    }
-
-  } catch {}
-
-
-  localStream =
-    null;
-
-
-  dc =
-    null;
-
-
-  pc =
-    null;
-
-
-  /*
-   * Remote Audio definitiv aus.
+   * remoteAudio ist nicht mehr
+   * Bestandteil der Voice-Pipeline.
    */
   if (
     remoteAudio
@@ -3122,6 +2560,24 @@ setJarvisState(
 
 
 if (
+  remoteAudio
+) {
+
+  /*
+   * Sicherstellen:
+   * OpenAI-Audio kann nie versehentlich
+   * abgespielt werden.
+   */
+  remoteAudio.muted =
+    true;
+
+
+  remoteAudio.volume =
+    0;
+}
+
+
+if (
   button
 ) {
 
@@ -3131,7 +2587,7 @@ if (
     async () => {
 
       if (
-        connecting
+        starting
       ) {
 
         return;
@@ -3162,7 +2618,7 @@ if (
 
 
 /* =========================================================
-   CLEANUP
+   PAGE CLEANUP
    ========================================================= */
 
 window.addEventListener(
