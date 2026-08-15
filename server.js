@@ -1,9 +1,43 @@
+/* =========================================================
+   ÄNDERUNGEN IN DIESER VERSION
+   =========================================================
+   1) SICHERHEIT: Nicht mehr der ganze Projektordner wird als
+      Webseite ausgeliefert, sondern nur noch "public/".
+      -> Ordner "public" anlegen, index.html, app.js,
+         styles.css und Intro.mp3 dort hinein verschieben.
+   2) BUG: "Heute"/"Gestern" bei Shopify wurden anhand von
+      UTC-Tagesgrenzen berechnet statt Berlin-Zeit. Je nach
+      Uhrzeit fehlten dadurch bis zu 2 Stunden Bestellungen
+      am Anfang des Tages bzw. es wurden zu viele gezählt.
+      Jetzt wird der echte Berlin-Zeitversatz (Sommer-/
+      Winterzeit) berücksichtigt.
+   3) Alle ausgehenden Anfragen (OpenAI, Shopify, Wetter)
+      haben jetzt ein Zeitlimit, damit der Server nicht
+      ewig hängen bleibt, falls ein Dienst nicht antwortet.
+   4) Geocoding-Fehler werden nicht mehr fälschlich als
+      "Ort nicht gefunden" gemeldet.
+   ========================================================= */
+
 import express from "express";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.static("."));
+// WICHTIG: Nur der Unterordner "public" wird als Webseite
+// ausgeliefert – nicht mehr der komplette Projektordner.
+// Vorher (express.static(".")) hätte theoretisch JEDE Datei
+// im Projektordner öffentlich abrufbar sein können, z. B.
+// server.js, package.json oder eine .env-Datei mit Passwörtern.
+//
+// Bitte einmalig einrichten: einen Ordner namens "public"
+// direkt neben server.js anlegen und index.html, app.js,
+// styles.css sowie Intro.mp3 dort hinein verschieben.
+app.use(
+  express.static("public", {
+    dotfiles: "deny"
+  })
+);
+
 app.use(express.json({ limit: "2mb" }));
 
 /* =========================================================
@@ -39,6 +73,44 @@ function nextDateString(dateString) {
     .slice(0, 10);
 }
 
+// Ermittelt den echten UTC-Versatz von Berlin für ein bestimmtes
+// Datum (also +1h im Winter, +2h im Sommer wegen Sommerzeit).
+function berlinUtcOffsetMinutes(date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Berlin",
+    timeZoneName: "shortOffset"
+  }).formatToParts(date);
+
+  const offsetLabel =
+    parts.find(part => part.type === "timeZoneName")?.value || "GMT+0";
+
+  const match = offsetLabel.match(/GMT([+-]\d+)(?::(\d+))?/);
+
+  if (!match) {
+    return 0;
+  }
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2] || 0);
+
+  return hours >= 0 ? hours * 60 + minutes : hours * 60 - minutes;
+}
+
+// Wandelt einen Berlin-Kalendertag ("2026-08-15") in den exakten
+// UTC-Zeitpunkt von 00:00 Uhr Berlin um. Wichtig, weil Shopify die
+// Bestellungen nach UTC-Zeitstempeln filtert – ohne diese Umrechnung
+// verschiebt sich "heute" je nach Uhrzeit um 1-2 Stunden und zählt
+// dadurch die falschen Bestellungen zu "heute" bzw. "gestern".
+function berlinMidnightUtcIso(dateString) {
+  const noonGuess = new Date(`${dateString}T12:00:00Z`);
+  const offsetMinutes = berlinUtcOffsetMinutes(noonGuess);
+
+  const utcMillis =
+    Date.parse(`${dateString}T00:00:00Z`) - offsetMinutes * 60000;
+
+  return new Date(utcMillis).toISOString();
+}
+
 function getPeriodDates(period) {
   const today = berlinDate();
 
@@ -56,14 +128,14 @@ function getPeriodDates(period) {
         .slice(0, 10);
 
     return {
-      start: yesterday,
-      end: today
+      start: berlinMidnightUtcIso(yesterday),
+      end: berlinMidnightUtcIso(today)
     };
   }
 
   return {
-    start: today,
-    end: nextDateString(today)
+    start: berlinMidnightUtcIso(today),
+    end: berlinMidnightUtcIso(nextDateString(today))
   };
 }
 
@@ -559,7 +631,13 @@ app.post(
                 `Bearer ${process.env.OPENAI_API_KEY}`
             },
 
-            body: form
+            body: form,
+
+            // Bricht ab, falls OpenAI nicht innerhalb von 20s
+            // antwortet, statt den Verbindungsaufbau ewig
+            // hängen zu lassen.
+            signal:
+              AbortSignal.timeout(20000)
           }
         );
 
@@ -684,7 +762,10 @@ async function getShopifyAccessToken() {
             "application/x-www-form-urlencoded"
         },
 
-        body: params
+        body: params,
+
+        signal:
+          AbortSignal.timeout(10000)
       }
     );
 
@@ -785,7 +866,7 @@ async function getShopifySummary(
 
 
   const search =
-    `created_at:>=${start} created_at:<${end}`;
+    `created_at:>='${start}' created_at:<'${end}'`;
 
 
   const query = `
@@ -836,7 +917,10 @@ async function getShopifySummary(
               query:
                 search
             }
-          })
+          }),
+
+        signal:
+          AbortSignal.timeout(10000)
       }
     );
 
@@ -973,6 +1057,12 @@ app.post(
         error
       );
 
+      const message =
+        error.name === "TimeoutError"
+          ? "Shopify hat zu lange nicht geantwortet."
+          : error.message ||
+            "Shopify-Abfrage fehlgeschlagen.";
+
 
       return res
         .status(500)
@@ -983,8 +1073,7 @@ app.post(
             "Druckelite24",
 
           error:
-            error.message ||
-            "Shopify-Abfrage fehlgeschlagen."
+            message
         });
     }
   }
@@ -1064,8 +1153,19 @@ app.post(
 
       const geoResponse =
         await fetch(
-          geo
+          geo,
+          {
+            signal:
+              AbortSignal.timeout(8000)
+          }
         );
+
+
+      if (!geoResponse.ok) {
+        throw new Error(
+          "Geocoding-Dienst gerade nicht erreichbar."
+        );
+      }
 
 
       const geoData =
@@ -1166,7 +1266,11 @@ app.post(
 
       const response =
         await fetch(
-          weather
+          weather,
+          {
+            signal:
+              AbortSignal.timeout(8000)
+          }
         );
 
 
@@ -1240,13 +1344,18 @@ app.post(
         error
       );
 
+      const message =
+        error.name === "TimeoutError"
+          ? "Der Wetterdienst hat zu lange nicht geantwortet."
+          : error.message ||
+            "Wetterabfrage fehlgeschlagen.";
+
 
       return res
         .status(500)
         .json({
           error:
-            error.message ||
-            "Wetterabfrage fehlgeschlagen."
+            message
         });
     }
   }
@@ -1353,7 +1462,7 @@ app.get(
     res.sendFile(
       "index.html",
       {
-        root: "."
+        root: "public"
       }
     );
   }
