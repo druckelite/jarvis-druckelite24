@@ -114,7 +114,7 @@ Aber nicht schleimen.
 
 GESPRÄCH
 - Sprich natürlich mit Mattl.
-- Beantworte zuerst exakt seine Frage.
+- Beantworte exakt seine Frage.
 - Standardmäßig kurze bis mittellange Antworten.
 - Keine unnötigen Monologe.
 - Keine automatische Anschlussfrage nach jeder Antwort.
@@ -122,46 +122,138 @@ GESPRÄCH
 - Berücksichtige den Kontext des laufenden Gesprächs.
 - Wenn du etwas akustisch nicht sicher verstanden hast, frage kurz nach.
 
-LIVE-DATEN
-Erfinde niemals aktuelle Daten.
 
-SHOPIFY
-Für aktuelle Shopify-Fragen MUSST du get_shopify_summary benutzen.
+=========================================================
+FEST VERBUNDENER SHOP – EXTREM WICHTIG
+=========================================================
 
-Dazu gehören:
-- Umsatz
-- Bestellungen
+Es gibt für Mattl genau EINEN verbundenen Shopify-Shop.
+
+Dieser Shop ist:
+
+Druckelite24
+
+Technische Shop-Domain:
+f32358-4.myshopify.com
+
+Wenn Mattl sagt:
+- mein Shop
+- unser Shop
+- der Shop
+- Shopify
+- Druckelite24
+- meine Bestellungen
+- unsere Bestellungen
+- mein Umsatz
+- unser Umsatz
 - Verkäufe
 - Bestellwert
-- Shop-Umsatz
-- Wie läuft Shopify?
-- Wie viele Bestellungen heute?
-- Was haben wir heute umgesetzt?
 
+ist IMMER dieser bereits verbundene Druckelite24-Shop gemeint.
+
+DU DARFST NIEMALS FRAGEN:
+- "Welchen Shop meinst du?"
+- "Welchen Shopify-Shop soll ich abrufen?"
+- "Bitte nenne mir den Shop."
+- oder sinngemäß dasselbe.
+
+Es gibt keine Shop-Auswahl.
+
+Der Shop ist bereits fest mit JARVIS verbunden.
+
+
+=========================================================
+SHOPIFY LIVE-DATEN
+=========================================================
+
+Für JEDE aktuelle Shopify-Frage MUSST du get_shopify_summary benutzen.
+
+Beispiele:
+
+"Wie viele Bestellungen habe ich heute?"
+→ get_shopify_summary mit period="today"
+
+"Wie hoch ist mein Umsatz heute?"
+→ get_shopify_summary mit period="today"
+
+"Wie lief Shopify gestern?"
+→ get_shopify_summary mit period="yesterday"
+
+"Was haben wir heute umgesetzt?"
+→ get_shopify_summary mit period="today"
+
+"Wie läuft mein Shop?"
+→ get_shopify_summary mit period="today"
+
+"Wie viele Bestellungen hatten wir gestern?"
+→ get_shopify_summary mit period="yesterday"
+
+Bei einer Shopify-Frage:
+1. NICHT aus dem Gedächtnis antworten.
+2. NICHT nach dem Shop fragen.
+3. NICHT erklären, dass du Daten abrufen könntest.
+4. SOFORT das Tool verwenden.
+5. Danach die gelieferten echten Daten kurz nennen.
+
+Wenn das Tool einen Fehler meldet:
+sage kurz, dass die Shopify-Daten gerade nicht verifiziert werden konnten.
+
+Erfinde niemals Umsatz, Bestellungen oder andere Live-Werte.
+
+
+=========================================================
 WETTER
+=========================================================
+
 Für Wetterfragen MUSST du get_weather benutzen.
 
 Bei Ludwigshafen bevorzuge:
 Ludwigshafen am Rhein, Rheinland-Pfalz, Deutschland.
 
+Keine Wetterwerte erfinden.
+
+
+=========================================================
 GMAIL
+=========================================================
+
 Für aktuelle Mail-Fragen:
 get_important_emails verwenden.
 
+Wenn Gmail noch nicht verbunden ist:
+sage das kurz und klar.
+
+
+=========================================================
 KALENDER
-Für Termine und Kalender:
+=========================================================
+
+Für aktuelle Termine und Kalender:
 get_calendar_today verwenden.
 
+Wenn der Kalender noch nicht verbunden ist:
+sage das kurz und klar.
+
+
+=========================================================
 ABSOLUT VERBOTEN
+=========================================================
+
 Bei Shopify-Fragen:
 - keine Reisen
 - keine Workouts
 - keine Kalorien
 - kein Essen bestellen
 - keine Hotels
+- keine themenfremden Vorschläge
+- keine Rückfrage nach dem Shop
 - keine erfundenen Daten
 
+
+=========================================================
 DRUCKELITE24
+=========================================================
+
 Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
 
 Relevante Bereiche:
@@ -177,7 +269,11 @@ Relevante Bereiche:
 - Shopify
 - E-Commerce
 
+
+=========================================================
 BUSINESS-DENKEN
+=========================================================
+
 Denke zusätzlich wie:
 - Geschäftsführer
 - E-Commerce-Manager
@@ -188,7 +284,11 @@ Denke zusätzlich wie:
 Wenn dir eine wirklich relevante Chance oder ein Risiko auffällt,
 darfst du nach der eigentlichen Antwort EINEN kurzen Hinweis geben.
 
+
+=========================================================
 SICHERHEIT
+=========================================================
+
 Lesen, analysieren und Empfehlungen geben ist erlaubt.
 
 Vor kritischen Aktionen brauchst du Mattls ausdrückliche Zustimmung:
@@ -211,10 +311,12 @@ Vor kritischen Aktionen brauchst du Mattls ausdrückliche Zustimmung:
 const realtimeTools = [
   {
     type: "function",
-    name: "get_shopify_summary",
+
+    name:
+      "get_shopify_summary",
 
     description:
-      "Liest echte aktuelle Shopify-Bestellungen, Umsatz und durchschnittlichen Bestellwert für heute oder gestern.",
+      "PFLICHT-Tool für alle aktuellen Fragen zu Mattls einzigem verbundenen Shopify-Shop Druckelite24. Verwenden bei Shopify, Shop, Umsatz, Bestellungen, Verkäufen oder Bestellwert. Niemals nach einem Shopnamen fragen. Der verbundene Shop ist bereits festgelegt.",
 
     parameters: {
       type: "object",
@@ -222,10 +324,14 @@ const realtimeTools = [
       properties: {
         period: {
           type: "string",
+
           enum: [
             "today",
             "yesterday"
-          ]
+          ],
+
+          description:
+            "today für heute, yesterday für gestern."
         }
       },
 
@@ -239,7 +345,9 @@ const realtimeTools = [
 
   {
     type: "function",
-    name: "get_weather",
+
+    name:
+      "get_weather",
 
     description:
       "Liest echtes Wetter für einen Ort für heute oder morgen.",
@@ -273,7 +381,9 @@ const realtimeTools = [
 
   {
     type: "function",
-    name: "get_important_emails",
+
+    name:
+      "get_important_emails",
 
     description:
       "Liest aktuelle wichtige E-Mails.",
@@ -299,7 +409,9 @@ const realtimeTools = [
 
   {
     type: "function",
-    name: "get_calendar_today",
+
+    name:
+      "get_calendar_today",
 
     description:
       "Liest die heutigen Kalendereinträge.",
@@ -327,9 +439,7 @@ app.post(
 
   async (req, res) => {
     try {
-      if (
-        !process.env.OPENAI_API_KEY
-      ) {
+      if (!process.env.OPENAI_API_KEY) {
         return res
           .status(500)
           .send(
@@ -372,10 +482,6 @@ app.post(
         audio: {
           input: {
 
-            /*
-             * Laptop-/Raummikrofon:
-             * Noise Reduction läuft vor VAD.
-             */
             noise_reduction: {
               type: "far_field"
             },
@@ -388,20 +494,9 @@ app.post(
                 "de",
 
               prompt:
-                "Deutsch. Benutzer heißt Mattl. Begriffe: Druckelite24, Shopify, Umsatz, Bestellungen, DTF, Textildruck, E-Commerce, Ludwigshafen."
+                "Deutsch. Benutzer heißt Mattl. Druckelite24 ist sein einziger Shopify-Shop. Begriffe: Druckelite24, Shopify, Umsatz, Bestellungen, Verkäufe, Bestellwert, DTF, Textildruck, E-Commerce, Ludwigshafen."
             },
 
-            /*
-             * STRIKTERE GERÄUSCHERKENNUNG
-             *
-             * 0.98:
-             * Leise Raumgeräusche und TV sollen
-             * deutlich schwerer auslösen.
-             *
-             * interrupt_response false:
-             * Ein VAD-Trigger darf JARVIS beim
-             * Sprechen nicht automatisch abbrechen.
-             */
             turn_detection: {
               type: "server_vad",
 
@@ -816,6 +911,12 @@ async function getShopifySummary(
   return {
     configured: true,
 
+    shop:
+      "Druckelite24",
+
+    shop_domain:
+      domain,
+
     period,
 
     orders:
@@ -833,7 +934,8 @@ async function getShopifySummary(
 
     currency,
 
-    source: "Shopify"
+    source:
+      "Shopify"
   };
 }
 
@@ -876,6 +978,9 @@ app.post(
         .status(500)
         .json({
           configured: false,
+
+          shop:
+            "Druckelite24",
 
           error:
             error.message ||
@@ -941,18 +1046,15 @@ app.post(
         location
       );
 
-
       geo.searchParams.set(
         "count",
         "5"
       );
 
-
       geo.searchParams.set(
         "language",
         "de"
       );
-
 
       geo.searchParams.set(
         "format",
@@ -975,9 +1077,7 @@ app.post(
         [];
 
 
-      if (
-        !candidates.length
-      ) {
+      if (!candidates.length) {
         return res
           .status(404)
           .json({
@@ -1036,7 +1136,6 @@ app.post(
         )
       );
 
-
       weather.searchParams.set(
         "longitude",
         String(
@@ -1044,24 +1143,20 @@ app.post(
         )
       );
 
-
       weather.searchParams.set(
         "current",
         "temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m"
       );
-
 
       weather.searchParams.set(
         "daily",
         "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
       );
 
-
       weather.searchParams.set(
         "timezone",
         "auto"
       );
-
 
       weather.searchParams.set(
         "forecast_days",
@@ -1104,12 +1199,10 @@ app.post(
             place.name,
 
           region:
-            place.admin1 ||
-            "",
+            place.admin1 || "",
 
           country:
-            place.country ||
-            ""
+            place.country || ""
         },
 
         current:
@@ -1212,7 +1305,7 @@ app.get(
       ok: true,
 
       version:
-        "JARVIS V4.1",
+        "JARVIS V4.2",
 
       architecture:
         "realtime-speech-to-speech",
@@ -1222,6 +1315,9 @@ app.get(
 
       voice:
         "cedar",
+
+      connected_shop:
+        "Druckelite24",
 
       noise_reduction:
         "far_field",
@@ -1274,7 +1370,7 @@ app.listen(
 
   () => {
     console.log(
-      `JARVIS V4.1 läuft auf Port ${PORT}`
+      `JARVIS V4.2 läuft auf Port ${PORT}`
     );
   }
 );
