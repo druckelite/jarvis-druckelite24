@@ -2,44 +2,20 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V9.0 · OPENAI REALTIME / WEBRTC
-   15.08.2026
+   V9.0.1 · OPENAI REALTIME / WEBRTC
+   FIX: SDP HANDSHAKE
 
-   NEUE ARCHITEKTUR
-
-   Browser-Mikrofon
+   Browser Mikrofon
         ↓
-      WebRTC
+   RTCPeerConnection
         ↓
-   OpenAI gpt-realtime-2.1
+   offer.sdp
         ↓
-   direkte Sprachausgabe
+   /api/realtime-session
         ↓
-   Browser-Lautsprecher
-
-   ENTFALLEN FÜR NORMALE GESPRÄCHE:
-   - MediaRecorder
-   - manuelle Silence Detection
-   - /api/transcribe
-   - /api/jarvis-chat
-   - ElevenLabs TTS
-   - Audio-Blobs
-   - Satz-Splitting
-   - Audio-Decoding
-
-   BLEIBT:
-   - Intro
-   - HUD
-   - Begrüßungen
-   - proaktive Business-Checks
-   - Erinnerungs-Checks
-   - E-Mail-Entwurfsanzeige
-   - Shopify/Gmail/Business-Logik auf dem Server
-
-   WICHTIG:
-   Diese V9.0 ist zunächst die Realtime-Sprachbasis.
-   Realtime Function Calling für Shopify/Gmail/Notizen usw.
-   kommt im nächsten Schritt.
+   OpenAI Realtime
+        ↓
+   WebRTC Audio zurück
    ========================================================= */
 
 
@@ -59,15 +35,15 @@ const remoteAudio = document.querySelector("#remoteAudio");
 
 let active = false;
 let starting = false;
-let assistantSpeaking = false;
+let stopping = false;
 
 let peerConnection = null;
 let dataChannel = null;
 let micStream = null;
 
 let realtimeConnected = false;
+let assistantSpeaking = false;
 let greetingInProgress = false;
-let stopping = false;
 
 
 /* =========================================================
@@ -99,44 +75,6 @@ const INTRO_FADE_DURATION_MS = 7000;
 
 
 /* =========================================================
-   REALTIME SETTINGS
-   ========================================================= */
-
-/*
- * Kleine Pause nach dem Öffnen des DataChannels.
- * Keine eigentliche Sprachlatenz - nur damit die Session
- * sicher bereit ist, bevor wir die Begrüßung schicken.
- */
-const REALTIME_READY_DELAY_MS = 100;
-
-
-/* =========================================================
-   UI
-   ========================================================= */
-
-function setStatus(text) {
-  if (!statusEl) return;
-
-  statusEl.textContent = text;
-  statusEl.classList.toggle("online", text === "Online");
-}
-
-function setLog(text) {
-  if (!logEl) return;
-  logEl.textContent = text;
-}
-
-function setButtonActive(value) {
-  if (!button) return;
-  button.classList.toggle("active", Boolean(value));
-}
-
-function setJarvisState(state) {
-  document.body.dataset.jarvisState = state;
-}
-
-
-/* =========================================================
    HELPERS
    ========================================================= */
 
@@ -154,26 +92,73 @@ function safeJsonParse(value) {
 
 
 /* =========================================================
+   UI
+   ========================================================= */
+
+function setStatus(text) {
+  if (!statusEl) return;
+
+  statusEl.textContent = text;
+  statusEl.classList.toggle(
+    "online",
+    text === "Online"
+  );
+}
+
+function setLog(text) {
+  if (!logEl) return;
+  logEl.textContent = text;
+}
+
+function setButtonActive(value) {
+  if (!button) return;
+
+  button.classList.toggle(
+    "active",
+    Boolean(value)
+  );
+}
+
+function setJarvisState(state) {
+  document.body.dataset.jarvisState = state;
+}
+
+
+/* =========================================================
    BERLIN TIME
    ========================================================= */
 
 function getBerlinHour() {
   try {
-    const formatter = new Intl.DateTimeFormat("de-DE", {
-      timeZone: "Europe/Berlin",
-      hour: "numeric",
-      hourCycle: "h23"
-    });
+    const formatter =
+      new Intl.DateTimeFormat("de-DE", {
+        timeZone: "Europe/Berlin",
+        hour: "numeric",
+        hourCycle: "h23"
+      });
 
-    const parts = formatter.formatToParts(new Date());
-    const hourPart = parts.find(part => part.type === "hour");
-    const hour = Number(hourPart?.value);
+    const parts =
+      formatter.formatToParts(
+        new Date()
+      );
+
+    const hourPart =
+      parts.find(
+        part => part.type === "hour"
+      );
+
+    const hour =
+      Number(hourPart?.value);
 
     if (!Number.isNaN(hour)) {
       return hour;
     }
+
   } catch (error) {
-    console.warn("Berlin-Zeit Fehler:", error);
+    console.warn(
+      "Berlin-Zeit Fehler:",
+      error
+    );
   }
 
   return new Date().getHours();
@@ -185,7 +170,11 @@ function getBerlinHour() {
    ========================================================= */
 
 function pickRandom(items) {
-  return items[Math.floor(Math.random() * items.length)];
+  return items[
+    Math.floor(
+      Math.random() * items.length
+    )
+  ];
 }
 
 function getGreeting() {
@@ -237,46 +226,92 @@ function getGreeting() {
    ========================================================= */
 
 function showDraft(draft) {
-  const panel = document.getElementById("draftPanel");
-  const subjectEl = document.getElementById("draftSubject");
-  const bodyEl = document.getElementById("draftBody");
+  const panel =
+    document.getElementById(
+      "draftPanel"
+    );
 
-  if (!panel || !subjectEl || !bodyEl) return;
+  const subjectEl =
+    document.getElementById(
+      "draftSubject"
+    );
 
-  subjectEl.textContent = draft?.subject
-    ? `Betreff: ${draft.subject}`
-    : "";
+  const bodyEl =
+    document.getElementById(
+      "draftBody"
+    );
 
-  bodyEl.textContent = draft?.body || "";
+  if (
+    !panel ||
+    !subjectEl ||
+    !bodyEl
+  ) {
+    return;
+  }
+
+  subjectEl.textContent =
+    draft?.subject
+      ? `Betreff: ${draft.subject}`
+      : "";
+
+  bodyEl.textContent =
+    draft?.body || "";
 
   panel.style.display = "flex";
 }
 
-const draftCopyBtn = document.getElementById("draftCopyBtn");
+
+const draftCopyBtn =
+  document.getElementById(
+    "draftCopyBtn"
+  );
 
 if (draftCopyBtn) {
-  draftCopyBtn.addEventListener("click", async () => {
-    const subjectEl = document.getElementById("draftSubject");
-    const bodyEl = document.getElementById("draftBody");
+  draftCopyBtn.addEventListener(
+    "click",
+    async () => {
 
-    const fullText =
-      `${subjectEl?.textContent || ""}\n\n${bodyEl?.textContent || ""}`.trim();
+      const subjectEl =
+        document.getElementById(
+          "draftSubject"
+        );
 
-    try {
-      await navigator.clipboard.writeText(fullText);
+      const bodyEl =
+        document.getElementById(
+          "draftBody"
+        );
 
-      const original = draftCopyBtn.textContent;
+      const fullText =
+        `${
+          subjectEl?.textContent || ""
+        }\n\n${
+          bodyEl?.textContent || ""
+        }`.trim();
 
-      draftCopyBtn.textContent = "Kopiert!";
+      try {
+        await navigator.clipboard.writeText(
+          fullText
+        );
 
-      setTimeout(() => {
-        draftCopyBtn.textContent = original;
-      }, 1500);
+        const original =
+          draftCopyBtn.textContent;
 
-    } catch (error) {
-      console.warn("Kopieren fehlgeschlagen:", error);
+        draftCopyBtn.textContent =
+          "Kopiert!";
+
+        setTimeout(() => {
+          draftCopyBtn.textContent =
+            original;
+        }, 1500);
+
+      } catch (error) {
+        console.warn(
+          "Kopieren fehlgeschlagen:",
+          error
+        );
+      }
     }
-  });
+  );
 }
 
 
@@ -286,7 +321,10 @@ if (draftCopyBtn) {
 
 function stopIntro() {
   if (introFadeTimer) {
-    clearInterval(introFadeTimer);
+    clearInterval(
+      introFadeTimer
+    );
+
     introFadeTimer = null;
   }
 
@@ -303,18 +341,23 @@ function stopIntro() {
   }
 }
 
+
 async function startIntro() {
   stopIntro();
 
-  introAudio = new Audio("/Intro.mp3?v=9");
+  introAudio =
+    new Audio("/Intro.mp3?v=901");
+
   introAudio.preload = "auto";
-  introAudio.volume = INTRO_START_VOLUME;
+  introAudio.volume =
+    INTRO_START_VOLUME;
 
   return new Promise(resolve => {
     let resolved = false;
 
     const done = () => {
       if (resolved) return;
+
       resolved = true;
       resolve();
     };
@@ -326,14 +369,19 @@ async function startIntro() {
           return;
         }
 
-        introAudio.currentTime = INTRO_START;
+        introAudio.currentTime =
+          INTRO_START;
 
         await introAudio.play();
 
         done();
 
       } catch (error) {
-        console.warn("Intro konnte nicht abgespielt werden:", error);
+        console.warn(
+          "Intro Fehler:",
+          error
+        );
+
         done();
       }
     };
@@ -350,7 +398,9 @@ async function startIntro() {
       { once: true }
     );
 
-    if (introAudio.readyState >= 1) {
+    if (
+      introAudio.readyState >= 1
+    ) {
       play();
     }
 
@@ -358,90 +408,139 @@ async function startIntro() {
   });
 }
 
+
 function duckIntro() {
-  if (!introAudio || introAudio.paused) return;
+  if (
+    !introAudio ||
+    introAudio.paused
+  ) {
+    return;
+  }
 
   if (introFadeTimer) {
-    clearInterval(introFadeTimer);
+    clearInterval(
+      introFadeTimer
+    );
+
     introFadeTimer = null;
   }
 
-  const originalVolume = introAudio.volume;
-  const startedAt = performance.now();
+  const original =
+    introAudio.volume;
 
-  introFadeTimer = setInterval(() => {
-    if (!introAudio) {
-      clearInterval(introFadeTimer);
-      introFadeTimer = null;
-      return;
-    }
+  const start =
+    performance.now();
 
-    const progress = Math.min(
-      (performance.now() - startedAt) /
-        INTRO_DUCK_DURATION_MS,
-      1
-    );
+  introFadeTimer =
+    setInterval(() => {
 
-    const smooth =
-      progress *
-      progress *
-      (3 - 2 * progress);
+      if (!introAudio) {
+        clearInterval(
+          introFadeTimer
+        );
 
-    introAudio.volume =
-      originalVolume -
-      (
-        originalVolume -
-        INTRO_BACKGROUND_VOLUME
-      ) *
-      smooth;
+        introFadeTimer = null;
+        return;
+      }
 
-    if (progress >= 1) {
-      clearInterval(introFadeTimer);
-      introFadeTimer = null;
+      const progress =
+        Math.min(
+          (
+            performance.now() -
+            start
+          ) /
+            INTRO_DUCK_DURATION_MS,
+          1
+        );
 
-      fadeIntroOut();
-    }
+      const smooth =
+        progress *
+        progress *
+        (3 - 2 * progress);
 
-  }, 40);
+      introAudio.volume =
+        original -
+        (
+          original -
+          INTRO_BACKGROUND_VOLUME
+        ) *
+          smooth;
+
+      if (progress >= 1) {
+        clearInterval(
+          introFadeTimer
+        );
+
+        introFadeTimer = null;
+
+        fadeIntroOut();
+      }
+
+    }, 40);
 }
 
+
 function fadeIntroOut() {
-  if (!introAudio || introAudio.paused) return;
+  if (
+    !introAudio ||
+    introAudio.paused
+  ) {
+    return;
+  }
 
-  const startedAt = performance.now();
-  const startingVolume = introAudio.volume;
+  const start =
+    performance.now();
 
-  introFadeTimer = setInterval(() => {
-    if (!introAudio) {
-      clearInterval(introFadeTimer);
-      introFadeTimer = null;
-      return;
-    }
+  const volume =
+    introAudio.volume;
 
-    const progress = Math.min(
-      (performance.now() - startedAt) /
-        INTRO_FADE_DURATION_MS,
-      1
-    );
+  introFadeTimer =
+    setInterval(() => {
 
-    introAudio.volume = Math.max(
-      0,
-      startingVolume *
-        Math.pow(1 - progress, 1.7)
-    );
+      if (!introAudio) {
+        clearInterval(
+          introFadeTimer
+        );
 
-    if (progress >= 1) {
-      clearInterval(introFadeTimer);
-      introFadeTimer = null;
+        introFadeTimer = null;
+        return;
+      }
 
-      try {
-        introAudio.pause();
-      } catch {}
+      const progress =
+        Math.min(
+          (
+            performance.now() -
+            start
+          ) /
+            INTRO_FADE_DURATION_MS,
+          1
+        );
 
-      introAudio = null;
-    }
+      introAudio.volume =
+        Math.max(
+          0,
+          volume *
+            Math.pow(
+              1 - progress,
+              1.7
+            )
+        );
 
-  }, 60);
+      if (progress >= 1) {
+        clearInterval(
+          introFadeTimer
+        );
+
+        introFadeTimer = null;
+
+        try {
+          introAudio.pause();
+        } catch {}
+
+        introAudio = null;
+      }
+
+    }, 60);
 }
 
 
@@ -455,42 +554,51 @@ async function createMicrophoneStream() {
     !navigator.mediaDevices.getUserMedia
   ) {
     throw new Error(
-      "Mikrofonzugriff wird von diesem Browser nicht unterstützt."
+      "Mikrofon wird von diesem Browser nicht unterstützt."
     );
   }
 
   micStream =
-    await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        channelCount: 1
-      }
-    });
+    await navigator.mediaDevices
+      .getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1
+        }
+      });
 
   /*
-   * Während Startmusik + Begrüßung hört JARVIS
-   * zunächst noch nicht zu.
+   * Mikro während Intro erst deaktiviert.
    */
   setMicrophoneEnabled(false);
 
   return micStream;
 }
 
+
 function setMicrophoneEnabled(enabled) {
   if (!micStream) return;
 
-  for (const track of micStream.getAudioTracks()) {
-    track.enabled = Boolean(enabled);
+  for (
+    const track of
+    micStream.getAudioTracks()
+  ) {
+    track.enabled =
+      Boolean(enabled);
   }
 }
+
 
 function stopMicrophone() {
   if (!micStream) return;
 
   try {
-    for (const track of micStream.getTracks()) {
+    for (
+      const track of
+      micStream.getTracks()
+    ) {
       track.stop();
     }
   } catch {}
@@ -500,7 +608,7 @@ function stopMicrophone() {
 
 
 /* =========================================================
-   REALTIME DATA CHANNEL
+   REALTIME EVENT SENDER
    ========================================================= */
 
 function sendRealtimeEvent(event) {
@@ -509,7 +617,7 @@ function sendRealtimeEvent(event) {
     dataChannel.readyState !== "open"
   ) {
     console.warn(
-      "Realtime Event konnte nicht gesendet werden:",
+      "DataChannel nicht offen:",
       event?.type
     );
 
@@ -517,12 +625,15 @@ function sendRealtimeEvent(event) {
   }
 
   try {
-    dataChannel.send(JSON.stringify(event));
+    dataChannel.send(
+      JSON.stringify(event)
+    );
+
     return true;
 
   } catch (error) {
     console.error(
-      "Realtime Event Sendefehler:",
+      "Realtime Sendefehler:",
       error
     );
 
@@ -532,50 +643,53 @@ function sendRealtimeEvent(event) {
 
 
 /* =========================================================
-   REALTIME RESPONSE HELPERS
+   SPEAK TEXT
    ========================================================= */
 
 function speakExactText(text) {
-  const cleanText =
+  const clean =
     String(text || "").trim();
 
-  if (!cleanText) return false;
+  if (!clean) {
+    return false;
+  }
 
   return sendRealtimeEvent({
     type: "response.create",
 
     response: {
-      conversation: "none",
-
-      output_modalities: ["audio"],
+      output_modalities: [
+        "audio"
+      ],
 
       instructions:
-        `Sprich jetzt exakt den folgenden deutschen Satz. ` +
-        `Füge nichts hinzu und stelle keine Rückfrage:\n\n` +
-        cleanText
+        `Sprich jetzt genau diese kurze Begrüßung auf Deutsch aus. ` +
+        `Füge nichts hinzu und stelle keine Rückfrage: ${clean}`
     }
   });
 }
 
+
 function speakProactiveNotice(text) {
-  const cleanText =
+  const clean =
     String(text || "").trim();
 
-  if (!cleanText) return false;
+  if (!clean) {
+    return false;
+  }
 
   return sendRealtimeEvent({
     type: "response.create",
 
     response: {
-      conversation: "none",
-
-      output_modalities: ["audio"],
+      output_modalities: [
+        "audio"
+      ],
 
       instructions:
-        `Du meldest dich gerade selbstständig bei Mattl. ` +
-        `Sprich den folgenden Hinweis natürlich, kurz und direkt aus. ` +
-        `Keine technische Erklärung, keine zusätzliche Rückfrage.\n\n` +
-        cleanText
+        `Melde dich jetzt selbstständig kurz bei Mattl. ` +
+        `Sprich folgenden Hinweis natürlich auf Deutsch aus. ` +
+        `Keine technische Erklärung und keine zusätzliche Frage: ${clean}`
     }
   });
 }
@@ -588,146 +702,150 @@ function speakProactiveNotice(text) {
 function handleRealtimeEvent(event) {
   if (!event?.type) return;
 
-  console.log("[REALTIME]", event.type);
+  console.log(
+    "[REALTIME]",
+    event.type
+  );
 
   switch (event.type) {
 
-    /* --------------------------
-       SESSION
-       -------------------------- */
-
     case "session.created":
       console.log(
-        "Realtime Session erstellt:",
-        event.session?.id || ""
+        "Realtime Session erstellt."
       );
       break;
 
+
     case "session.updated":
-      console.log("Realtime Session aktualisiert.");
+      console.log(
+        "Realtime Session aktualisiert."
+      );
       break;
 
 
-    /* --------------------------
-       MATTLS SPRACHE
-       -------------------------- */
-
     case "input_audio_buffer.speech_started":
+      if (
+        !active ||
+        greetingInProgress
+      ) {
+        return;
+      }
 
-      if (!active || greetingInProgress) return;
+      setJarvisState(
+        "hearing"
+      );
 
-      assistantSpeaking = false;
-
-      setJarvisState("hearing");
-      setLog("Ich höre zu …");
+      setLog(
+        "Ich höre zu …"
+      );
 
       break;
 
 
     case "input_audio_buffer.speech_stopped":
+      if (
+        !active ||
+        greetingInProgress
+      ) {
+        return;
+      }
 
-      if (!active || greetingInProgress) return;
+      setJarvisState(
+        "thinking"
+      );
 
-      setJarvisState("thinking");
-      setLog("Denke nach …");
+      setLog(
+        "Denke nach …"
+      );
 
       break;
 
 
-    /* --------------------------
-       JARVIS RESPONSE
-       -------------------------- */
-
     case "response.created":
-
       assistantSpeaking = true;
 
-      setJarvisState("thinking");
-      setLog("JARVIS denkt …");
+      setJarvisState(
+        "thinking"
+      );
+
+      setLog(
+        "JARVIS denkt …"
+      );
 
       break;
 
 
     case "response.output_audio.delta":
-
       assistantSpeaking = true;
 
-      setJarvisState("speaking");
-      setLog("JARVIS spricht.");
+      setJarvisState(
+        "speaking"
+      );
 
-      break;
-
-
-    case "response.output_audio_transcript.delta":
-
-      /*
-       * Optional zum Debuggen.
-       * Nicht ins HUD schreiben, damit es nicht flackert.
-       */
-      if (event.delta) {
-        console.debug(
-          "[JARVIS AUDIO TEXT]",
-          event.delta
-        );
-      }
+      setLog(
+        "JARVIS spricht."
+      );
 
       break;
 
 
     case "response.output_audio_transcript.done":
-
       if (event.transcript) {
         console.log(
           "JARVIS:",
           event.transcript
         );
       }
-
       break;
 
 
     case "response.done":
-
       assistantSpeaking = false;
 
       if (greetingInProgress) {
         greetingInProgress = false;
 
-        setMicrophoneEnabled(true);
-
-        setJarvisState("listening");
-        setLog("JARVIS hört zu.");
-
-        console.log(
-          "[JARVIS] Begrüßung fertig. Mikrofon aktiv."
+        setMicrophoneEnabled(
+          true
         );
 
-        return;
+        setJarvisState(
+          "listening"
+        );
+
+        setLog(
+          "JARVIS hört zu."
+        );
+
+        console.log(
+          "Begrüßung beendet. Mikrofon aktiv."
+        );
+
+        break;
       }
 
       if (active) {
-        setJarvisState("listening");
-        setLog("JARVIS hört zu.");
+        setJarvisState(
+          "listening"
+        );
+
+        setLog(
+          "JARVIS hört zu."
+        );
       }
 
       break;
 
 
-    /* --------------------------
-       FEHLER
-       -------------------------- */
-
     case "error":
-
       console.error(
-        "OpenAI Realtime Fehler:",
+        "Realtime Fehler:",
         event
       );
 
       setLog(
-        event.error?.message
-          ? `Realtime Fehler: ${event.error.message}`
-          : "Realtime Fehler."
+        event.error?.message ||
+        "Realtime Fehler."
       );
 
       break;
@@ -740,18 +858,19 @@ function handleRealtimeEvent(event) {
 
 
 /* =========================================================
-   REALTIME CONNECTION
+   WEBRTC CONNECT
    ========================================================= */
 
 async function connectRealtime() {
   if (!micStream) {
     throw new Error(
-      "Mikrofon wurde noch nicht gestartet."
+      "Mikrofon wurde nicht gestartet."
     );
   }
 
   if (
-    typeof RTCPeerConnection === "undefined"
+    typeof RTCPeerConnection ===
+    "undefined"
   ) {
     throw new Error(
       "WebRTC wird von diesem Browser nicht unterstützt."
@@ -759,185 +878,312 @@ async function connectRealtime() {
   }
 
 
-  /* --------------------------
+  /* =======================================================
      PEER CONNECTION
-     -------------------------- */
+     ======================================================= */
 
   peerConnection =
     new RTCPeerConnection();
 
 
-  /* --------------------------
+  /* =======================================================
      REMOTE AUDIO
-     -------------------------- */
+     ======================================================= */
 
-  peerConnection.ontrack = event => {
-    if (!remoteAudio) {
-      console.error(
-        "#remoteAudio wurde nicht gefunden."
-      );
+  peerConnection.ontrack =
+    event => {
 
-      return;
-    }
-
-    const stream =
-      event.streams?.[0] ||
-      new MediaStream([event.track]);
-
-    remoteAudio.srcObject = stream;
-
-    remoteAudio.autoplay = true;
-    remoteAudio.playsInline = true;
-    remoteAudio.muted = false;
-    remoteAudio.volume = 1;
-
-    remoteAudio.play().catch(error => {
-      console.warn(
-        "Remote Audio autoplay:",
-        error
-      );
-    });
-  };
-
-
-  /* --------------------------
-     CONNECTION STATE
-     -------------------------- */
-
-  peerConnection.onconnectionstatechange = () => {
-    const state =
-      peerConnection?.connectionState;
-
-    console.log(
-      "WebRTC connectionState:",
-      state
-    );
-
-    if (
-      state === "failed" ||
-      state === "disconnected"
-    ) {
-      if (!stopping && active) {
-        setStatus("Verbindung verloren");
-        setJarvisState("offline");
-        setLog("Realtime-Verbindung unterbrochen.");
-      }
-    }
-  };
-
-
-  peerConnection.oniceconnectionstatechange = () => {
-    console.log(
-      "ICE:",
-      peerConnection?.iceConnectionState
-    );
-  };
-
-
-  /* --------------------------
-     MICROPHONE TRACK
-     -------------------------- */
-
-  for (
-    const track of micStream.getTracks()
-  ) {
-    peerConnection.addTrack(
-      track,
-      micStream
-    );
-  }
-
-
-  /* --------------------------
-     DATA CHANNEL
-     -------------------------- */
-
-  dataChannel =
-    peerConnection.createDataChannel(
-      "oai-events"
-    );
-
-  dataChannel.addEventListener(
-    "message",
-    messageEvent => {
-      const event =
-        safeJsonParse(messageEvent.data);
-
-      if (!event) {
-        console.warn(
-          "Ungültiges Realtime Event:",
-          messageEvent.data
+      if (!remoteAudio) {
+        console.error(
+          "#remoteAudio fehlt in index.html."
         );
 
         return;
       }
 
-      handleRealtimeEvent(event);
+      const stream =
+        event.streams?.[0] ||
+        new MediaStream([
+          event.track
+        ]);
+
+      remoteAudio.srcObject =
+        stream;
+
+      remoteAudio.autoplay = true;
+      remoteAudio.playsInline = true;
+      remoteAudio.muted = false;
+      remoteAudio.volume = 1;
+
+      remoteAudio.onplaying = () => {
+        if (!active) return;
+
+        assistantSpeaking = true;
+
+        setJarvisState(
+          "speaking"
+        );
+
+        setLog(
+          "JARVIS spricht."
+        );
+      };
+
+      remoteAudio
+        .play()
+        .catch(error => {
+          console.warn(
+            "Audio autoplay:",
+            error
+          );
+        });
+    };
+
+
+  /* =======================================================
+     CONNECTION STATE
+     ======================================================= */
+
+  peerConnection
+    .onconnectionstatechange =
+    () => {
+
+      const state =
+        peerConnection
+          ?.connectionState;
+
+      console.log(
+        "[WEBRTC] connectionState:",
+        state
+      );
+
+      if (
+        state === "failed" ||
+        state === "disconnected"
+      ) {
+        if (
+          active &&
+          !stopping
+        ) {
+          setStatus(
+            "Verbindung verloren"
+          );
+
+          setJarvisState(
+            "offline"
+          );
+
+          setLog(
+            "Realtime-Verbindung unterbrochen."
+          );
+        }
+      }
+    };
+
+
+  peerConnection
+    .oniceconnectionstatechange =
+    () => {
+
+      console.log(
+        "[WEBRTC] ICE:",
+        peerConnection
+          ?.iceConnectionState
+      );
+    };
+
+
+  /* =======================================================
+     ADD MICROPHONE TRACK
+
+     WICHTIG:
+     Track muss VOR createOffer hinzugefügt werden.
+     ======================================================= */
+
+  const audioTracks =
+    micStream.getAudioTracks();
+
+  if (!audioTracks.length) {
+    throw new Error(
+      "Keine Mikrofon-Audiospur vorhanden."
+    );
+  }
+
+  peerConnection.addTrack(
+    audioTracks[0],
+    micStream
+  );
+
+
+  /* =======================================================
+     DATA CHANNEL
+     ======================================================= */
+
+  dataChannel =
+    peerConnection
+      .createDataChannel(
+        "oai-events"
+      );
+
+
+  dataChannel.addEventListener(
+    "message",
+    event => {
+
+      const data =
+        safeJsonParse(
+          event.data
+        );
+
+      if (!data) {
+        console.warn(
+          "Ungültiges Realtime Event."
+        );
+
+        return;
+      }
+
+      handleRealtimeEvent(
+        data
+      );
     }
   );
 
 
-  const channelOpenPromise =
-    new Promise((resolve, reject) => {
+  const channelReady =
+    new Promise(
+      (resolve, reject) => {
 
-      const timeout =
-        setTimeout(() => {
-          reject(
-            new Error(
-              "Realtime DataChannel wurde nicht geöffnet."
-            )
-          );
-        }, 15000);
-
-
-      dataChannel.addEventListener(
-        "open",
-        () => {
-          clearTimeout(timeout);
-
-          realtimeConnected = true;
-
-          console.log(
-            "Realtime DataChannel offen."
+        const timeout =
+          setTimeout(
+            () => {
+              reject(
+                new Error(
+                  "Realtime DataChannel wurde nicht geöffnet."
+                )
+              );
+            },
+            15000
           );
 
-          resolve();
-        },
-        { once: true }
-      );
 
+        dataChannel
+          .addEventListener(
+            "open",
+            () => {
 
-      dataChannel.addEventListener(
-        "error",
-        () => {
-          clearTimeout(timeout);
+              clearTimeout(
+                timeout
+              );
 
-          reject(
-            new Error(
-              "Realtime DataChannel Fehler."
-            )
+              realtimeConnected =
+                true;
+
+              console.log(
+                "[WEBRTC] DataChannel offen."
+              );
+
+              resolve();
+
+            },
+            { once: true }
           );
-        },
-        { once: true }
-      );
-    });
 
 
-  /* --------------------------
-     SDP OFFER
-     -------------------------- */
+        dataChannel
+          .addEventListener(
+            "error",
+            () => {
+
+              clearTimeout(
+                timeout
+              );
+
+              reject(
+                new Error(
+                  "Realtime DataChannel Fehler."
+                )
+              );
+
+            },
+            { once: true }
+          );
+      }
+    );
+
+
+  /* =======================================================
+     CREATE SDP OFFER
+     OFFICIAL FLOW
+     ======================================================= */
 
   const offer =
-    await peerConnection.createOffer();
+    await peerConnection
+      .createOffer();
 
-  await peerConnection.setLocalDescription(
-    offer
+
+  if (
+    !offer ||
+    !offer.sdp
+  ) {
+    throw new Error(
+      "Browser hat kein SDP-Angebot erzeugt."
+    );
+  }
+
+
+  await peerConnection
+    .setLocalDescription(
+      offer
+    );
+
+
+  /*
+   * DEBUG:
+   * Bei einem korrekten SDP muss Länge > 0
+   * und Anfang "v=0" sein.
+   */
+  console.log(
+    "[WEBRTC] Offer SDP Länge:",
+    offer.sdp.length
+  );
+
+  console.log(
+    "[WEBRTC] Offer SDP Anfang:",
+    JSON.stringify(
+      offer.sdp.slice(
+        0,
+        100
+      )
+    )
   );
 
 
-  /* --------------------------
-     SERVER → OPENAI
-     -------------------------- */
+  if (
+    !offer.sdp.startsWith(
+      "v=0"
+    )
+  ) {
+    throw new Error(
+      "Ungültiges Browser-SDP: beginnt nicht mit v=0."
+    );
+  }
+
+
+  if (
+    !offer.sdp.includes(
+      "m=audio"
+    )
+  ) {
+    throw new Error(
+      "Ungültiges Browser-SDP: keine Audiospur."
+    );
+  }
+
+
+  /* =======================================================
+     SEND EXACT offer.sdp
+     ======================================================= */
 
   const response =
     await fetch(
@@ -951,8 +1197,6 @@ async function connectRealtime() {
         },
 
         body:
-          peerConnection.localDescription
-            ?.sdp ||
           offer.sdp
       }
     );
@@ -964,7 +1208,7 @@ async function connectRealtime() {
 
   if (!response.ok) {
     console.error(
-      "Realtime Session Serverantwort:",
+      "[WEBRTC] Server Fehler:",
       answerSdp
     );
 
@@ -975,24 +1219,48 @@ async function connectRealtime() {
   }
 
 
-  /* --------------------------
-     SDP ANSWER
-     -------------------------- */
+  console.log(
+    "[WEBRTC] Answer SDP Länge:",
+    answerSdp.length
+  );
 
-  await peerConnection.setRemoteDescription({
-    type: "answer",
-    sdp: answerSdp
-  });
+  console.log(
+    "[WEBRTC] Answer SDP Anfang:",
+    JSON.stringify(
+      answerSdp.slice(
+        0,
+        100
+      )
+    )
+  );
 
 
-  /* --------------------------
-     WAIT FOR CHANNEL
-     -------------------------- */
+  if (
+    !answerSdp.startsWith(
+      "v=0"
+    )
+  ) {
+    throw new Error(
+      "Server hat kein gültiges SDP-Answer geliefert."
+    );
+  }
 
-  await channelOpenPromise;
 
-  await sleep(
-    REALTIME_READY_DELAY_MS
+  /* =======================================================
+     SET REMOTE DESCRIPTION
+     ======================================================= */
+
+  await peerConnection
+    .setRemoteDescription({
+      type: "answer",
+      sdp: answerSdp
+    });
+
+
+  await channelReady;
+
+  console.log(
+    "[WEBRTC] Verbindung vollständig aufgebaut."
   );
 
   return true;
@@ -1000,7 +1268,7 @@ async function connectRealtime() {
 
 
 /* =========================================================
-   REALTIME CLEANUP
+   DISCONNECT
    ========================================================= */
 
 function disconnectRealtime() {
@@ -1019,7 +1287,9 @@ function disconnectRealtime() {
       peerConnection.ontrack = null;
       peerConnection.onconnectionstatechange = null;
       peerConnection.oniceconnectionstatechange = null;
+
       peerConnection.close();
+
     } catch {}
 
     peerConnection = null;
@@ -1044,7 +1314,9 @@ function disconnectRealtime() {
    PROACTIVE BUSINESS CHECKS
    ========================================================= */
 
-async function runBackgroundCheck(endpointUrl) {
+async function runBackgroundCheck(
+  endpointUrl
+) {
   if (
     !active ||
     !realtimeConnected ||
@@ -1055,32 +1327,28 @@ async function runBackgroundCheck(endpointUrl) {
   }
 
   try {
-
     const response =
-      await fetch(endpointUrl, {
-        method: "POST",
+      await fetch(
+        endpointUrl,
+        {
+          method: "POST",
 
-        headers: {
-          "Content-Type":
-            "application/json"
-        },
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
 
-        /*
-         * previous_response_id wird bei Realtime
-         * nicht mehr benötigt.
-         */
-        body: JSON.stringify({})
-      });
-
+          body:
+            JSON.stringify({})
+        }
+      );
 
     if (!response.ok) {
       return;
     }
 
-
     const data =
       await response.json();
-
 
     if (
       !data ||
@@ -1091,12 +1359,10 @@ async function runBackgroundCheck(endpointUrl) {
       return;
     }
 
-
     console.log(
       "JARVIS proaktiv:",
       data.text
     );
-
 
     speakProactiveNotice(
       data.text
@@ -1128,23 +1394,29 @@ async function checkDueReminders() {
 function startProactiveChecks() {
   stopProactiveChecks();
 
-
   proactiveFirstCheckTimer =
-    setTimeout(() => {
-      checkProactiveNotice();
-    }, PROACTIVE_FIRST_CHECK_DELAY_MS);
-
+    setTimeout(
+      () => {
+        checkProactiveNotice();
+      },
+      PROACTIVE_FIRST_CHECK_DELAY_MS
+    );
 
   proactiveCheckTimer =
-    setInterval(() => {
-      checkProactiveNotice();
-    }, PROACTIVE_CHECK_INTERVAL_MS);
-
+    setInterval(
+      () => {
+        checkProactiveNotice();
+      },
+      PROACTIVE_CHECK_INTERVAL_MS
+    );
 
   reminderCheckTimer =
-    setInterval(() => {
-      checkDueReminders();
-    }, REMINDER_CHECK_INTERVAL_MS);
+    setInterval(
+      () => {
+        checkDueReminders();
+      },
+      REMINDER_CHECK_INTERVAL_MS
+    );
 }
 
 
@@ -1157,7 +1429,6 @@ function stopProactiveChecks() {
     proactiveFirstCheckTimer = null;
   }
 
-
   if (proactiveCheckTimer) {
     clearInterval(
       proactiveCheckTimer
@@ -1165,7 +1436,6 @@ function stopProactiveChecks() {
 
     proactiveCheckTimer = null;
   }
-
 
   if (reminderCheckTimer) {
     clearInterval(
@@ -1182,44 +1452,49 @@ function stopProactiveChecks() {
    ========================================================= */
 
 async function startJarvis() {
-  if (active || starting) return;
+  if (
+    active ||
+    starting ||
+    stopping
+  ) {
+    return;
+  }
 
   starting = true;
-  stopping = false;
 
   if (button) {
     button.disabled = true;
   }
 
+  setJarvisState(
+    "connecting"
+  );
 
-  setJarvisState("connecting");
+  setStatus(
+    "Verbinde …"
+  );
 
-  setStatus("Verbinde …");
+  setButtonActive(
+    true
+  );
 
-  setButtonActive(true);
-
-  setLog("JARVIS startet …");
-
+  setLog(
+    "JARVIS startet …"
+  );
 
   try {
 
-    /* --------------------------
-       MICROPHONE
-       -------------------------- */
+    /* Mikro */
 
     await createMicrophoneStream();
 
 
-    /* --------------------------
-       INTRO
-       -------------------------- */
+    /* Intro */
 
     await startIntro();
 
 
-    /* --------------------------
-       REALTIME CONNECT
-       -------------------------- */
+    /* Realtime */
 
     setLog(
       "Realtime-Verbindung wird aufgebaut …"
@@ -1230,89 +1505,87 @@ async function startJarvis() {
 
     active = true;
 
-    setStatus("Online");
+    setStatus(
+      "Online"
+    );
 
-
-    /* --------------------------
-       INTRO TIMING
-       -------------------------- */
 
     await sleep(
       INTRO_VOICE_DELAY_MS
     );
 
-
-    if (!active) return;
+    if (!active) {
+      return;
+    }
 
 
     duckIntro();
 
 
-    /* --------------------------
-       GREETING
-       -------------------------- */
+    /* Begrüßung */
 
-    greetingInProgress = true;
+    greetingInProgress =
+      true;
 
-    setJarvisState("speaking");
-    setLog("JARVIS meldet sich.");
+    setJarvisState(
+      "speaking"
+    );
+
+    setLog(
+      "JARVIS meldet sich."
+    );
 
 
     const greeting =
       getGreeting();
 
-
     console.log(
-      "JARVIS Begrüßung:",
+      "Begrüßung:",
       greeting
     );
 
 
     const sent =
-      speakExactText(greeting);
+      speakExactText(
+        greeting
+      );
 
 
     if (!sent) {
       throw new Error(
-        "Begrüßung konnte nicht gestartet werden."
+        "Begrüßung konnte nicht gesendet werden."
       );
     }
 
 
-    /*
-     * Das Mikro wird erst durch response.done
-     * in handleRealtimeEvent aktiviert.
-     */
-
-
-    /* --------------------------
-       PROACTIVE CHECKS
-       -------------------------- */
-
     startProactiveChecks();
 
-
   } catch (error) {
-
     console.error(
-      "JARVIS Start error:",
+      "JARVIS Startfehler:",
       error
     );
 
-
     active = false;
     greetingInProgress = false;
-
+    assistantSpeaking = false;
 
     stopProactiveChecks();
     disconnectRealtime();
     stopMicrophone();
     stopIntro();
 
+    setJarvisState(
+      "offline"
+    );
 
-    setJarvisState("offline");
-    setStatus("Offline");
-    setButtonActive(false);
+    setStatus(
+      "Offline"
+    );
+
+    setButtonActive(
+      false
+    );
 
     setLog(
       `Start fehlgeschlagen: ${
@@ -1322,7 +1595,6 @@ async function startJarvis() {
     );
 
   } finally {
-
     starting = false;
 
     if (button) {
@@ -1333,23 +1605,26 @@ async function startJarvis() {
 
 
 /* =========================================================
-   STOP JARVIS
+   STOP
    ========================================================= */
 
 async function stopJarvis() {
-  if (stopping) return;
+  if (stopping) {
+    return;
+  }
 
   stopping = true;
 
   active = false;
   starting = false;
-  greetingInProgress = false;
   assistantSpeaking = false;
-
+  greetingInProgress = false;
 
   stopProactiveChecks();
 
-  setMicrophoneEnabled(false);
+  setMicrophoneEnabled(
+    false
+  );
 
   disconnectRealtime();
 
@@ -1357,20 +1632,25 @@ async function stopJarvis() {
 
   stopIntro();
 
+  setButtonActive(
+    false
+  );
 
-  setButtonActive(false);
+  setJarvisState(
+    "offline"
+  );
 
-  setJarvisState("offline");
+  setStatus(
+    "Offline"
+  );
 
-  setStatus("Offline");
-
-  setLog("Bereit.");
-
+  setLog(
+    "Bereit."
+  );
 
   if (button) {
     button.disabled = false;
   }
-
 
   stopping = false;
 }
@@ -1380,11 +1660,17 @@ async function stopJarvis() {
    INITIAL STATE
    ========================================================= */
 
-setJarvisState("offline");
+setJarvisState(
+  "offline"
+);
 
-setStatus("Offline");
+setStatus(
+  "Offline"
+);
 
-setLog("Bereit.");
+setLog(
+  "Bereit."
+);
 
 if (remoteAudio) {
   remoteAudio.autoplay = true;
@@ -1399,36 +1685,35 @@ if (remoteAudio) {
    ========================================================= */
 
 if (button) {
-
   button.addEventListener(
     "click",
     async () => {
 
-      if (starting || stopping) {
+      if (
+        starting ||
+        stopping
+      ) {
         return;
       }
-
 
       if (active) {
         await stopJarvis();
         return;
       }
 
-
       await startJarvis();
     }
   );
 
 } else {
-
   console.error(
-    "#toggle-Button wurde nicht gefunden."
+    "#toggle-Button fehlt."
   );
 }
 
 
 /* =========================================================
-   PAGE CLEANUP
+   CLEANUP
    ========================================================= */
 
 window.addEventListener(
