@@ -79,10 +79,8 @@ function timeoutSignal(ms) {
   try {
 
     if (
-      typeof AbortSignal !==
-        "undefined" &&
-      typeof AbortSignal.timeout ===
-        "function"
+      typeof AbortSignal !== "undefined" &&
+      typeof AbortSignal.timeout === "function"
     ) {
 
       return AbortSignal.timeout(
@@ -210,13 +208,8 @@ function berlinUtcOffsetMinutes(
 
 
   return hours >= 0
-    ? hours *
-      60 +
-      minutes
-
-    : hours *
-      60 -
-      minutes;
+    ? hours * 60 + minutes
+    : hours * 60 - minutes;
 }
 
 
@@ -259,8 +252,7 @@ function getPeriodDates(
 
 
   if (
-    period ===
-    "yesterday"
+    period === "yesterday"
   ) {
 
     const date =
@@ -371,6 +363,9 @@ GESPRÄCH
 - Wenn du etwas akustisch nicht sicher verstanden hast, frage kurz nach.
 
 WICHTIG BEIM ZUHÖREN
+- Warte ab, bis Mattl seinen Gedanken wirklich beendet hat.
+- Eine kurze Denkpause bedeutet nicht automatisch, dass Mattl fertig ist.
+- Wenn Mattl zum Beispiel "Jarvis ..." sagt und kurz pausiert, warte auf den Rest des Satzes.
 - Reagiere nur auf verständliche Sprache von Mattl.
 - Einzelne Geräusche, Rascheln, entfernte Stimmen, Fernseher oder Hintergrundgeräusche sind keine Anweisung.
 - Wenn der Inhalt nicht eindeutig verständlich ist, nicht raten.
@@ -836,15 +831,8 @@ app.post(
           input: {
 
             /*
-             * NEU:
-             *
-             * near_field filtert für ein Mikro,
-             * das relativ nah am Benutzer ist.
-             *
-             * Damit sollen entfernte Stimmen,
-             * Fernseher und schwache
-             * Raumgeräusche weniger stark
-             * berücksichtigt werden.
+             * Mikro befindet sich relativ nah
+             * am Benutzer.
              */
             noise_reduction: {
 
@@ -867,28 +855,30 @@ app.post(
 
 
             /*
-             * SERVER VAD
+             * =================================================
+             * SEMANTIC VAD
+             * =================================================
              *
-             * threshold 0.99:
-             * höhere Lautstärke nötig,
-             * bevor Sprache erkannt wird.
+             * Der wichtige neue Fix:
              *
-             * silence 420:
-             * schnelleres Satzende als vorher 600ms.
+             * Nicht mehr nur anhand einer festen
+             * Millisekunden-Pause entscheiden.
+             *
+             * JARVIS versucht jetzt zu erkennen,
+             * ob Mattls Satz inhaltlich wirklich
+             * abgeschlossen ist.
+             *
+             * eagerness = low:
+             * lieber etwas länger warten als
+             * mitten in einer Denkpause antworten.
              */
             turn_detection: {
 
               type:
-                "server_vad",
+                "semantic_vad",
 
-              threshold:
-                0.99,
-
-              prefix_padding_ms:
-                220,
-
-              silence_duration_ms:
-                420,
+              eagerness:
+                "low",
 
               create_response:
                 true,
@@ -2107,28 +2097,23 @@ app.post(
 
           date:
             data.daily
-              ?.time
-              ?.[index],
+              ?.time?.[index],
 
           weather_code:
             data.daily
-              ?.weather_code
-              ?.[index],
+              ?.weather_code?.[index],
 
           max_temperature:
             data.daily
-              ?.temperature_2m_max
-              ?.[index],
+              ?.temperature_2m_max?.[index],
 
           min_temperature:
             data.daily
-              ?.temperature_2m_min
-              ?.[index],
+              ?.temperature_2m_min?.[index],
 
           precipitation_probability:
             data.daily
-              ?.precipitation_probability_max
-              ?.[index]
+              ?.precipitation_probability_max?.[index]
         }
       });
 
@@ -2239,7 +2224,7 @@ app.get(
         true,
 
       version:
-        "JARVIS V5.1",
+        "JARVIS V5.2",
 
       architecture:
         "realtime-speech-to-speech",
@@ -2256,11 +2241,11 @@ app.get(
       noise_reduction:
         "near_field",
 
-      vad_threshold:
-        0.99,
+      turn_detection:
+        "semantic_vad",
 
-      silence_duration_ms:
-        420,
+      semantic_vad_eagerness:
+        "low",
 
       interrupt_response:
         false,
@@ -2316,7 +2301,7 @@ app.listen(
   () => {
 
     console.log(
-      `JARVIS V5.1 läuft auf Port ${PORT}`
+      `JARVIS V5.2 läuft auf Port ${PORT}`
     );
   }
 );
