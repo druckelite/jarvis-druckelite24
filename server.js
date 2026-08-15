@@ -1,9 +1,19 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
-   V8.1 · WECHSEL AUF OPENAI TTS
-   (Basis: V8.0, überarbeitet am 15.08.2026)
+   V8.2 · ZURÜCK ZU ELEVENLABS
+   (Basis: V8.1, überarbeitet am 15.08.2026)
 
-   ÄNDERUNGEN IN V8.1:
+   ÄNDERUNGEN IN V8.2:
+   18. OpenAI TTS (V8.1) wieder rückgängig gemacht - die Stimme klang
+       bei deutscher Sprache mit Akzent und teils falscher Aussprache
+       ("optimiert für Englisch", wie OpenAI selbst dokumentiert).
+       Zurück zu ElevenLabs, diesmal auf einem bezahlten Plan statt
+       dem kostenlosen Kontingent - löst gleichzeitig das Problem mit
+       den aufgebrauchten Gratis-Zeichen und der fehlenden
+       kommerziellen Nutzungserlaubnis. Braucht in Render wieder
+       ELEVENLABS_API_KEY und ELEVENLABS_VOICE_ID.
+
+   ÄNDERUNGEN IN V8.1 (rückgängig gemacht, nur zur Historie):
    17. ElevenLabs komplett ersetzt durch OpenAI TTS - läuft über
        denselben OPENAI_API_KEY, den JARVIS schon für Transkription
        und ChatGPT nutzt. Kein neuer Account, kein separates Abo, nach
@@ -1475,34 +1485,28 @@ app.post("/api/jarvis-chat", async (req, res) => {
 
 
 /* =========================================================
-   SPRACHAUSGABE · OPENAI TTS
+   SPRACHAUSGABE · ELEVENLABS
    =========================================================
 
-   Vorher: ElevenLabs (separater Account, separater Schlüssel, teuer -
-   10.000 Zeichen im Monat waren durch das viele Testen aufgebraucht).
+   Kurzer Ausflug zu OpenAI TTS gemacht (V8.1), um Kosten zu sparen -
+   aber die Stimme klang bei deutscher Sprache mit Akzent und teils
+   falscher Aussprache, nicht akzeptabel für den Alltagseinsatz.
+   Zurück zu ElevenLabs (V8.2), diesmal auf einem bezahlten Plan
+   (Starter, ca. 5-6 €/Monat) statt dem kostenlosen Kontingent - damit
+   ist auch das Problem mit den aufgebrauchten Gratis-Zeichen und die
+   fehlende kommerzielle Nutzungserlaubnis gelöst.
 
-   Jetzt: OpenAI TTS - läuft über denselben OPENAI_API_KEY, den JARVIS
-   schon für Transkription und ChatGPT nutzt. Kein neuer Account, kein
-   neuer Schlüssel, kein separates Abo. Nach aktuellem Stand ungefähr
-   ein Zehntel der Kosten von ElevenLabs.
-
-   Der Endpunkt-Pfad "/api/elevenlabs-tts" wurde absichtlich NICHT
-   umbenannt, damit sich in app.js nichts ändern muss - der Name ist
-   jetzt einfach nur noch historisch, technisch läuft hier OpenAI.
-
-   MODELL-WAHL:
-   - "tts-1" (Standard hier): einfacher, schneller (~0,5s), zuverlässig.
-   - "gpt-4o-mini-tts": kann per Anweisung gesteuert werden (Tonfall,
-     Tempo, Emotion) - könnte JARVIS' Charakter noch besser treffen,
-     ist aber laut aktuellem Stand variabler in der Antwortzeit.
-   Umstellen geht einfach über die Umgebungsvariable OPENAI_TTS_MODEL
-   in Render, ohne Code-Änderung.
+   Braucht in Render wieder die zwei Umgebungsvariablen:
+   ELEVENLABS_API_KEY und ELEVENLABS_VOICE_ID.
    ========================================================= */
 
 app.post("/api/elevenlabs-tts", async (req, res) => {
   try {
-    if (!process.env.OPENAI_API_KEY) {
-      return res.status(500).json({ error: "OPENAI_API_KEY fehlt." });
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const voiceId = process.env.ELEVENLABS_VOICE_ID;
+
+    if (!apiKey || !voiceId) {
+      return res.status(500).json({ error: "ElevenLabs ist nicht vollständig konfiguriert." });
     }
 
     const text = String(req.body?.text || "").trim();
@@ -1515,52 +1519,54 @@ app.post("/api/elevenlabs-tts", async (req, res) => {
     // stur mitten im Wort.
     const safeText = truncateForSpeech(sanitizeForSpeech(text), 3000);
 
-    const ttsModel = process.env.OPENAI_TTS_MODEL || "tts-1";
-    const ttsVoice = process.env.OPENAI_TTS_VOICE || "onyx";
-
-    const requestBody = {
-      model: ttsModel,
-      voice: ttsVoice,
-      input: safeText,
-      response_format: "mp3"
-    };
-
-    // "instructions" (steuerbarer Tonfall) wird nur von gpt-4o-mini-tts
-    // unterstützt - bei tts-1 würde das Feld nur ignoriert oder einen
-    // Fehler auslösen, deshalb nur bedingt mitschicken.
-    if (ttsModel === "gpt-4o-mini-tts") {
-      requestBody.instructions =
-        "Sprich auf Deutsch, ruhig, direkt, mit trockenem Humor - wie ein " +
-        "cleverer, souveräner persönlicher Assistent. Gelegentlich leicht " +
-        "sarkastisch, nie übertrieben.";
-    }
+    const elevenUrl = new URL(
+      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream`
+    );
+    elevenUrl.searchParams.set("output_format", "mp3_44100_128");
 
     const ttsStart = Date.now();
 
-    const response = await fetch("https://api.openai.com/v1/audio/speech", {
+    const response = await fetch(elevenUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
+        "xi-api-key": apiKey,
+        "Content-Type": "application/json",
+        Accept: "audio/mpeg"
       },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify({
+        text: safeText,
+
+        // "eleven_turbo_v2_5": guter Mittelweg zwischen Tempo und
+        // sauberer deutscher Aussprache. Bekannte Problemwörter (z.B.
+        // Druckelite24) werden zusätzlich über PRONUNCIATION_FIXES
+        // oben korrigiert.
+        model_id: "eleven_turbo_v2_5",
+
+        voice_settings: {
+          stability: 0.58,
+          similarity_boost: 0.84,
+          style: 0.12,
+          use_speaker_boost: true,
+          speed: 0.96
+        }
+      }),
       signal: timeoutSignal(25000)
     });
 
-    console.log(`[TIMING] OpenAI TTS (${ttsModel}) - Zeit bis Antwort-Header (${safeText.length} Zeichen): ${Date.now() - ttsStart}ms`);
+    console.log(`[TIMING] ElevenLabs - Zeit bis Antwort-Header (${safeText.length} Zeichen): ${Date.now() - ttsStart}ms`);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("OpenAI TTS error:", response.status, errorText);
-      return res.status(response.status).json({ error: "Sprachausgabe konnte nicht erzeugt werden." });
+      console.error("ElevenLabs error:", response.status, errorText);
+      return res.status(response.status).json({ error: "ElevenLabs konnte die Stimme nicht erzeugen." });
     }
 
     if (!response.body) {
-      return res.status(502).json({ error: "OpenAI hat keinen Audiostream geliefert." });
+      return res.status(502).json({ error: "ElevenLabs hat keinen Audiostream geliefert." });
     }
 
     res.status(200);
-    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Content-Type", response.headers.get("content-type") || "audio/mpeg");
     res.setHeader("Cache-Control", "no-store");
 
     const reader = response.body.getReader();
@@ -1572,20 +1578,20 @@ app.post("/api/elevenlabs-tts", async (req, res) => {
         if (value) res.write(Buffer.from(value));
       }
       res.end();
-      console.log(`[TIMING] OpenAI TTS - komplett fertig gestreamt: ${Date.now() - ttsStart}ms`);
+      console.log(`[TIMING] ElevenLabs - komplett fertig gestreamt: ${Date.now() - ttsStart}ms`);
     } catch (streamError) {
-      console.error("OpenAI TTS stream error:", streamError);
+      console.error("ElevenLabs stream error:", streamError);
       try { res.end(); } catch {}
     }
   } catch (error) {
-    console.error("TTS endpoint error:", error);
+    console.error("ElevenLabs endpoint error:", error);
 
     if (!res.headersSent) {
       return res.status(500).json({
         error:
           error.name === "TimeoutError"
-            ? "Die Sprachausgabe hat zu lange gebraucht."
-            : "Sprachausgabe konnte nicht gestartet werden."
+            ? "ElevenLabs hat zu lange gebraucht."
+            : "ElevenLabs TTS konnte nicht gestartet werden."
       });
     }
 
@@ -1622,20 +1628,20 @@ app.post("/api/calendar-today", (req, res) => {
 app.get("/health", (req, res) => {
   return res.json({
     ok: true,
-    version: "JARVIS V8.1",
-    architecture: "mediarecorder -> transcription -> responses -> openai-tts",
+    version: "JARVIS V8.2",
+    architecture: "mediarecorder -> transcription -> responses -> elevenlabs",
     realtime: false,
     cedar: false,
     transcription_model: process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe",
     text_model: process.env.OPENAI_TEXT_MODEL || "gpt-5-mini",
     reasoning_effort: "minimal (low bei Websuche)",
     max_output_tokens: 1200,
-    speech_output: "openai-tts",
-    tts_model: process.env.OPENAI_TTS_MODEL || "tts-1",
-    tts_voice: process.env.OPENAI_TTS_VOICE || "onyx",
+    speech_output: "elevenlabs",
+    elevenlabs_model: "eleven_turbo_v2_5",
     language: "de",
     connected_shop: "Druckelite24",
     openai_configured: Boolean(process.env.OPENAI_API_KEY),
+    elevenlabs_configured: Boolean(process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID),
     shopify_configured: Boolean(
       process.env.SHOPIFY_STORE_DOMAIN && process.env.SHOPIFY_CLIENT_ID && process.env.SHOPIFY_CLIENT_SECRET
     )
@@ -1664,5 +1670,5 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log("Antwort: OpenAI Responses API");
   console.log("Reasoning: LOW");
   console.log("Antwortlimit: 1200 Tokens + automatischer Fallback");
-  console.log(`Stimme: OpenAI TTS · ${process.env.OPENAI_TTS_MODEL || "tts-1"} (${process.env.OPENAI_TTS_VOICE || "onyx"})`);
+  console.log("Stimme: ElevenLabs · eleven_turbo_v2_5");
 });
