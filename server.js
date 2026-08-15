@@ -1,56 +1,14 @@
-/* =========================================================
-   ÄNDERUNGEN IN DIESER VERSION
-   =========================================================
-   1) SICHERHEIT: Nicht mehr der ganze Projektordner wird als
-      Webseite ausgeliefert, sondern nur noch "public/".
-      -> Ordner "public" anlegen, index.html, app.js,
-         styles.css und Intro.mp3 dort hinein verschieben.
-   2) BUG: "Heute"/"Gestern" bei Shopify wurden anhand von
-      UTC-Tagesgrenzen berechnet statt Berlin-Zeit. Je nach
-      Uhrzeit fehlten dadurch bis zu 2 Stunden Bestellungen
-      am Anfang des Tages bzw. es wurden zu viele gezählt.
-      Jetzt wird der echte Berlin-Zeitversatz (Sommer-/
-      Winterzeit) berücksichtigt.
-   3) Alle ausgehenden Anfragen (OpenAI, Shopify, Wetter)
-      haben jetzt ein Zeitlimit, damit der Server nicht
-      ewig hängen bleibt, falls ein Dienst nicht antwortet.
-   4) Geocoding-Fehler werden nicht mehr fälschlich als
-      "Ort nicht gefunden" gemeldet.
-   ========================================================= */
-
 import express from "express";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// WICHTIG: Nur der Unterordner "public" wird als Webseite
-// ausgeliefert – nicht mehr der komplette Projektordner.
-// Vorher (express.static(".")) hätte theoretisch JEDE Datei
-// im Projektordner öffentlich abrufbar sein können, z. B.
-// server.js, package.json oder eine .env-Datei mit Passwörtern.
-//
-// Bitte einmalig einrichten: einen Ordner namens "public"
-// direkt neben server.js anlegen und index.html, app.js,
-// styles.css sowie Intro.mp3 dort hinein verschieben.
-app.use(
-  express.static("public", {
-    dotfiles: "deny"
-  })
-);
-
+app.use(express.static("."));
 app.use(express.json({ limit: "2mb" }));
 
 /* =========================================================
    HELPERS
    ========================================================= */
-
-function normalize(text) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(/[.,!?;:]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 function berlinDate(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -73,45 +31,7 @@ function nextDateString(dateString) {
     .slice(0, 10);
 }
 
-// Ermittelt den echten UTC-Versatz von Berlin für ein bestimmtes
-// Datum (also +1h im Winter, +2h im Sommer wegen Sommerzeit).
-function berlinUtcOffsetMinutes(date) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Europe/Berlin",
-    timeZoneName: "shortOffset"
-  }).formatToParts(date);
-
-  const offsetLabel =
-    parts.find(part => part.type === "timeZoneName")?.value || "GMT+0";
-
-  const match = offsetLabel.match(/GMT([+-]\d+)(?::(\d+))?/);
-
-  if (!match) {
-    return 0;
-  }
-
-  const hours = Number(match[1]);
-  const minutes = Number(match[2] || 0);
-
-  return hours >= 0 ? hours * 60 + minutes : hours * 60 - minutes;
-}
-
-// Wandelt einen Berlin-Kalendertag ("2026-08-15") in den exakten
-// UTC-Zeitpunkt von 00:00 Uhr Berlin um. Wichtig, weil Shopify die
-// Bestellungen nach UTC-Zeitstempeln filtert – ohne diese Umrechnung
-// verschiebt sich "heute" je nach Uhrzeit um 1-2 Stunden und zählt
-// dadurch die falschen Bestellungen zu "heute" bzw. "gestern".
-function berlinMidnightUtcIso(dateString) {
-  const noonGuess = new Date(`${dateString}T12:00:00Z`);
-  const offsetMinutes = berlinUtcOffsetMinutes(noonGuess);
-
-  const utcMillis =
-    Date.parse(`${dateString}T00:00:00Z`) - offsetMinutes * 60000;
-
-  return new Date(utcMillis).toISOString();
-}
-
-function getPeriodDates(period) {
+function getPeriodDates(period = "today") {
   const today = berlinDate();
 
   if (period === "yesterday") {
@@ -122,259 +42,139 @@ function getPeriodDates(period) {
       date.getUTCDate() - 1
     );
 
-    const yesterday =
-      date
-        .toISOString()
-        .slice(0, 10);
-
     return {
-      start: berlinMidnightUtcIso(yesterday),
-      end: berlinMidnightUtcIso(today)
+      start:
+        date
+          .toISOString()
+          .slice(0, 10),
+
+      end:
+        today
     };
   }
 
   return {
-    start: berlinMidnightUtcIso(today),
-    end: berlinMidnightUtcIso(nextDateString(today))
+    start: today,
+    end: nextDateString(today)
   };
 }
 
-
 /* =========================================================
-   JARVIS PERSONALITY
+   JARVIS
    ========================================================= */
 
 const JARVIS_INSTRUCTIONS = `
-Du bist JARVIS, der persönliche Voice- und Business-Assistent von Mattl.
+Du bist JARVIS, Mattls persönlicher Voice- und Business-Assistent.
 
 SPRACHE
-- Sprich ausschließlich Deutsch.
-- Nur wenn Mattl ausdrücklich eine andere Sprache verlangt, darfst du wechseln.
-- Natürliches, klares Hochdeutsch.
-- Kein unnötiges Englisch.
-
-AUSSPRACHE
-- Der Benutzer heißt Mattl.
-- Sprich ungefähr: Mat-tl.
-- Das T muss hörbar bleiben.
-- Nicht Maddl.
-
-CHARAKTER
-- Locker.
-- Intelligent.
-- Ruhig.
-- Souverän.
-- Warm.
-- Direkt.
-- Trocken humorvoll.
-- Gelegentlich frech oder sarkastisch.
+- Sprich Deutsch.
+- Locker, natürlich und direkt.
 - Nicht förmlich.
 - Kein Butler-Stil.
 - Kein Callcenter-Stil.
 
-Beispiele:
-"Klar, Mattl."
-"Hab ich."
-"Sieht gut aus."
-"Das war jetzt überraschend vernünftig."
-"Da bist du ja. Ich hatte schon Hoffnung auf einen ruhigen Tag."
+CHARAKTER
+- intelligent
+- ruhig
+- trocken humorvoll
+- gelegentlich sarkastisch
+- präzise
 
-Sehr selten darfst du sagen:
-"Du bist der beste Chef."
-
-Aber nicht schleimen.
+Der Benutzer heißt Mattl.
+Sprich ungefähr: Mat-tl.
+Nicht Maddl.
 
 GESPRÄCH
-- Sprich natürlich mit Mattl.
-- Beantworte exakt seine Frage.
-- Standardmäßig kurze bis mittellange Antworten.
+- Antworte zuerst exakt auf die Frage.
+- Standardmäßig kurz bis mittellang.
 - Keine unnötigen Monologe.
-- Keine automatische Anschlussfrage nach jeder Antwort.
+- Keine automatische Anschlussfrage.
 - Wenn du fertig bist, schweige und höre wieder zu.
-- Berücksichtige den Kontext des laufenden Gesprächs.
-- Wenn du etwas akustisch nicht sicher verstanden hast, frage kurz nach.
 
+DRUCKELITE24
+Druckelite24 ist Mattls Unternehmen.
 
-=========================================================
-FEST VERBUNDENER SHOP – EXTREM WICHTIG
-=========================================================
-
-Es gibt für Mattl genau EINEN verbundenen Shopify-Shop.
-
-Dieser Shop ist:
-
-Druckelite24
-
-Technische Shop-Domain:
-f32358-4.myshopify.com
+Es gibt genau EINEN verbundenen Shopify-Shop:
+Druckelite24.
 
 Wenn Mattl sagt:
+- Shopify
 - mein Shop
 - unser Shop
-- der Shop
-- Shopify
-- Druckelite24
-- meine Bestellungen
-- unsere Bestellungen
-- mein Umsatz
-- unser Umsatz
+- Bestellungen
+- Umsatz
 - Verkäufe
 - Bestellwert
 
-ist IMMER dieser bereits verbundene Druckelite24-Shop gemeint.
+ist immer Druckelite24 gemeint.
 
-DU DARFST NIEMALS FRAGEN:
-- "Welchen Shop meinst du?"
-- "Welchen Shopify-Shop soll ich abrufen?"
-- "Bitte nenne mir den Shop."
-- oder sinngemäß dasselbe.
+Frage NIEMALS:
+"Welchen Shop meinst du?"
 
-Es gibt keine Shop-Auswahl.
-
-Der Shop ist bereits fest mit JARVIS verbunden.
-
-
-=========================================================
-SHOPIFY LIVE-DATEN
-=========================================================
-
-Für JEDE aktuelle Shopify-Frage MUSST du get_shopify_summary benutzen.
+SHOPIFY
+Bei aktuellen Shopify-Fragen MUSST du get_shopify_summary verwenden.
 
 Beispiele:
 
 "Wie viele Bestellungen habe ich heute?"
-→ get_shopify_summary mit period="today"
+=> get_shopify_summary period=today
 
 "Wie hoch ist mein Umsatz heute?"
-→ get_shopify_summary mit period="today"
+=> get_shopify_summary period=today
 
-"Wie lief Shopify gestern?"
-→ get_shopify_summary mit period="yesterday"
+"Wie lief es gestern?"
+wenn der Gesprächskontext Shopify ist:
+=> get_shopify_summary period=yesterday
 
-"Was haben wir heute umgesetzt?"
-→ get_shopify_summary mit period="today"
+WICHTIG:
+Erfinde NIEMALS:
+- Bestellnamen
+- Produktnamen
+- Produkte
+- Kunden
+- Umsätze
+- Bestellzahlen
+- Bestellwerte
 
-"Wie läuft mein Shop?"
-→ get_shopify_summary mit period="today"
+Das Tool liefert derzeit ausschließlich:
+- Anzahl Bestellungen
+- Umsatz
+- durchschnittlichen Bestellwert
+- Währung
+- Zeitraum
 
-"Wie viele Bestellungen hatten wir gestern?"
-→ get_shopify_summary mit period="yesterday"
+Wenn das Tool keinen Produktnamen liefert,
+darfst du keinen Produktnamen nennen.
 
-Bei einer Shopify-Frage:
-1. NICHT aus dem Gedächtnis antworten.
-2. NICHT nach dem Shop fragen.
-3. NICHT erklären, dass du Daten abrufen könntest.
-4. SOFORT das Tool verwenden.
-5. Danach die gelieferten echten Daten kurz nennen.
+Bei Fehler:
+"Ich kann die Shopify-Daten gerade nicht verifizieren."
 
-Wenn das Tool einen Fehler meldet:
-sage kurz, dass die Shopify-Daten gerade nicht verifiziert werden konnten.
-
-Erfinde niemals Umsatz, Bestellungen oder andere Live-Werte.
-
-
-=========================================================
 WETTER
-=========================================================
+Für aktuelle Wetterfragen MUSST du get_weather benutzen.
 
-Für Wetterfragen MUSST du get_weather benutzen.
-
-Bei Ludwigshafen bevorzuge:
+Bei Ludwigshafen:
 Ludwigshafen am Rhein, Rheinland-Pfalz, Deutschland.
 
-Keine Wetterwerte erfinden.
-
-
-=========================================================
 GMAIL
-=========================================================
+Für aktuelle E-Mails:
+get_important_emails
 
-Für aktuelle Mail-Fragen:
-get_important_emails verwenden.
-
-Wenn Gmail noch nicht verbunden ist:
-sage das kurz und klar.
-
-
-=========================================================
 KALENDER
-=========================================================
+Für aktuelle Termine:
+get_calendar_today
 
-Für aktuelle Termine und Kalender:
-get_calendar_today verwenden.
+Bei nicht verbundenen Diensten:
+sage kurz und klar, dass der Dienst noch nicht verbunden ist.
 
-Wenn der Kalender noch nicht verbunden ist:
-sage das kurz und klar.
-
-
-=========================================================
-ABSOLUT VERBOTEN
-=========================================================
-
-Bei Shopify-Fragen:
-- keine Reisen
-- keine Workouts
-- keine Kalorien
-- kein Essen bestellen
-- keine Hotels
-- keine themenfremden Vorschläge
-- keine Rückfrage nach dem Shop
-- keine erfundenen Daten
-
-
-=========================================================
-DRUCKELITE24
-=========================================================
-
-Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
-
-Relevante Bereiche:
-- Firmenbekleidung
-- Vereinsbekleidung
-- Teamsport
-- Gastro
-- Arbeitsbekleidung
-- Events
-- personalisierte Textilien
-- DTF
-- Textildruck
-- Shopify
-- E-Commerce
-
-
-=========================================================
-BUSINESS-DENKEN
-=========================================================
-
-Denke zusätzlich wie:
-- Geschäftsführer
-- E-Commerce-Manager
-- Verkaufsleiter
-- Performance-Marketer
-- Datenanalyst
-
-Wenn dir eine wirklich relevante Chance oder ein Risiko auffällt,
-darfst du nach der eigentlichen Antwort EINEN kurzen Hinweis geben.
-
-
-=========================================================
-SICHERHEIT
-=========================================================
-
-Lesen, analysieren und Empfehlungen geben ist erlaubt.
-
-Vor kritischen Aktionen brauchst du Mattls ausdrückliche Zustimmung:
-- Geld ausgeben
-- Werbebudgets ändern
-- Kampagnen pausieren
-- E-Mails senden
-- Nachrichten senden
-- Preise ändern
-- Bestellungen stornieren
-- Rückerstattungen
-- Daten löschen
+VERBOTEN BEI SHOPIFY-FRAGEN
+- Reisen
+- Essen bestellen
+- Workouts
+- Kalorien
+- Hotels
+- erfundene Produkte
+- erfundene Daten
 `;
-
 
 /* =========================================================
    REALTIME TOOLS
@@ -388,7 +188,7 @@ const realtimeTools = [
       "get_shopify_summary",
 
     description:
-      "PFLICHT-Tool für alle aktuellen Fragen zu Mattls einzigem verbundenen Shopify-Shop Druckelite24. Verwenden bei Shopify, Shop, Umsatz, Bestellungen, Verkäufen oder Bestellwert. Niemals nach einem Shopnamen fragen. Der verbundene Shop ist bereits festgelegt.",
+      "Pflicht-Tool für aktuelle Bestell-, Umsatz- und Bestellwertdaten aus Mattls einzigem verbundenen Shopify-Shop Druckelite24. Liefert keine Produktnamen.",
 
     parameters: {
       type: "object",
@@ -400,10 +200,7 @@ const realtimeTools = [
           enum: [
             "today",
             "yesterday"
-          ],
-
-          description:
-            "today für heute, yesterday für gestern."
+          ]
         }
       },
 
@@ -411,7 +208,8 @@ const realtimeTools = [
         "period"
       ],
 
-      additionalProperties: false
+      additionalProperties:
+        false
     }
   },
 
@@ -422,7 +220,7 @@ const realtimeTools = [
       "get_weather",
 
     description:
-      "Liest echtes Wetter für einen Ort für heute oder morgen.",
+      "Liest echtes Wetter für heute oder morgen.",
 
     parameters: {
       type: "object",
@@ -447,7 +245,8 @@ const realtimeTools = [
         "day"
       ],
 
-      additionalProperties: false
+      additionalProperties:
+        false
     }
   },
 
@@ -475,7 +274,8 @@ const realtimeTools = [
         "limit"
       ],
 
-      additionalProperties: false
+      additionalProperties:
+        false
     }
   },
 
@@ -491,14 +291,14 @@ const realtimeTools = [
     parameters: {
       type: "object",
       properties: {},
-      additionalProperties: false
+      additionalProperties:
+        false
     }
   }
 ];
 
-
 /* =========================================================
-   OPENAI REALTIME SESSION
+   REALTIME SESSION
    ========================================================= */
 
 app.post(
@@ -531,9 +331,11 @@ app.post(
       }
 
       const session = {
-        type: "realtime",
+        type:
+          "realtime",
 
-        model: "gpt-realtime",
+        model:
+          "gpt-realtime",
 
         output_modalities: [
           "audio"
@@ -549,13 +351,13 @@ app.post(
           "auto",
 
         max_output_tokens:
-          350,
+          300,
 
         audio: {
           input: {
-
             noise_reduction: {
-              type: "far_field"
+              type:
+                "far_field"
             },
 
             transcription: {
@@ -566,40 +368,44 @@ app.post(
                 "de",
 
               prompt:
-                "Deutsch. Benutzer heißt Mattl. Druckelite24 ist sein einziger Shopify-Shop. Begriffe: Druckelite24, Shopify, Umsatz, Bestellungen, Verkäufe, Bestellwert, DTF, Textildruck, E-Commerce, Ludwigshafen."
+                "Deutsch. Benutzer heißt Mattl. Druckelite24, Shopify, Umsatz, Bestellungen, Bestellwert, DTF, Textildruck, E-Commerce, Ludwigshafen."
             },
 
             turn_detection: {
-              type: "server_vad",
+              type:
+                "server_vad",
 
-              threshold: 0.98,
+              threshold:
+                0.98,
 
-              prefix_padding_ms: 180,
+              prefix_padding_ms:
+                180,
 
-              silence_duration_ms: 600,
+              silence_duration_ms:
+                600,
 
-              create_response: true,
+              create_response:
+                true,
 
-              interrupt_response: false
+              interrupt_response:
+                false
             }
           },
 
           output: {
-            voice: "cedar"
+            voice:
+              "cedar"
           }
         }
       };
 
-
       const form =
         new FormData();
-
 
       form.append(
         "sdp",
         req.body
       );
-
 
       form.append(
         "session",
@@ -618,37 +424,30 @@ app.post(
         )
       );
 
-
       const response =
         await fetch(
           "https://api.openai.com/v1/realtime/calls?model=gpt-realtime",
 
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               Authorization:
                 `Bearer ${process.env.OPENAI_API_KEY}`
             },
 
-            body: form,
-
-            // Bricht ab, falls OpenAI nicht innerhalb von 20s
-            // antwortet, statt den Verbindungsaufbau ewig
-            // hängen zu lassen.
-            signal:
-              AbortSignal.timeout(20000)
+            body:
+              form
           }
         );
-
 
       const body =
         await response.text();
 
-
       if (!response.ok) {
         console.error(
-          "OpenAI Realtime error:",
+          "Realtime error:",
           response.status,
           body
         );
@@ -662,7 +461,6 @@ app.post(
           );
       }
 
-
       return res
         .status(201)
         .type(
@@ -672,23 +470,20 @@ app.post(
           body
         );
 
-
     } catch (error) {
       console.error(
-        "Realtime bridge error:",
+        "Realtime bridge:",
         error
       );
-
 
       return res
         .status(500)
         .send(
-          "Realtime-Verbindung konnte nicht aufgebaut werden."
+          "Realtime-Verbindung fehlgeschlagen."
         );
     }
   }
 );
-
 
 /* =========================================================
    SHOPIFY AUTH
@@ -698,7 +493,6 @@ let shopifyTokenCache = {
   token: null,
   expiresAt: 0
 };
-
 
 async function getShopifyAccessToken() {
   if (
@@ -710,21 +504,14 @@ async function getShopifyAccessToken() {
     return shopifyTokenCache.token;
   }
 
-
   const domain =
-    process.env
-      .SHOPIFY_STORE_DOMAIN;
-
+    process.env.SHOPIFY_STORE_DOMAIN;
 
   const clientId =
-    process.env
-      .SHOPIFY_CLIENT_ID;
-
+    process.env.SHOPIFY_CLIENT_ID;
 
   const clientSecret =
-    process.env
-      .SHOPIFY_CLIENT_SECRET;
-
+    process.env.SHOPIFY_CLIENT_SECRET;
 
   if (
     !domain ||
@@ -732,10 +519,9 @@ async function getShopifyAccessToken() {
     !clientSecret
   ) {
     throw new Error(
-      "Shopify ist nicht vollständig konfiguriert."
+      "Shopify-Konfiguration fehlt."
     );
   }
-
 
   const params =
     new URLSearchParams({
@@ -749,49 +535,42 @@ async function getShopifyAccessToken() {
         clientSecret
     });
 
-
   const response =
     await fetch(
       `https://${domain}/admin/oauth/access_token`,
 
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
           "Content-Type":
             "application/x-www-form-urlencoded"
         },
 
-        body: params,
-
-        signal:
-          AbortSignal.timeout(10000)
+        body:
+          params
       }
     );
-
 
   const raw =
     await response.text();
 
-
   let data;
-
 
   try {
     data =
       JSON.parse(raw);
-
   } catch {
     console.error(
-      "Shopify token raw response:",
+      "Shopify token raw:",
       raw
     );
 
     throw new Error(
-      "Shopify hat keine gültige Token-Antwort geliefert."
+      "Shopify-Token-Antwort ungültig."
     );
   }
-
 
   if (
     !response.ok ||
@@ -803,17 +582,15 @@ async function getShopifyAccessToken() {
     );
 
     throw new Error(
-      "Shopify-Authentifizierung fehlgeschlagen."
+      "Shopify-Anmeldung fehlgeschlagen."
     );
   }
-
 
   const expiresIn =
     Number(
       data.expires_in ||
       86399
     );
-
 
   shopifyTokenCache = {
     token:
@@ -824,37 +601,25 @@ async function getShopifyAccessToken() {
       expiresIn * 1000
   };
 
-
-  console.log(
-    "Shopify access token refreshed."
-  );
-
-
   return data.access_token;
 }
 
-
 /* =========================================================
-   SHOPIFY DATA
+   SHOPIFY SUMMARY
    ========================================================= */
 
 async function getShopifySummary(
   period = "today"
 ) {
   const domain =
-    process.env
-      .SHOPIFY_STORE_DOMAIN;
-
+    process.env.SHOPIFY_STORE_DOMAIN;
 
   const apiVersion =
-    process.env
-      .SHOPIFY_API_VERSION ||
+    process.env.SHOPIFY_API_VERSION ||
     "2026-07";
-
 
   const token =
     await getShopifyAccessToken();
-
 
   const {
     start,
@@ -864,10 +629,8 @@ async function getShopifySummary(
       period
     );
 
-
   const search =
-    `created_at:>='${start}' created_at:<'${end}'`;
-
+    `created_at:>=${start} created_at:<${end}`;
 
   const query = `
     query JarvisOrders($query: String!) {
@@ -877,10 +640,7 @@ async function getShopifySummary(
         sortKey: CREATED_AT
       ) {
         nodes {
-          name
-          createdAt
           cancelledAt
-          displayFinancialStatus
 
           currentTotalPriceSet {
             shopMoney {
@@ -893,13 +653,13 @@ async function getShopifySummary(
     }
   `;
 
-
   const response =
     await fetch(
       `https://${domain}/admin/api/${apiVersion}/graphql.json`,
 
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
           "Content-Type":
@@ -917,32 +677,26 @@ async function getShopifySummary(
               query:
                 search
             }
-          }),
-
-        signal:
-          AbortSignal.timeout(10000)
+          })
       }
     );
 
-
   const data =
     await response.json();
-
 
   if (
     !response.ok ||
     data.errors
   ) {
     console.error(
-      "Shopify GraphQL error:",
+      "Shopify GraphQL:",
       data
     );
 
     throw new Error(
-      "Shopify-Daten konnten nicht gelesen werden."
+      "Shopify-Abfrage fehlgeschlagen."
     );
   }
-
 
   const orders =
     data.data
@@ -950,16 +704,14 @@ async function getShopifySummary(
       ?.nodes ||
     [];
 
-
-  const valid =
+  const validOrders =
     orders.filter(
       order =>
         !order.cancelledAt
     );
 
-
   const revenue =
-    valid.reduce(
+    validOrders.reduce(
       (
         total,
         order
@@ -976,35 +728,36 @@ async function getShopifySummary(
       0
     );
 
-
   const currency =
-    valid[0]
+    validOrders[0]
       ?.currentTotalPriceSet
       ?.shopMoney
       ?.currencyCode ||
     "EUR";
 
-
   const average =
-    valid.length
+    validOrders.length
       ? revenue /
-        valid.length
+        validOrders.length
       : 0;
 
-
+  /*
+   * Absichtlich KEINE Produktdaten.
+   *
+   * Dadurch kann der Tool-Output
+   * keine Kopfhörer, Shirts usw.
+   * enthalten.
+   */
   return {
-    configured: true,
+    ok: true,
 
     shop:
       "Druckelite24",
 
-    shop_domain:
-      domain,
-
     period,
 
     orders:
-      valid.length,
+      validOrders.length,
 
     revenue:
       Number(
@@ -1016,13 +769,9 @@ async function getShopifySummary(
         average.toFixed(2)
       ),
 
-    currency,
-
-    source:
-      "Shopify"
+    currency
   };
 }
-
 
 /* =========================================================
    SHOPIFY ENDPOINT
@@ -1039,46 +788,35 @@ app.post(
           ? "yesterday"
           : "today";
 
-
       const data =
         await getShopifySummary(
           period
         );
 
-
       return res.json(
         data
       );
 
-
     } catch (error) {
       console.error(
-        "Shopify summary error:",
+        "Shopify endpoint:",
         error
       );
-
-      const message =
-        error.name === "TimeoutError"
-          ? "Shopify hat zu lange nicht geantwortet."
-          : error.message ||
-            "Shopify-Abfrage fehlgeschlagen.";
-
 
       return res
         .status(500)
         .json({
-          configured: false,
+          ok: false,
 
           shop:
             "Druckelite24",
 
           error:
-            message
+            "Shopify-Daten konnten gerade nicht verifiziert werden."
         });
     }
   }
 );
-
 
 /* =========================================================
    WEATHER
@@ -1089,30 +827,17 @@ app.post(
 
   async (req, res) => {
     try {
-      let location =
+      const location =
         String(
           req.body?.location ||
           ""
         ).trim();
-
 
       const day =
         req.body?.day ===
           "tomorrow"
           ? "tomorrow"
           : "today";
-
-
-      if (
-        normalize(location)
-          .includes(
-            "ludwigshafen"
-          )
-      ) {
-        location =
-          "Ludwigshafen am Rhein";
-      }
-
 
       if (!location) {
         return res
@@ -1123,12 +848,10 @@ app.post(
           });
       }
 
-
       const geo =
         new URL(
           "https://geocoding-api.open-meteo.com/v1/search"
         );
-
 
       geo.searchParams.set(
         "name",
@@ -1150,48 +873,31 @@ app.post(
         "json"
       );
 
-
       const geoResponse =
-        await fetch(
-          geo,
-          {
-            signal:
-              AbortSignal.timeout(8000)
-          }
-        );
-
-
-      if (!geoResponse.ok) {
-        throw new Error(
-          "Geocoding-Dienst gerade nicht erreichbar."
-        );
-      }
-
+        await fetch(geo);
 
       const geoData =
         await geoResponse.json();
 
-
       const candidates =
         geoData.results ||
         [];
-
 
       if (!candidates.length) {
         return res
           .status(404)
           .json({
             error:
-              `Ort ${location} wurde nicht gefunden.`
+              "Ort nicht gefunden."
           });
       }
 
-
-      let place = null;
-
+      let place =
+        candidates[0];
 
       if (
-        normalize(location)
+        location
+          .toLowerCase()
           .includes(
             "ludwigshafen"
           )
@@ -1209,25 +915,14 @@ app.post(
                 .includes(
                   "rheinland"
                 )
-          );
+          ) ||
+          place;
       }
-
-
-      place =
-        place ||
-        candidates.find(
-          item =>
-            item.country_code ===
-            "DE"
-        ) ||
-        candidates[0];
-
 
       const weather =
         new URL(
           "https://api.open-meteo.com/v1/forecast"
         );
-
 
       weather.searchParams.set(
         "latitude",
@@ -1241,11 +936,6 @@ app.post(
         String(
           place.longitude
         )
-      );
-
-      weather.searchParams.set(
-        "current",
-        "temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m"
       );
 
       weather.searchParams.set(
@@ -1263,40 +953,21 @@ app.post(
         "2"
       );
 
-
       const response =
         await fetch(
-          weather,
-          {
-            signal:
-              AbortSignal.timeout(8000)
-          }
+          weather
         );
-
 
       const data =
         await response.json();
-
-
-      if (!response.ok) {
-        throw new Error(
-          "Wetterdienst fehlgeschlagen."
-        );
-      }
-
 
       const index =
         day === "tomorrow"
           ? 1
           : 0;
 
-
       return res.json({
-        source:
-          "Open-Meteo",
-
-        requested_day:
-          day,
+        ok: true,
 
         location: {
           name:
@@ -1309,61 +980,45 @@ app.post(
             place.country || ""
         },
 
-        current:
-          day === "today"
-            ? data.current
-            : null,
+        day,
 
         forecast: {
-          date:
-            data.daily
-              ?.time?.[index],
-
-          weather_code:
-            data.daily
-              ?.weather_code?.[index],
-
           max_temperature:
             data.daily
-              ?.temperature_2m_max?.[index],
+              ?.temperature_2m_max
+              ?.[index],
 
           min_temperature:
             data.daily
-              ?.temperature_2m_min?.[index],
+              ?.temperature_2m_min
+              ?.[index],
 
           precipitation_probability:
             data.daily
-              ?.precipitation_probability_max?.[index]
+              ?.precipitation_probability_max
+              ?.[index]
         }
       });
 
-
     } catch (error) {
       console.error(
-        "Weather error:",
+        "Weather:",
         error
       );
-
-      const message =
-        error.name === "TimeoutError"
-          ? "Der Wetterdienst hat zu lange nicht geantwortet."
-          : error.message ||
-            "Wetterabfrage fehlgeschlagen.";
-
 
       return res
         .status(500)
         .json({
+          ok: false,
           error:
-            message
+            "Wetterdaten konnten nicht geladen werden."
         });
     }
   }
 );
 
-
 /* =========================================================
-   GMAIL PLACEHOLDER
+   GMAIL / CALENDAR
    ========================================================= */
 
 app.post(
@@ -1373,18 +1028,13 @@ app.post(
     return res
       .status(503)
       .json({
+        ok: false,
         configured: false,
-
         message:
-          "Mattl, Gmail ist noch nicht verbunden."
+          "Gmail ist noch nicht verbunden."
       });
   }
 );
-
-
-/* =========================================================
-   CALENDAR PLACEHOLDER
-   ========================================================= */
 
 app.post(
   "/api/calendar-today",
@@ -1393,14 +1043,13 @@ app.post(
     return res
       .status(503)
       .json({
+        ok: false,
         configured: false,
-
         message:
-          "Mattl, Google Kalender ist noch nicht verbunden."
+          "Google Kalender ist noch nicht verbunden."
       });
   }
 );
-
 
 /* =========================================================
    HEALTH
@@ -1414,10 +1063,10 @@ app.get(
       ok: true,
 
       version:
-        "JARVIS V4.2",
+        "JARVIS V5",
 
       architecture:
-        "realtime-speech-to-speech",
+        "realtime-controlled-tools",
 
       language:
         "de",
@@ -1425,17 +1074,8 @@ app.get(
       voice:
         "cedar",
 
-      connected_shop:
+      shop:
         "Druckelite24",
-
-      noise_reduction:
-        "far_field",
-
-      vad_threshold:
-        0.98,
-
-      interrupt_response:
-        false,
 
       shopify_configured:
         Boolean(
@@ -1450,7 +1090,6 @@ app.get(
   }
 );
 
-
 /* =========================================================
    ROOT
    ========================================================= */
@@ -1462,12 +1101,11 @@ app.get(
     res.sendFile(
       "index.html",
       {
-        root: "public"
+        root: "."
       }
     );
   }
 );
-
 
 /* =========================================================
    START
@@ -1479,7 +1117,7 @@ app.listen(
 
   () => {
     console.log(
-      `JARVIS V4.2 läuft auf Port ${PORT}`
+      `JARVIS V5 läuft auf Port ${PORT}`
     );
   }
 );
