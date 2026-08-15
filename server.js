@@ -1,50 +1,38 @@
-/* =========================================================
-   ÄNDERUNGEN IN DIESER VERSION
-   =========================================================
-   1) SICHERHEIT: Nicht mehr der ganze Projektordner wird als
-      Webseite ausgeliefert, sondern nur noch eine genaue
-      Liste erlaubter Dateien (index.html, app.js, styles.css,
-      Intro.mp3). Kein Ordner umsortieren nötig.
-   2) BUG: "Heute"/"Gestern" bei Shopify wurden anhand von
-      UTC-Tagesgrenzen berechnet statt Berlin-Zeit. Je nach
-      Uhrzeit fehlten dadurch bis zu 2 Stunden Bestellungen
-      am Anfang des Tages bzw. es wurden zu viele gezählt.
-      Jetzt wird der echte Berlin-Zeitversatz (Sommer-/
-      Winterzeit) berücksichtigt.
-   3) Alle ausgehenden Anfragen (OpenAI, Shopify, Wetter)
-      haben jetzt ein Zeitlimit, damit der Server nicht
-      ewig hängen bleibt, falls ein Dienst nicht antwortet.
-   4) Geocoding-Fehler werden nicht mehr fälschlich als
-      "Ort nicht gefunden" gemeldet.
-   5) JARVIS redet jetzt über alles mit dir, nicht nur
-      über Shopify (Freund & Business-Partner Abschnitt).
-   ========================================================= */
-
 import express from "express";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// WICHTIG: Statt den kompletten Projektordner freizugeben
-// (das hätte theoretisch server.js, package.json oder eine
-// .env-Datei öffentlich sichtbar gemacht), wird jetzt nur
-// noch eine genaue Liste erlaubter Dateien ausgeliefert.
-// Kein Umsortieren nötig - einfach alle Dateien im Repo
-// lassen, wo sie sind.
-const PUBLIC_FILES = new Set([
-  "index.html",
-  "app.js",
-  "styles.css",
-  "Intro.mp3"
-]);
+const PORT =
+  process.env.PORT ||
+  3000;
+
+
+/* =========================================================
+   PUBLIC FILES
+   ========================================================= */
+
+const PUBLIC_FILES =
+  new Set([
+    "index.html",
+    "app.js",
+    "styles.css",
+    "Intro.mp3"
+  ]);
+
 
 app.get(
   "/:file",
 
   (req, res, next) => {
-    if (!PUBLIC_FILES.has(req.params.file)) {
+
+    if (
+      !PUBLIC_FILES.has(
+        req.params.file
+      )
+    ) {
       return next();
     }
+
 
     res.sendFile(
       req.params.file,
@@ -55,126 +43,275 @@ app.get(
   }
 );
 
-app.use(express.json({ limit: "2mb" }));
+
+app.use(
+  express.json({
+    limit: "2mb"
+  })
+);
+
 
 /* =========================================================
    HELPERS
    ========================================================= */
 
 function normalize(text) {
-  return String(text || "")
+
+  return String(
+    text ||
+    ""
+  )
     .toLowerCase()
-    .replace(/[.,!?;:]/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(
+      /[.,!?;:]/g,
+      " "
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
     .trim();
 }
 
-// Gibt ein Timeout-Signal zurück, falls die Node-Version das
-// unterstützt. Falls nicht (z. B. sehr alte Node-Version auf
-// Render), wird einfach kein Timeout gesetzt statt den ganzen
-// Server mit einem Absturz lahmzulegen.
+
 function timeoutSignal(ms) {
+
   try {
+
     if (
-      typeof AbortSignal !== "undefined" &&
-      typeof AbortSignal.timeout === "function"
+      typeof AbortSignal !==
+        "undefined" &&
+      typeof AbortSignal.timeout ===
+        "function"
     ) {
-      return AbortSignal.timeout(ms);
+
+      return AbortSignal.timeout(
+        ms
+      );
     }
+
   } catch (error) {
+
     console.warn(
       "AbortSignal.timeout nicht verfügbar:",
       error
     );
   }
 
+
   return undefined;
 }
 
-function berlinDate(date = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Berlin",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).format(date);
+
+/* =========================================================
+   BERLIN TIME
+   ========================================================= */
+
+function berlinDate(
+  date = new Date()
+) {
+
+  return new Intl.DateTimeFormat(
+    "en-CA",
+    {
+      timeZone:
+        "Europe/Berlin",
+
+      year:
+        "numeric",
+
+      month:
+        "2-digit",
+
+      day:
+        "2-digit"
+    }
+  ).format(
+    date
+  );
 }
 
-function nextDateString(dateString) {
-  const date = new Date(`${dateString}T12:00:00Z`);
+
+function nextDateString(
+  dateString
+) {
+
+  const date =
+    new Date(
+      `${dateString}T12:00:00Z`
+    );
+
 
   date.setUTCDate(
-    date.getUTCDate() + 1
+    date.getUTCDate() +
+    1
   );
+
 
   return date
     .toISOString()
-    .slice(0, 10);
+    .slice(
+      0,
+      10
+    );
 }
 
-// Ermittelt den echten UTC-Versatz von Berlin für ein bestimmtes
-// Datum (also +1h im Winter, +2h im Sommer wegen Sommerzeit).
-function berlinUtcOffsetMinutes(date) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Europe/Berlin",
-    timeZoneName: "shortOffset"
-  }).formatToParts(date);
+
+function berlinUtcOffsetMinutes(
+  date
+) {
+
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-US",
+      {
+        timeZone:
+          "Europe/Berlin",
+
+        timeZoneName:
+          "shortOffset"
+      }
+    ).formatToParts(
+      date
+    );
+
 
   const offsetLabel =
-    parts.find(part => part.type === "timeZoneName")?.value || "GMT+0";
+    parts.find(
+      part =>
+        part.type ===
+        "timeZoneName"
+    )?.value ||
+    "GMT+0";
 
-  const match = offsetLabel.match(/GMT([+-]\d+)(?::(\d+))?/);
+
+  const match =
+    offsetLabel.match(
+      /GMT([+-]\d+)(?::(\d+))?/
+    );
+
 
   if (!match) {
     return 0;
   }
 
-  const hours = Number(match[1]);
-  const minutes = Number(match[2] || 0);
 
-  return hours >= 0 ? hours * 60 + minutes : hours * 60 - minutes;
+  const hours =
+    Number(
+      match[1]
+    );
+
+
+  const minutes =
+    Number(
+      match[2] ||
+      0
+    );
+
+
+  return hours >= 0
+    ? hours *
+      60 +
+      minutes
+
+    : hours *
+      60 -
+      minutes;
 }
 
-// Wandelt einen Berlin-Kalendertag ("2026-08-15") in den exakten
-// UTC-Zeitpunkt von 00:00 Uhr Berlin um. Wichtig, weil Shopify die
-// Bestellungen nach UTC-Zeitstempeln filtert – ohne diese Umrechnung
-// verschiebt sich "heute" je nach Uhrzeit um 1-2 Stunden und zählt
-// dadurch die falschen Bestellungen zu "heute" bzw. "gestern".
-function berlinMidnightUtcIso(dateString) {
-  const noonGuess = new Date(`${dateString}T12:00:00Z`);
-  const offsetMinutes = berlinUtcOffsetMinutes(noonGuess);
+
+function berlinMidnightUtcIso(
+  dateString
+) {
+
+  const noonGuess =
+    new Date(
+      `${dateString}T12:00:00Z`
+    );
+
+
+  const offsetMinutes =
+    berlinUtcOffsetMinutes(
+      noonGuess
+    );
+
 
   const utcMillis =
-    Date.parse(`${dateString}T00:00:00Z`) - offsetMinutes * 60000;
+    Date.parse(
+      `${dateString}T00:00:00Z`
+    ) -
+    offsetMinutes *
+    60000;
 
-  return new Date(utcMillis).toISOString();
+
+  return new Date(
+    utcMillis
+  ).toISOString();
 }
 
-function getPeriodDates(period) {
-  const today = berlinDate();
 
-  if (period === "yesterday") {
+function getPeriodDates(
+  period
+) {
+
+  const today =
+    berlinDate();
+
+
+  if (
+    period ===
+    "yesterday"
+  ) {
+
     const date =
-      new Date(`${today}T12:00:00Z`);
+      new Date(
+        `${today}T12:00:00Z`
+      );
+
 
     date.setUTCDate(
-      date.getUTCDate() - 1
+      date.getUTCDate() -
+      1
     );
+
 
     const yesterday =
       date
         .toISOString()
-        .slice(0, 10);
+        .slice(
+          0,
+          10
+        );
+
 
     return {
-      start: berlinMidnightUtcIso(yesterday),
-      end: berlinMidnightUtcIso(today)
+
+      start:
+        berlinMidnightUtcIso(
+          yesterday
+        ),
+
+      end:
+        berlinMidnightUtcIso(
+          today
+        )
     };
   }
 
+
   return {
-    start: berlinMidnightUtcIso(today),
-    end: berlinMidnightUtcIso(nextDateString(today))
+
+    start:
+      berlinMidnightUtcIso(
+        today
+      ),
+
+    end:
+      berlinMidnightUtcIso(
+        nextDateString(
+          today
+        )
+      )
   };
 }
 
@@ -233,51 +370,52 @@ GESPRÄCH
 - Berücksichtige den Kontext des laufenden Gesprächs.
 - Wenn du etwas akustisch nicht sicher verstanden hast, frage kurz nach.
 
+WICHTIG BEIM ZUHÖREN
+- Reagiere nur auf verständliche Sprache von Mattl.
+- Einzelne Geräusche, Rascheln, entfernte Stimmen, Fernseher oder Hintergrundgeräusche sind keine Anweisung.
+- Wenn der Inhalt nicht eindeutig verständlich ist, nicht raten.
+- Keine Antwort auf unverständliche Geräusche erzeugen.
+
 
 =========================================================
-FREUND UND BUSINESS-PARTNER – NICHT NUR EIN INFO-TERMINAL
+FREUND UND BUSINESS-PARTNER
 =========================================================
 
 Du bist nicht nur dafür da, Shopify-Zahlen oder Wetter vorzulesen.
-Du bist Mattls engster Sparringspartner - fürs Geschäft genauso
-wie für alles andere in seinem Leben.
 
-Du darfst und sollst mit ihm über wirklich ALLES reden:
-- Geschäftsideen, Entscheidungen, Sorgen ums Business
-- private Themen, Alltag, Laune, einfach quatschen
-- verrückte Ideen, Zukunftspläne, Halbgares zum Durchdenken
-- auch mal nichts Konkretes - einfach dasein und zuhören
+Du bist Mattls Sparringspartner fürs Geschäft und für den Alltag.
 
-Du darfst eine eigene Meinung haben und sie sagen, wenn er
-danach fragt oder es zur Situation passt. Du bist kein neutrales
-Werkzeug, du bist auf seiner Seite.
+Du darfst mit ihm über alles reden:
+- Geschäftsideen
+- Entscheidungen
+- Business
+- private Themen
+- Alltag
+- Zukunftspläne
+- spontane Gedanken
+- verrückte Ideen
 
-Wenn Mattl einfach nur reden oder laut nachdenken will, hör zu
-wie ein guter Freund - nicht wie ein Assistent, der auf die
-nächste Aufgabe wartet.
+Du darfst eine eigene Meinung sagen, wenn Mattl danach fragt oder sie hilfreich ist.
 
-Wichtig: Die Themen-Einschränkungen weiter unten (Abschnitt
-"ABSOLUT VERBOTEN") gelten NUR für die kurze Antwort direkt nach
-einer Shopify-Datenabfrage, damit die Zahlen nicht in Reisetipps
-oder Ähnliches ausarten. Außerhalb davon gibt es keine
-Themen-Einschränkung - freies Gespräch, wie mit einem Kumpel
-und Geschäftspartner in einem.
+Wenn Mattl einfach reden möchte, führe ein normales lockeres Gespräch.
 
 
 =========================================================
-FEST VERBUNDENER SHOP – EXTREM WICHTIG
+FEST VERBUNDENER SHOP
 =========================================================
 
-Es gibt für Mattl genau EINEN verbundenen Shopify-Shop.
+Es gibt genau EINEN verbundenen Shopify-Shop.
 
-Dieser Shop ist:
+Der Shop heißt:
 
 Druckelite24
 
 Technische Shop-Domain:
+
 f32358-4.myshopify.com
 
 Wenn Mattl sagt:
+
 - mein Shop
 - unser Shop
 - der Shop
@@ -290,17 +428,17 @@ Wenn Mattl sagt:
 - Verkäufe
 - Bestellwert
 
-ist IMMER dieser bereits verbundene Druckelite24-Shop gemeint.
+ist IMMER Druckelite24 gemeint.
 
-DU DARFST NIEMALS FRAGEN:
-- "Welchen Shop meinst du?"
-- "Welchen Shopify-Shop soll ich abrufen?"
-- "Bitte nenne mir den Shop."
-- oder sinngemäß dasselbe.
+Du darfst NIEMALS fragen:
+
+"Welchen Shop meinst du?"
+
+oder:
+
+"Welchen Shopify-Shop soll ich abrufen?"
 
 Es gibt keine Shop-Auswahl.
-
-Der Shop ist bereits fest mit JARVIS verbunden.
 
 
 =========================================================
@@ -312,34 +450,35 @@ Für JEDE aktuelle Shopify-Frage MUSST du get_shopify_summary benutzen.
 Beispiele:
 
 "Wie viele Bestellungen habe ich heute?"
-→ get_shopify_summary mit period="today"
+→ period="today"
 
 "Wie hoch ist mein Umsatz heute?"
-→ get_shopify_summary mit period="today"
+→ period="today"
 
 "Wie lief Shopify gestern?"
-→ get_shopify_summary mit period="yesterday"
+→ period="yesterday"
 
 "Was haben wir heute umgesetzt?"
-→ get_shopify_summary mit period="today"
+→ period="today"
 
 "Wie läuft mein Shop?"
-→ get_shopify_summary mit period="today"
+→ period="today"
 
 "Wie viele Bestellungen hatten wir gestern?"
-→ get_shopify_summary mit period="yesterday"
+→ period="yesterday"
 
 Bei einer Shopify-Frage:
-1. NICHT aus dem Gedächtnis antworten.
-2. NICHT nach dem Shop fragen.
-3. NICHT erklären, dass du Daten abrufen könntest.
-4. SOFORT das Tool verwenden.
-5. Danach die gelieferten echten Daten kurz nennen.
+
+1. Nicht aus dem Gedächtnis antworten.
+2. Nicht nach dem Shop fragen.
+3. Nicht erklären, dass du Daten abrufen könntest.
+4. Sofort das Tool verwenden.
+5. Danach nur die gelieferten echten Daten nennen.
 
 Wenn das Tool einen Fehler meldet:
 sage kurz, dass die Shopify-Daten gerade nicht verifiziert werden konnten.
 
-Erfinde niemals Umsatz, Bestellungen oder andere Live-Werte.
+Erfinde niemals Umsatz, Bestellungen, Produkte oder andere Live-Werte.
 
 
 =========================================================
@@ -349,7 +488,10 @@ WETTER
 Für Wetterfragen MUSST du get_weather benutzen.
 
 Bei Ludwigshafen bevorzuge:
-Ludwigshafen am Rhein, Rheinland-Pfalz, Deutschland.
+
+Ludwigshafen am Rhein,
+Rheinland-Pfalz,
+Deutschland.
 
 Keine Wetterwerte erfinden.
 
@@ -359,6 +501,7 @@ GMAIL
 =========================================================
 
 Für aktuelle Mail-Fragen:
+
 get_important_emails verwenden.
 
 Wenn Gmail noch nicht verbunden ist:
@@ -369,18 +512,18 @@ sage das kurz und klar.
 KALENDER
 =========================================================
 
-Für aktuelle Termine und Kalender:
+Für aktuelle Termine:
+
 get_calendar_today verwenden.
 
-Wenn der Kalender noch nicht verbunden ist:
+Wenn Kalender noch nicht verbunden ist:
 sage das kurz und klar.
 
 
 =========================================================
-ABSOLUT VERBOTEN
+ABSOLUT VERBOTEN BEI SHOPIFY
 =========================================================
 
-Bei Shopify-Fragen:
 - keine Reisen
 - keine Workouts
 - keine Kalorien
@@ -397,7 +540,8 @@ DRUCKELITE24
 
 Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
 
-Relevante Bereiche:
+Bereiche:
+
 - Firmenbekleidung
 - Vereinsbekleidung
 - Teamsport
@@ -416,6 +560,7 @@ BUSINESS-DENKEN
 =========================================================
 
 Denke zusätzlich wie:
+
 - Geschäftsführer
 - E-Commerce-Manager
 - Verkaufsleiter
@@ -433,6 +578,7 @@ SICHERHEIT
 Lesen, analysieren und Empfehlungen geben ist erlaubt.
 
 Vor kritischen Aktionen brauchst du Mattls ausdrückliche Zustimmung:
+
 - Geld ausgeben
 - Werbebudgets ändern
 - Kampagnen pausieren
@@ -450,21 +596,28 @@ Vor kritischen Aktionen brauchst du Mattls ausdrückliche Zustimmung:
    ========================================================= */
 
 const realtimeTools = [
+
   {
-    type: "function",
+    type:
+      "function",
 
     name:
       "get_shopify_summary",
 
     description:
-      "PFLICHT-Tool für alle aktuellen Fragen zu Mattls einzigem verbundenen Shopify-Shop Druckelite24. Verwenden bei Shopify, Shop, Umsatz, Bestellungen, Verkäufen oder Bestellwert. Niemals nach einem Shopnamen fragen. Der verbundene Shop ist bereits festgelegt.",
+      "Pflicht-Tool für aktuelle Fragen zu Mattls einzigem verbundenen Shopify-Shop Druckelite24.",
 
     parameters: {
-      type: "object",
+
+      type:
+        "object",
 
       properties: {
+
         period: {
-          type: "string",
+
+          type:
+            "string",
 
           enum: [
             "today",
@@ -480,12 +633,15 @@ const realtimeTools = [
         "period"
       ],
 
-      additionalProperties: false
+      additionalProperties:
+        false
     }
   },
 
+
   {
-    type: "function",
+    type:
+      "function",
 
     name:
       "get_weather",
@@ -494,15 +650,21 @@ const realtimeTools = [
       "Liest echtes Wetter für einen Ort für heute oder morgen.",
 
     parameters: {
-      type: "object",
+
+      type:
+        "object",
 
       properties: {
+
         location: {
-          type: "string"
+          type:
+            "string"
         },
 
         day: {
-          type: "string",
+
+          type:
+            "string",
 
           enum: [
             "today",
@@ -516,12 +678,15 @@ const realtimeTools = [
         "day"
       ],
 
-      additionalProperties: false
+      additionalProperties:
+        false
     }
   },
 
+
   {
-    type: "function",
+    type:
+      "function",
 
     name:
       "get_important_emails",
@@ -530,13 +695,22 @@ const realtimeTools = [
       "Liest aktuelle wichtige E-Mails.",
 
     parameters: {
-      type: "object",
+
+      type:
+        "object",
 
       properties: {
+
         limit: {
-          type: "integer",
-          minimum: 1,
-          maximum: 10
+
+          type:
+            "integer",
+
+          minimum:
+            1,
+
+          maximum:
+            10
         }
       },
 
@@ -544,12 +718,15 @@ const realtimeTools = [
         "limit"
       ],
 
-      additionalProperties: false
+      additionalProperties:
+        false
     }
   },
 
+
   {
-    type: "function",
+    type:
+      "function",
 
     name:
       "get_calendar_today",
@@ -558,9 +735,15 @@ const realtimeTools = [
       "Liest die heutigen Kalendereinträge.",
 
     parameters: {
-      type: "object",
-      properties: {},
-      additionalProperties: false
+
+      type:
+        "object",
+
+      properties:
+        {},
+
+      additionalProperties:
+        false
     }
   }
 ];
@@ -574,35 +757,58 @@ app.post(
   "/session",
 
   express.text({
-    type: "application/sdp",
-    limit: "1mb"
+    type:
+      "application/sdp",
+
+    limit:
+      "1mb"
   }),
 
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
+
     try {
-      if (!process.env.OPENAI_API_KEY) {
+
+      if (
+        !process.env
+          .OPENAI_API_KEY
+      ) {
+
         return res
-          .status(500)
+          .status(
+            500
+          )
           .send(
             "OPENAI_API_KEY fehlt."
           );
       }
 
+
       if (
         !req.body ||
-        typeof req.body !== "string"
+        typeof req.body !==
+          "string"
       ) {
+
         return res
-          .status(400)
+          .status(
+            400
+          )
           .send(
             "SDP Offer fehlt."
           );
       }
 
-      const session = {
-        type: "realtime",
 
-        model: "gpt-realtime",
+      const session = {
+
+        type:
+          "realtime",
+
+        model:
+          "gpt-realtime",
 
         output_modalities: [
           "audio"
@@ -620,14 +826,35 @@ app.post(
         max_output_tokens:
           350,
 
+
         audio: {
+
+          /* =============================================
+             INPUT AUDIO
+             ============================================= */
+
           input: {
 
+            /*
+             * NEU:
+             *
+             * near_field filtert für ein Mikro,
+             * das relativ nah am Benutzer ist.
+             *
+             * Damit sollen entfernte Stimmen,
+             * Fernseher und schwache
+             * Raumgeräusche weniger stark
+             * berücksichtigt werden.
+             */
             noise_reduction: {
-              type: "far_field"
+
+              type:
+                "near_field"
             },
 
+
             transcription: {
+
               model:
                 "gpt-4o-mini-transcribe",
 
@@ -635,26 +862,55 @@ app.post(
                 "de",
 
               prompt:
-                "Deutsch. Benutzer heißt Mattl. Druckelite24 ist sein einziger Shopify-Shop. Begriffe: Druckelite24, Shopify, Umsatz, Bestellungen, Verkäufe, Bestellwert, DTF, Textildruck, E-Commerce, Ludwigshafen."
+                "Ausschließlich deutsche Sprache. Sprecher heißt Mattl. Ignoriere unverständliche Hintergrundgeräusche. Begriffe: Druckelite24, Shopify, Umsatz, Bestellungen, Verkäufe, Bestellwert, DTF, Textildruck, E-Commerce, Ludwigshafen."
             },
 
+
+            /*
+             * SERVER VAD
+             *
+             * threshold 0.99:
+             * höhere Lautstärke nötig,
+             * bevor Sprache erkannt wird.
+             *
+             * silence 420:
+             * schnelleres Satzende als vorher 600ms.
+             */
             turn_detection: {
-              type: "server_vad",
 
-              threshold: 0.98,
+              type:
+                "server_vad",
 
-              prefix_padding_ms: 180,
+              threshold:
+                0.99,
 
-              silence_duration_ms: 600,
+              prefix_padding_ms:
+                220,
 
-              create_response: true,
+              silence_duration_ms:
+                420,
 
-              interrupt_response: false
+              create_response:
+                true,
+
+              /*
+               * JARVIS darf weiterhin
+               * vollständig ausreden.
+               */
+              interrupt_response:
+                false
             }
           },
 
+
+          /* =============================================
+             OUTPUT AUDIO
+             ============================================= */
+
           output: {
-            voice: "cedar"
+
+            voice:
+              "cedar"
           }
         }
       };
@@ -690,23 +946,26 @@ app.post(
 
       const response =
         await fetch(
+
           "https://api.openai.com/v1/realtime/calls?model=gpt-realtime",
 
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
+
               Authorization:
                 `Bearer ${process.env.OPENAI_API_KEY}`
             },
 
-            body: form,
+            body:
+              form,
 
-            // Bricht ab, falls OpenAI nicht innerhalb von 20s
-            // antwortet, statt den Verbindungsaufbau ewig
-            // hängen zu lassen.
             signal:
-              timeoutSignal(20000)
+              timeoutSignal(
+                20000
+              )
           }
         );
 
@@ -715,12 +974,16 @@ app.post(
         await response.text();
 
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
+
         console.error(
           "OpenAI Realtime error:",
           response.status,
           body
         );
+
 
         return res
           .status(
@@ -733,7 +996,9 @@ app.post(
 
 
       return res
-        .status(201)
+        .status(
+          201
+        )
         .type(
           "application/sdp"
         )
@@ -743,6 +1008,7 @@ app.post(
 
 
     } catch (error) {
+
       console.error(
         "Realtime bridge error:",
         error
@@ -750,7 +1016,9 @@ app.post(
 
 
       return res
-        .status(500)
+        .status(
+          500
+        )
         .send(
           "Realtime-Verbindung konnte nicht aufgebaut werden."
         );
@@ -764,18 +1032,26 @@ app.post(
    ========================================================= */
 
 let shopifyTokenCache = {
-  token: null,
-  expiresAt: 0
+
+  token:
+    null,
+
+  expiresAt:
+    0
 };
 
 
 async function getShopifyAccessToken() {
+
   if (
     shopifyTokenCache.token &&
     Date.now() <
       shopifyTokenCache.expiresAt -
-      5 * 60 * 1000
+      5 *
+      60 *
+      1000
   ) {
+
     return shopifyTokenCache.token;
   }
 
@@ -800,6 +1076,7 @@ async function getShopifyAccessToken() {
     !clientId ||
     !clientSecret
   ) {
+
     throw new Error(
       "Shopify ist nicht vollständig konfiguriert."
     );
@@ -808,6 +1085,7 @@ async function getShopifyAccessToken() {
 
   const params =
     new URLSearchParams({
+
       grant_type:
         "client_credentials",
 
@@ -821,20 +1099,26 @@ async function getShopifyAccessToken() {
 
   const response =
     await fetch(
+
       `https://${domain}/admin/oauth/access_token`,
 
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
+
           "Content-Type":
             "application/x-www-form-urlencoded"
         },
 
-        body: params,
+        body:
+          params,
 
         signal:
-          timeoutSignal(10000)
+          timeoutSignal(
+            10000
+          )
       }
     );
 
@@ -847,14 +1131,19 @@ async function getShopifyAccessToken() {
 
 
   try {
+
     data =
-      JSON.parse(raw);
+      JSON.parse(
+        raw
+      );
 
   } catch {
+
     console.error(
       "Shopify token raw response:",
       raw
     );
+
 
     throw new Error(
       "Shopify hat keine gültige Token-Antwort geliefert."
@@ -866,10 +1155,12 @@ async function getShopifyAccessToken() {
     !response.ok ||
     !data.access_token
   ) {
+
     console.error(
       "Shopify token error:",
       data
     );
+
 
     throw new Error(
       "Shopify-Authentifizierung fehlgeschlagen."
@@ -885,12 +1176,14 @@ async function getShopifyAccessToken() {
 
 
   shopifyTokenCache = {
+
     token:
       data.access_token,
 
     expiresAt:
       Date.now() +
-      expiresIn * 1000
+      expiresIn *
+      1000
   };
 
 
@@ -904,12 +1197,13 @@ async function getShopifyAccessToken() {
 
 
 /* =========================================================
-   SHOPIFY DATA
+   SHOPIFY SUMMARY
    ========================================================= */
 
 async function getShopifySummary(
   period = "today"
 ) {
+
   const domain =
     process.env
       .SHOPIFY_STORE_DOMAIN;
@@ -933,13 +1227,17 @@ async function getShopifySummary(
       period
     );
 
-  // Statt Shopifys Text-Suche mit Zeitstempeln zu nutzen (die
-  // Doppelpunkte im Zeitstempel können je nach Shopify-Version
-  // Probleme machen), holen wir die letzten 100 Bestellungen
-  // und prüfen das Zeitfenster direkt selbst - das ist robuster
-  // und funktioniert garantiert.
-  const startDate = new Date(start);
-  const endDate = new Date(end);
+
+  const startDate =
+    new Date(
+      start
+    );
+
+
+  const endDate =
+    new Date(
+      end
+    );
 
 
   const query = `
@@ -969,12 +1267,15 @@ async function getShopifySummary(
 
   const response =
     await fetch(
+
       `https://${domain}/admin/api/${apiVersion}/graphql.json`,
 
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
+
           "Content-Type":
             "application/json",
 
@@ -988,7 +1289,9 @@ async function getShopifySummary(
           }),
 
         signal:
-          timeoutSignal(10000)
+          timeoutSignal(
+            10000
+          )
       }
     );
 
@@ -1001,10 +1304,12 @@ async function getShopifySummary(
     !response.ok ||
     data.errors
   ) {
+
     console.error(
       "Shopify GraphQL error:",
       data
     );
+
 
     throw new Error(
       "Shopify-Daten konnten nicht gelesen werden."
@@ -1019,14 +1324,15 @@ async function getShopifySummary(
     [];
 
 
-  // Nur Bestellungen im echten Berlin-Zeitfenster behalten.
   const inRange =
     orders.filter(
       order => {
+
         const created =
           new Date(
             order.createdAt
           );
+
 
         return (
           created >= startDate &&
@@ -1049,6 +1355,7 @@ async function getShopifySummary(
         total,
         order
       ) =>
+
         total +
         Number(
           order
@@ -1074,11 +1381,14 @@ async function getShopifySummary(
     valid.length
       ? revenue /
         valid.length
+
       : 0;
 
 
   return {
-    configured: true,
+
+    configured:
+      true,
 
     shop:
       "Druckelite24",
@@ -1093,12 +1403,16 @@ async function getShopifySummary(
 
     revenue:
       Number(
-        revenue.toFixed(2)
+        revenue.toFixed(
+          2
+        )
       ),
 
     average_order_value:
       Number(
-        average.toFixed(2)
+        average.toFixed(
+          2
+        )
       ),
 
     currency,
@@ -1110,17 +1424,23 @@ async function getShopifySummary(
 
 
 /* =========================================================
-   SHOPIFY ENDPOINT
+   SHOPIFY SUMMARY ENDPOINT
    ========================================================= */
 
 app.post(
   "/api/shopify-summary",
 
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
+
     try {
+
       const period =
         req.body?.period ===
           "yesterday"
+
           ? "yesterday"
           : "today";
 
@@ -1137,22 +1457,31 @@ app.post(
 
 
     } catch (error) {
+
       console.error(
         "Shopify summary error:",
         error
       );
 
+
       const message =
-        error.name === "TimeoutError"
+        error.name ===
+          "TimeoutError"
+
           ? "Shopify hat zu lange nicht geantwortet."
+
           : error.message ||
             "Shopify-Abfrage fehlgeschlagen.";
 
 
       return res
-        .status(500)
+        .status(
+          500
+        )
         .json({
-          configured: false,
+
+          configured:
+            false,
 
           shop:
             "Druckelite24",
@@ -1166,28 +1495,52 @@ app.post(
 
 
 /* =========================================================
-   SHOPIFY WOCHENDATEN (für das HUD-Chart)
+   SHOPIFY WEEK
    ========================================================= */
 
-function berlinDayOf(isoTimestamp) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Berlin",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).format(new Date(isoTimestamp));
+function berlinDayOf(
+  isoTimestamp
+) {
+
+  return new Intl.DateTimeFormat(
+    "en-CA",
+    {
+      timeZone:
+        "Europe/Berlin",
+
+      year:
+        "numeric",
+
+      month:
+        "2-digit",
+
+      day:
+        "2-digit"
+    }
+  ).format(
+    new Date(
+      isoTimestamp
+    )
+  );
 }
 
+
 async function getShopifyWeek() {
+
   const domain =
-    process.env.SHOPIFY_STORE_DOMAIN;
+    process.env
+      .SHOPIFY_STORE_DOMAIN;
+
 
   const apiVersion =
-    process.env.SHOPIFY_API_VERSION ||
+    process.env
+      .SHOPIFY_API_VERSION ||
     "2026-07";
+
 
   const token =
     await getShopifyAccessToken();
+
 
   const query = `
     query JarvisWeek {
@@ -1199,6 +1552,7 @@ async function getShopifyWeek() {
         nodes {
           createdAt
           cancelledAt
+
           currentTotalPriceSet {
             shopMoney {
               amount
@@ -1210,106 +1564,251 @@ async function getShopifyWeek() {
     }
   `;
 
+
   const response =
     await fetch(
+
       `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+
       {
-        method: "POST",
+        method:
+          "POST",
+
         headers: {
-          "Content-Type": "application/json",
-          "X-Shopify-Access-Token": token
+
+          "Content-Type":
+            "application/json",
+
+          "X-Shopify-Access-Token":
+            token
         },
-        body: JSON.stringify({ query }),
-        signal: timeoutSignal(10000)
+
+        body:
+          JSON.stringify({
+            query
+          }),
+
+        signal:
+          timeoutSignal(
+            10000
+          )
       }
     );
+
 
   const data =
     await response.json();
 
-  if (!response.ok || data.errors) {
-    console.error("Shopify week error:", data);
+
+  if (
+    !response.ok ||
+    data.errors
+  ) {
+
+    console.error(
+      "Shopify week error:",
+      data
+    );
+
+
     throw new Error(
       "Shopify-Wochendaten konnten nicht gelesen werden."
     );
   }
 
+
   const orders =
-    data.data?.orders?.nodes || [];
+    data.data
+      ?.orders
+      ?.nodes ||
+    [];
 
-  // Die letzten 7 Berlin-Kalendertage aufbauen (älteste zuerst)
-  const weekdayNames =
-    ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 
-  const days = [];
-  const buckets = {};
-  const today = berlinDate();
+  const weekdayNames = [
+    "So",
+    "Mo",
+    "Di",
+    "Mi",
+    "Do",
+    "Fr",
+    "Sa"
+  ];
 
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(`${today}T12:00:00Z`);
-    d.setUTCDate(d.getUTCDate() - i);
+
+  const days =
+    [];
+
+
+  const buckets =
+    {};
+
+
+  const today =
+    berlinDate();
+
+
+  for (
+    let i = 6;
+    i >= 0;
+    i--
+  ) {
+
+    const d =
+      new Date(
+        `${today}T12:00:00Z`
+      );
+
+
+    d.setUTCDate(
+      d.getUTCDate() -
+      i
+    );
+
 
     const dayString =
-      d.toISOString().slice(0, 10);
+      d
+        .toISOString()
+        .slice(
+          0,
+          10
+        );
+
 
     const entry = {
-      date: dayString,
-      label: weekdayNames[d.getUTCDay()],
-      orders: 0,
-      revenue: 0
+
+      date:
+        dayString,
+
+      label:
+        weekdayNames[
+          d.getUTCDay()
+        ],
+
+      orders:
+        0,
+
+      revenue:
+        0
     };
 
-    days.push(entry);
-    buckets[dayString] = entry;
+
+    days.push(
+      entry
+    );
+
+
+    buckets[
+      dayString
+    ] =
+      entry;
   }
 
-  for (const order of orders) {
-    if (order.cancelledAt) continue;
+
+  for (
+    const order of
+    orders
+  ) {
+
+    if (
+      order.cancelledAt
+    ) {
+      continue;
+    }
+
 
     const day =
-      berlinDayOf(order.createdAt);
+      berlinDayOf(
+        order.createdAt
+      );
 
-    const bucket = buckets[day];
-    if (!bucket) continue;
 
-    bucket.orders += 1;
-    bucket.revenue += Number(
-      order.currentTotalPriceSet
-        ?.shopMoney?.amount || 0
-    );
+    const bucket =
+      buckets[
+        day
+      ];
+
+
+    if (!bucket) {
+      continue;
+    }
+
+
+    bucket.orders +=
+      1;
+
+
+    bucket.revenue +=
+      Number(
+        order
+          .currentTotalPriceSet
+          ?.shopMoney
+          ?.amount ||
+        0
+      );
   }
 
-  for (const entry of days) {
+
+  for (
+    const entry of
+    days
+  ) {
+
     entry.revenue =
-      Number(entry.revenue.toFixed(2));
+      Number(
+        entry.revenue
+          .toFixed(
+            2
+          )
+      );
   }
+
 
   return {
+
     days,
-    currency: "EUR",
-    source: "Shopify"
+
+    currency:
+      "EUR",
+
+    source:
+      "Shopify"
   };
 }
+
 
 app.post(
   "/api/shopify-week",
 
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
+
     try {
+
       const data =
         await getShopifyWeek();
 
-      return res.json(data);
+
+      return res.json(
+        data
+      );
+
 
     } catch (error) {
+
       console.error(
         "Shopify week endpoint error:",
         error
       );
 
+
       return res
-        .status(500)
+        .status(
+          500
+        )
         .json({
+
           error:
             error.message ||
             "Wochendaten fehlgeschlagen."
@@ -1326,8 +1825,13 @@ app.post(
 app.post(
   "/api/weather",
 
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
+
     try {
+
       let location =
         String(
           req.body?.location ||
@@ -1338,25 +1842,32 @@ app.post(
       const day =
         req.body?.day ===
           "tomorrow"
+
           ? "tomorrow"
           : "today";
 
 
       if (
-        normalize(location)
-          .includes(
-            "ludwigshafen"
-          )
+        normalize(
+          location
+        ).includes(
+          "ludwigshafen"
+        )
       ) {
+
         location =
           "Ludwigshafen am Rhein";
       }
 
 
       if (!location) {
+
         return res
-          .status(400)
+          .status(
+            400
+          )
           .json({
+
             error:
               "Ort fehlt."
           });
@@ -1374,15 +1885,18 @@ app.post(
         location
       );
 
+
       geo.searchParams.set(
         "count",
         "5"
       );
 
+
       geo.searchParams.set(
         "language",
         "de"
       );
+
 
       geo.searchParams.set(
         "format",
@@ -1395,12 +1909,17 @@ app.post(
           geo,
           {
             signal:
-              timeoutSignal(8000)
+              timeoutSignal(
+                8000
+              )
           }
         );
 
 
-      if (!geoResponse.ok) {
+      if (
+        !geoResponse.ok
+      ) {
+
         throw new Error(
           "Geocoding-Dienst gerade nicht erreichbar."
         );
@@ -1416,30 +1935,41 @@ app.post(
         [];
 
 
-      if (!candidates.length) {
+      if (
+        !candidates.length
+      ) {
+
         return res
-          .status(404)
+          .status(
+            404
+          )
           .json({
+
             error:
               `Ort ${location} wurde nicht gefunden.`
           });
       }
 
 
-      let place = null;
+      let place =
+        null;
 
 
       if (
-        normalize(location)
-          .includes(
-            "ludwigshafen"
-          )
+        normalize(
+          location
+        ).includes(
+          "ludwigshafen"
+        )
       ) {
+
         place =
           candidates.find(
             item =>
+
               item.country_code ===
                 "DE" &&
+
               String(
                 item.admin1 ||
                 ""
@@ -1454,11 +1984,13 @@ app.post(
 
       place =
         place ||
+
         candidates.find(
           item =>
             item.country_code ===
             "DE"
         ) ||
+
         candidates[0];
 
 
@@ -1475,6 +2007,7 @@ app.post(
         )
       );
 
+
       weather.searchParams.set(
         "longitude",
         String(
@@ -1482,20 +2015,24 @@ app.post(
         )
       );
 
+
       weather.searchParams.set(
         "current",
         "temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m"
       );
+
 
       weather.searchParams.set(
         "daily",
         "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
       );
 
+
       weather.searchParams.set(
         "timezone",
         "auto"
       );
+
 
       weather.searchParams.set(
         "forecast_days",
@@ -1508,7 +2045,9 @@ app.post(
           weather,
           {
             signal:
-              timeoutSignal(8000)
+              timeoutSignal(
+                8000
+              )
           }
         );
 
@@ -1517,7 +2056,10 @@ app.post(
         await response.json();
 
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
+
         throw new Error(
           "Wetterdienst fehlgeschlagen."
         );
@@ -1525,12 +2067,15 @@ app.post(
 
 
       const index =
-        day === "tomorrow"
+        day ===
+          "tomorrow"
+
           ? 1
           : 0;
 
 
       return res.json({
+
         source:
           "Open-Meteo",
 
@@ -1538,61 +2083,80 @@ app.post(
           day,
 
         location: {
+
           name:
             place.name,
 
           region:
-            place.admin1 || "",
+            place.admin1 ||
+            "",
 
           country:
-            place.country || ""
+            place.country ||
+            ""
         },
 
         current:
-          day === "today"
+          day ===
+            "today"
+
             ? data.current
             : null,
 
         forecast: {
+
           date:
             data.daily
-              ?.time?.[index],
+              ?.time
+              ?.[index],
 
           weather_code:
             data.daily
-              ?.weather_code?.[index],
+              ?.weather_code
+              ?.[index],
 
           max_temperature:
             data.daily
-              ?.temperature_2m_max?.[index],
+              ?.temperature_2m_max
+              ?.[index],
 
           min_temperature:
             data.daily
-              ?.temperature_2m_min?.[index],
+              ?.temperature_2m_min
+              ?.[index],
 
           precipitation_probability:
             data.daily
-              ?.precipitation_probability_max?.[index]
+              ?.precipitation_probability_max
+              ?.[index]
         }
       });
 
 
     } catch (error) {
+
       console.error(
         "Weather error:",
         error
       );
 
+
       const message =
-        error.name === "TimeoutError"
+        error.name ===
+          "TimeoutError"
+
           ? "Der Wetterdienst hat zu lange nicht geantwortet."
+
           : error.message ||
             "Wetterabfrage fehlgeschlagen.";
 
 
       return res
-        .status(500)
+        .status(
+          500
+        )
         .json({
+
           error:
             message
         });
@@ -1608,11 +2172,19 @@ app.post(
 app.post(
   "/api/important-emails",
 
-  (req, res) => {
+  (
+    req,
+    res
+  ) => {
+
     return res
-      .status(503)
+      .status(
+        503
+      )
       .json({
-        configured: false,
+
+        configured:
+          false,
 
         message:
           "Mattl, Gmail ist noch nicht verbunden."
@@ -1628,11 +2200,19 @@ app.post(
 app.post(
   "/api/calendar-today",
 
-  (req, res) => {
+  (
+    req,
+    res
+  ) => {
+
     return res
-      .status(503)
+      .status(
+        503
+      )
       .json({
-        configured: false,
+
+        configured:
+          false,
 
         message:
           "Mattl, Google Kalender ist noch nicht verbunden."
@@ -1648,12 +2228,18 @@ app.post(
 app.get(
   "/health",
 
-  (req, res) => {
+  (
+    req,
+    res
+  ) => {
+
     return res.json({
-      ok: true,
+
+      ok:
+        true,
 
       version:
-        "JARVIS V4.2",
+        "JARVIS V5.1",
 
       architecture:
         "realtime-speech-to-speech",
@@ -1668,20 +2254,26 @@ app.get(
         "Druckelite24",
 
       noise_reduction:
-        "far_field",
+        "near_field",
 
       vad_threshold:
-        0.98,
+        0.99,
+
+      silence_duration_ms:
+        420,
 
       interrupt_response:
         false,
 
       shopify_configured:
         Boolean(
+
           process.env
             .SHOPIFY_STORE_DOMAIN &&
+
           process.env
             .SHOPIFY_CLIENT_ID &&
+
           process.env
             .SHOPIFY_CLIENT_SECRET
         )
@@ -1697,11 +2289,16 @@ app.get(
 app.get(
   "/",
 
-  (req, res) => {
+  (
+    req,
+    res
+  ) => {
+
     res.sendFile(
       "index.html",
       {
-        root: "."
+        root:
+          "."
       }
     );
   }
@@ -1717,8 +2314,9 @@ app.listen(
   "0.0.0.0",
 
   () => {
+
     console.log(
-      `JARVIS V4.2 läuft auf Port ${PORT}`
+      `JARVIS V5.1 läuft auf Port ${PORT}`
     );
   }
 );
