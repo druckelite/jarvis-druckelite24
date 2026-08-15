@@ -69,6 +69,28 @@ function normalize(text) {
     .trim();
 }
 
+// Gibt ein Timeout-Signal zurück, falls die Node-Version das
+// unterstützt. Falls nicht (z. B. sehr alte Node-Version auf
+// Render), wird einfach kein Timeout gesetzt statt den ganzen
+// Server mit einem Absturz lahmzulegen.
+function timeoutSignal(ms) {
+  try {
+    if (
+      typeof AbortSignal !== "undefined" &&
+      typeof AbortSignal.timeout === "function"
+    ) {
+      return AbortSignal.timeout(ms);
+    }
+  } catch (error) {
+    console.warn(
+      "AbortSignal.timeout nicht verfügbar:",
+      error
+    );
+  }
+
+  return undefined;
+}
+
 function berlinDate(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Berlin",
@@ -684,7 +706,7 @@ app.post(
             // antwortet, statt den Verbindungsaufbau ewig
             // hängen zu lassen.
             signal:
-              AbortSignal.timeout(20000)
+              timeoutSignal(20000)
           }
         );
 
@@ -812,7 +834,7 @@ async function getShopifyAccessToken() {
         body: params,
 
         signal:
-          AbortSignal.timeout(10000)
+          timeoutSignal(10000)
       }
     );
 
@@ -911,17 +933,21 @@ async function getShopifySummary(
       period
     );
 
-
-  const search =
-    `created_at:>='${start}' created_at:<'${end}'`;
+  // Statt Shopifys Text-Suche mit Zeitstempeln zu nutzen (die
+  // Doppelpunkte im Zeitstempel können je nach Shopify-Version
+  // Probleme machen), holen wir die letzten 100 Bestellungen
+  // und prüfen das Zeitfenster direkt selbst - das ist robuster
+  // und funktioniert garantiert.
+  const startDate = new Date(start);
+  const endDate = new Date(end);
 
 
   const query = `
-    query JarvisOrders($query: String!) {
+    query JarvisOrders {
       orders(
         first: 100,
-        query: $query,
-        sortKey: CREATED_AT
+        sortKey: CREATED_AT,
+        reverse: true
       ) {
         nodes {
           name
@@ -958,16 +984,11 @@ async function getShopifySummary(
 
         body:
           JSON.stringify({
-            query,
-
-            variables: {
-              query:
-                search
-            }
+            query
           }),
 
         signal:
-          AbortSignal.timeout(10000)
+          timeoutSignal(10000)
       }
     );
 
@@ -998,8 +1019,25 @@ async function getShopifySummary(
     [];
 
 
-  const valid =
+  // Nur Bestellungen im echten Berlin-Zeitfenster behalten.
+  const inRange =
     orders.filter(
+      order => {
+        const created =
+          new Date(
+            order.createdAt
+          );
+
+        return (
+          created >= startDate &&
+          created < endDate
+        );
+      }
+    );
+
+
+  const valid =
+    inRange.filter(
       order =>
         !order.cancelledAt
     );
@@ -1203,7 +1241,7 @@ app.post(
           geo,
           {
             signal:
-              AbortSignal.timeout(8000)
+              timeoutSignal(8000)
           }
         );
 
@@ -1316,7 +1354,7 @@ app.post(
           weather,
           {
             signal:
-              AbortSignal.timeout(8000)
+              timeoutSignal(8000)
           }
         );
 
