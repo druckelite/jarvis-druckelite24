@@ -3,45 +3,34 @@ const statusEl = document.querySelector("#status");
 const logEl = document.querySelector("#log");
 const remoteAudio = document.querySelector("#remoteAudio");
 
-let mediaRecorder = null;
-let mediaStream = null;
-let audioChunks = [];
-
-let audioContext = null;
-let analyser = null;
-let sourceNode = null;
+let pc = null;
+let dc = null;
+let localStream = null;
 
 let active = false;
-let recording = false;
-let processing = false;
-let speaking = false;
+let connecting = false;
 
-let silenceTimer = null;
-let monitorTimer = null;
+let outputAudioContext = null;
+let outputSource = null;
+let outputGain = null;
 
-let history = [];
+let introAudio = null;
+let introFadeTimer = null;
+
+const handledToolCalls = new Set();
 
 /* =========================================================
    SETTINGS
    ========================================================= */
 
-const SILENCE_MS = 1100;
-const SPEECH_THRESHOLD = 0.035;
-const MIN_RECORDING_MS = 500;
+const JARVIS_OUTPUT_GAIN = 1.65;
 
 const INTRO_START = 4;
 const INTRO_VOICE_DELAY_MS = 2500;
 
-const INTRO_BACKGROUND_VOLUME = 0.16;
+const INTRO_BACKGROUND_VOLUME = 0.12;
 const INTRO_DUCK_DURATION_MS = 1500;
 const INTRO_FADE_DURATION_MS = 15000;
-
-let recordingStartedAt = 0;
-let speechDetected = false;
-
-let introAudio = null;
-let introFadeTimer = null;
-
 
 /* =========================================================
    UI
@@ -75,7 +64,6 @@ function setButtonActive(value) {
   }
 }
 
-
 /* =========================================================
    HELPERS
    ========================================================= */
@@ -86,26 +74,34 @@ function sleep(ms) {
   });
 }
 
-function pickRandom(items) {
-  return items[
-    Math.floor(
-      Math.random() * items.length
-    )
-  ];
-}
+function safeSend(payload) {
+  if (
+    !dc ||
+    dc.readyState !== "open"
+  ) {
+    return false;
+  }
 
+  try {
+    dc.send(
+      JSON.stringify(payload)
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      "DataChannel send error:",
+      error
+    );
+
+    return false;
+  }
+}
 
 /* =========================================================
    BERLIN TIME
    ========================================================= */
-
-/*
- * hourCycle h23 sorgt dafür,
- * dass wir sauber 0-23 bekommen.
- *
- * Damit vermeiden wir falsche
- * Tageszeit-Zuordnungen.
- */
 
 function getBerlinHour() {
   const formatter =
@@ -137,128 +133,76 @@ function getBerlinHour() {
   if (
     Number.isNaN(hour)
   ) {
-    /*
-     * Sicherer Fallback.
-     */
     return new Date().getHours();
   }
 
   return hour;
 }
 
-
-/* =========================================================
-   CASUAL JARVIS GREETING
-   ========================================================= */
+function pickRandom(items) {
+  return items[
+    Math.floor(
+      Math.random() *
+      items.length
+    )
+  ];
+}
 
 function getGreeting() {
   const hour =
     getBerlinHour();
 
-  console.log(
-    "Berlin hour:",
-    hour
-  );
-
-
-  /*
-   * 05:00 - 10:59
-   */
   if (
     hour >= 5 &&
     hour < 11
   ) {
     return pickRandom([
       "Morgen, Mattl. Bin da. Was steht an?",
-
-      "Morgen, Mattl. Na dann schauen wir mal, was heute wieder brennt.",
-
-      "Hey Mattl. Morgen. Ich bin bereit, falls du es auch bist.",
-
-      "Morgen, Mattl. Kaffee wäre jetzt vermutlich keine schlechte Strategie."
+      "Morgen, Mattl. Mal sehen, was heute wieder brennt.",
+      "Hey Mattl. Morgen. Was machen wir?"
     ]);
   }
 
-
-  /*
-   * 11:00 - 13:59
-   */
   if (
     hour >= 11 &&
     hour < 14
   ) {
     return pickRandom([
       "Hey Mattl. Bin da. Was gibt's?",
-
       "Mattl, da bin ich. Was steht an?",
-
       "Hey Mattl. Was machen wir?",
-
-      "Da bist du ja. Ich hatte schon Hoffnung auf einen ruhigen Vormittag.",
-
-      "Hey Mattl. Läuft. Was brauchst du?"
+      "Da bist du ja. Ich hatte schon Hoffnung auf einen ruhigen Vormittag."
     ]);
   }
 
-
-  /*
-   * 14:00 - 17:59
-   */
   if (
     hour >= 14 &&
     hour < 18
   ) {
     return pickRandom([
-      "Hey Mattl. Bin wieder im Dienst. Tragisch, ich weiß.",
-
-      "Mattl, da bin ich. Was gibt's?",
-
       "Hey Mattl. Was steht noch an?",
-
-      "Da bist du ja. Dann retten wir mal den Rest des Tages.",
-
-      "Mattl. Ich höre. Überrasch mich."
+      "Mattl, da bin ich. Was gibt's?",
+      "Da bist du ja. Dann retten wir mal den Rest des Tages."
     ]);
   }
 
-
-  /*
-   * 18:00 - 22:59
-   */
   if (
     hour >= 18 &&
     hour < 23
   ) {
     return pickRandom([
       "Hey Mattl. Noch nicht genug für heute?",
-
       "Mattl, da bin ich. Was liegt noch an?",
-
-      "Hey Mattl. Na gut, eine Runde geht noch.",
-
-      "Da bist du ja. Feierabend war wohl nur eine Theorie.",
-
-      "Mattl. Ich bin da. Was gibt's?"
+      "Feierabend war wohl nur eine Theorie."
     ]);
   }
 
-
-  /*
-   * 23:00 - 04:59
-   */
   return pickRandom([
     "Mattl ... ernsthaft? Na gut. Ich bin da.",
-
     "Hey Mattl. Schlaf wird offenbar weiterhin überschätzt.",
-
-    "Mattl, es ist spät. Natürlich arbeiten wir noch.",
-
-    "Da bist du ja. Vernünftige Uhrzeiten werden auch völlig überbewertet.",
-
-    "Mattl. Ich bin da. Aber morgen beschwerst du dich nicht über Müdigkeit."
+    "Mattl, es ist spät. Natürlich arbeiten wir noch."
   ]);
 }
-
 
 /* =========================================================
    INTRO
@@ -276,20 +220,18 @@ function stopIntro() {
   if (introAudio) {
     try {
       introAudio.pause();
-      introAudio.currentTime = 0;
     } catch {}
 
     introAudio = null;
   }
 }
 
-
 async function startIntro() {
   stopIntro();
 
   introAudio =
     new Audio(
-      "/Intro.mp3?v=4"
+      "/Intro.mp3?v=5"
     );
 
   introAudio.preload =
@@ -298,94 +240,67 @@ async function startIntro() {
   introAudio.volume =
     1;
 
-  return new Promise(
-    resolve => {
-      let finished = false;
+  return new Promise(resolve => {
+    let resolved = false;
 
-      const done = () => {
-        if (finished) {
+    const done = () => {
+      if (resolved) return;
+
+      resolved = true;
+      resolve();
+    };
+
+    const play = async () => {
+      try {
+        if (!introAudio) {
+          done();
           return;
         }
 
-        finished = true;
+        introAudio.currentTime =
+          INTRO_START;
 
-        resolve();
-      };
+        await introAudio.play();
 
+        done();
 
-      const playIntroAudio =
-        async () => {
-          try {
-            if (!introAudio) {
-              done();
-              return;
-            }
+      } catch (error) {
+        console.error(
+          "Intro error:",
+          error
+        );
 
-            introAudio.currentTime =
-              INTRO_START;
-
-            await introAudio.play();
-
-            setLog(
-              "JARVIS startet …"
-            );
-
-            done();
-
-          } catch (error) {
-            console.error(
-              "Intro play error:",
-              error
-            );
-
-            done();
-          }
-        };
-
-
-      introAudio.addEventListener(
-        "loadedmetadata",
-        playIntroAudio,
-        {
-          once: true
-        }
-      );
-
-
-      introAudio.addEventListener(
-        "error",
-        error => {
-          console.error(
-            "Intro load error:",
-            error
-          );
-
-          done();
-        },
-        {
-          once: true
-        }
-      );
-
-
-      if (
-        introAudio.readyState >= 1
-      ) {
-        playIntroAudio();
+        done();
       }
+    };
 
+    introAudio.addEventListener(
+      "loadedmetadata",
+      play,
+      {
+        once: true
+      }
+    );
 
-      introAudio.load();
+    introAudio.addEventListener(
+      "error",
+      done,
+      {
+        once: true
+      }
+    );
+
+    if (
+      introAudio.readyState >= 1
+    ) {
+      play();
     }
-  );
+
+    introAudio.load();
+  });
 }
 
-
-/* =========================================================
-   INTRO DUCKING
-   ========================================================= */
-
-function fadeIntroBehindVoice() {
+function duckIntro() {
   if (
     !introAudio ||
     introAudio.paused
@@ -397,95 +312,68 @@ function fadeIntroBehindVoice() {
     clearInterval(
       introFadeTimer
     );
-
-    introFadeTimer = null;
   }
 
-  const initialVolume =
+  const original =
     introAudio.volume;
 
-  const duckStart =
+  const start =
     performance.now();
 
-
-  /*
-   * Phase 1:
-   * über 1,5 Sekunden weich
-   * auf Hintergrundlautstärke.
-   */
-
   introFadeTimer =
-    setInterval(
-      () => {
-        if (!introAudio) {
-          clearInterval(
-            introFadeTimer
-          );
+    setInterval(() => {
+      if (!introAudio) {
+        clearInterval(
+          introFadeTimer
+        );
 
-          introFadeTimer = null;
+        introFadeTimer = null;
 
-          return;
-        }
+        return;
+      }
 
-        const elapsed =
-          performance.now() -
-          duckStart;
-
-        const progress =
-          Math.min(
-            elapsed /
-            INTRO_DUCK_DURATION_MS,
-            1
-          );
-
-        const smooth =
-          progress *
-          progress *
+      const progress =
+        Math.min(
           (
-            3 -
-            2 * progress
-          );
+            performance.now() -
+            start
+          ) /
+          INTRO_DUCK_DURATION_MS,
+          1
+        );
 
-        const newVolume =
-          initialVolume -
-          (
-            initialVolume -
-            INTRO_BACKGROUND_VOLUME
-          ) *
-          smooth;
+      const smooth =
+        progress *
+        progress *
+        (
+          3 -
+          2 * progress
+        );
 
-        introAudio.volume =
-          Math.max(
-            0,
-            Math.min(
-              1,
-              newVolume
-            )
-          );
+      introAudio.volume =
+        original -
+        (
+          original -
+          INTRO_BACKGROUND_VOLUME
+        ) *
+        smooth;
 
-        if (
-          progress >= 1
-        ) {
-          clearInterval(
-            introFadeTimer
-          );
+      if (
+        progress >= 1
+      ) {
+        clearInterval(
+          introFadeTimer
+        );
 
-          introFadeTimer =
-            null;
+        introFadeTimer = null;
 
-          startLongIntroFade();
-        }
-      },
-      40
-    );
+        fadeIntroOut();
+      }
+
+    }, 40);
 }
 
-
-/* =========================================================
-   LONG INTRO FADE
-   ========================================================= */
-
-function startLongIntroFade() {
+function fadeIntroOut() {
   if (
     !introAudio ||
     introAudio.paused
@@ -493,113 +381,231 @@ function startLongIntroFade() {
     return;
   }
 
-  const fadeStart =
+  const start =
     performance.now();
 
-  const startVolume =
+  const volume =
     INTRO_BACKGROUND_VOLUME;
 
-
   introFadeTimer =
-    setInterval(
-      () => {
-        if (!introAudio) {
-          clearInterval(
-            introFadeTimer
-          );
+    setInterval(() => {
+      if (!introAudio) {
+        clearInterval(
+          introFadeTimer
+        );
 
-          introFadeTimer =
-            null;
+        introFadeTimer = null;
 
-          return;
-        }
+        return;
+      }
 
-        const elapsed =
-          performance.now() -
-          fadeStart;
+      const progress =
+        Math.min(
+          (
+            performance.now() -
+            start
+          ) /
+          INTRO_FADE_DURATION_MS,
+          1
+        );
 
-        const progress =
-          Math.min(
-            elapsed /
-            INTRO_FADE_DURATION_MS,
-            1
-          );
-
-        const fadeCurve =
+      introAudio.volume =
+        Math.max(
+          0,
+          volume *
           Math.pow(
             1 - progress,
             1.7
-          );
+          )
+        );
 
-        introAudio.volume =
-          Math.max(
-            0,
-            startVolume *
-            fadeCurve
-          );
+      if (
+        progress >= 1
+      ) {
+        clearInterval(
+          introFadeTimer
+        );
 
-        if (
-          progress >= 1
-        ) {
-          clearInterval(
-            introFadeTimer
-          );
+        introFadeTimer = null;
 
-          introFadeTimer =
-            null;
+        try {
+          introAudio.pause();
+        } catch {}
 
-          try {
-            introAudio.pause();
-          } catch {}
+        introAudio = null;
+      }
 
-          introAudio =
-            null;
-        }
-      },
-      60
-    );
+    }, 60);
 }
 
-
 /* =========================================================
-   SPEAK
+   LOUDER JARVIS OUTPUT
    ========================================================= */
 
-async function speak(
-  text,
-  options = {}
-) {
-  const sentence =
-    String(
-      text || ""
-    ).trim();
+async function connectRemoteAudio(stream) {
+  remoteAudio.srcObject =
+    stream;
 
+  remoteAudio.volume =
+    1;
+
+  try {
+    await remoteAudio.play();
+  } catch {}
+
+  try {
+    if (!outputAudioContext) {
+      const AudioContextClass =
+        window.AudioContext ||
+        window.webkitAudioContext;
+
+      outputAudioContext =
+        new AudioContextClass();
+    }
+
+    if (
+      outputAudioContext.state ===
+      "suspended"
+    ) {
+      await outputAudioContext.resume();
+    }
+
+    /*
+     * MediaElementSource darf pro Audio-Element
+     * nur einmal erzeugt werden.
+     */
+    if (!outputSource) {
+      outputSource =
+        outputAudioContext
+          .createMediaElementSource(
+            remoteAudio
+          );
+
+      outputGain =
+        outputAudioContext
+          .createGain();
+
+      outputGain.gain.value =
+        JARVIS_OUTPUT_GAIN;
+
+      outputSource.connect(
+        outputGain
+      );
+
+      outputGain.connect(
+        outputAudioContext.destination
+      );
+    }
+
+  } catch (error) {
+    console.warn(
+      "Audio gain unavailable:",
+      error
+    );
+  }
+}
+
+/* =========================================================
+   STARTUP GREETING
+   ========================================================= */
+
+function requestStartupGreeting() {
+  safeSend({
+    type: "response.create",
+
+    response: {
+      output_modalities: [
+        "audio"
+      ],
+
+      tool_choice:
+        "none",
+
+      max_output_tokens:
+        60,
+
+      instructions:
+        `Sprich ausschließlich diesen Begrüßungssatz auf Deutsch:
+
+"${getGreeting()}"
+
+Keine zusätzlichen Sätze.
+Danach schweigen und zuhören.`
+    }
+  });
+}
+
+/* =========================================================
+   TOOLS
+   ========================================================= */
+
+async function runTool(event) {
   if (
-    !sentence ||
-    !active
+    !event.call_id ||
+    handledToolCalls.has(
+      event.call_id
+    )
   ) {
     return;
   }
 
-  speaking = true;
-  processing = false;
-
-  stopListeningMonitor();
-
-  setLog(
-    "JARVIS spricht …"
+  handledToolCalls.add(
+    event.call_id
   );
 
-  if (
-    options.duckIntro
-  ) {
-    fadeIntroBehindVoice();
+  let args = {};
+
+  try {
+    args =
+      event.arguments
+        ? JSON.parse(
+            event.arguments
+          )
+        : {};
+
+  } catch {
+    args = {};
   }
+
+  let endpoint =
+    null;
+
+  switch (event.name) {
+    case "get_shopify_summary":
+      endpoint =
+        "/api/shopify-summary";
+      break;
+
+    case "get_weather":
+      endpoint =
+        "/api/weather";
+      break;
+
+    case "get_important_emails":
+      endpoint =
+        "/api/important-emails";
+      break;
+
+    case "get_calendar_today":
+      endpoint =
+        "/api/calendar-today";
+      break;
+  }
+
+  if (!endpoint) {
+    return;
+  }
+
+  setLog(
+    "Live-Daten werden geprüft …"
+  );
+
+  let result;
 
   try {
     const response =
       await fetch(
-        "/api/speak",
+        endpoint,
         {
           method: "POST",
 
@@ -609,696 +615,105 @@ async function speak(
           },
 
           body:
-            JSON.stringify({
-              text:
-                sentence
-            })
+            JSON.stringify(
+              args
+            )
         }
       );
 
-    if (
-      !response.ok
-    ) {
-      const raw =
-        await response.text();
+    const raw =
+      await response.text();
 
-      console.error(
-        "Speech API error:",
-        raw
-      );
+    try {
+      result =
+        JSON.parse(raw);
 
-      throw new Error(
-        "Sprachausgabe fehlgeschlagen."
-      );
+    } catch {
+      result = {
+        error:
+          raw
+      };
     }
 
-    const blob =
-      await response.blob();
-
-    const url =
-      URL.createObjectURL(
-        blob
-      );
-
-    remoteAudio.srcObject =
-      null;
-
-    remoteAudio.src =
-      url;
-
-    await remoteAudio.play();
-
-    await new Promise(
-      resolve => {
-        remoteAudio.onended =
-          resolve;
-      }
-    );
-
-    URL.revokeObjectURL(
-      url
-    );
+    if (!response.ok) {
+      result.http_status =
+        response.status;
+    }
 
   } catch (error) {
-    console.error(
-      "Speak error:",
-      error
-    );
+    result = {
+      error:
+        "Die Live-Daten konnten nicht geladen werden."
+    };
+  }
 
-    setLog(
-      error.message ||
-      "Sprachausgabe fehlgeschlagen."
-    );
+  /*
+   * Function output in die Realtime-Konversation.
+   */
+  safeSend({
+    type:
+      "conversation.item.create",
 
-  } finally {
-    speaking = false;
+    item: {
+      type:
+        "function_call_output",
 
-    if (
-      active &&
-      !options.startup
-    ) {
-      await startContinuousListening();
+      call_id:
+        event.call_id,
+
+      output:
+        JSON.stringify(
+          result
+        )
     }
-  }
-}
-
-
-/* =========================================================
-   TRANSCRIPTION
-   ========================================================= */
-
-async function transcribe(
-  audioBlob
-) {
-  setLog(
-    "Verstehe …"
-  );
-
-  const response =
-    await fetch(
-      "/api/transcribe",
-      {
-        method:
-          "POST",
-
-        headers: {
-          "Content-Type":
-            audioBlob.type ||
-            "audio/webm"
-        },
-
-        body:
-          audioBlob
-      }
-    );
-
-  const raw =
-    await response.text();
-
-  let data;
-
-  try {
-    data =
-      JSON.parse(raw);
-
-  } catch {
-    throw new Error(
-      "Spracherkennung hat eine ungültige Antwort geliefert."
-    );
-  }
-
-  if (
-    !response.ok
-  ) {
-    throw new Error(
-      data.error ||
-      "Spracherkennung fehlgeschlagen."
-    );
-  }
-
-  return String(
-    data.text || ""
-  ).trim();
-}
-
-
-/* =========================================================
-   ASK JARVIS
-   ========================================================= */
-
-async function askJarvis(
-  message
-) {
-  setLog(
-    "Denke nach …"
-  );
-
-  const response =
-    await fetch(
-      "/api/ask",
-      {
-        method:
-          "POST",
-
-        headers: {
-          "Content-Type":
-            "application/json"
-        },
-
-        body:
-          JSON.stringify({
-            message,
-            history
-          })
-      }
-    );
-
-  const raw =
-    await response.text();
-
-  let data;
-
-  try {
-    data =
-      JSON.parse(raw);
-
-  } catch {
-    throw new Error(
-      "JARVIS hat eine ungültige Serverantwort erhalten."
-    );
-  }
-
-  if (
-    !response.ok
-  ) {
-    throw new Error(
-      data.error ||
-      "JARVIS konnte die Anfrage nicht bearbeiten."
-    );
-  }
-
-  const reply =
-    String(
-      data.reply || ""
-    ).trim();
-
-  if (!reply) {
-    throw new Error(
-      "JARVIS hat keine Antwort geliefert."
-    );
-  }
-
-  history.push({
-    role: "user",
-    text:
-      message
   });
 
-  history.push({
-    role:
-      "assistant",
+  /*
+   * Nach dem Tool-Ergebnis muss eine neue
+   * Modellantwort erzeugt werden.
+   */
+  safeSend({
+    type:
+      "response.create",
 
-    text:
-      reply
+    response: {
+      output_modalities: [
+        "audio"
+      ],
+
+      instructions:
+        `Beantworte die letzte Frage ausschließlich anhand des gerade gelieferten Tool-Ergebnisses.
+
+Sprich Deutsch.
+Kurz und konkret.
+Keine erfundenen Werte.
+Keine themenfremden Vorschläge.
+Danach schweigen.`
+    }
   });
-
-  if (
-    history.length > 12
-  ) {
-    history =
-      history.slice(-12);
-  }
-
-  return reply;
 }
 
-
 /* =========================================================
-   PROCESS RECORDING
-   ========================================================= */
-
-async function processRecording(
-  blob
-) {
-  if (
-    processing ||
-    !active
-  ) {
-    return;
-  }
-
-  processing =
-    true;
-
-  try {
-    const transcript =
-      await transcribe(
-        blob
-      );
-
-    if (!transcript) {
-      processing =
-        false;
-
-      setLog(
-        "JARVIS hört zu."
-      );
-
-      await startContinuousListening();
-
-      return;
-    }
-
-    setLog(
-      `Verstanden: ${transcript}`
-    );
-
-    const reply =
-      await askJarvis(
-        transcript
-      );
-
-    await speak(
-      reply
-    );
-
-  } catch (error) {
-    console.error(
-      "Processing error:",
-      error
-    );
-
-    setLog(
-      error.message ||
-      "Verarbeitung fehlgeschlagen."
-    );
-
-    processing =
-      false;
-
-    if (active) {
-      setTimeout(
-        () => {
-          startContinuousListening();
-        },
-        700
-      );
-    }
-  }
-}
-
-
-/* =========================================================
-   AUDIO LEVEL
-   ========================================================= */
-
-function getAudioLevel() {
-  if (!analyser) {
-    return 0;
-  }
-
-  const buffer =
-    new Uint8Array(
-      analyser.fftSize
-    );
-
-  analyser
-    .getByteTimeDomainData(
-      buffer
-    );
-
-  let sum = 0;
-
-  for (
-    let i = 0;
-    i < buffer.length;
-    i++
-  ) {
-    const value =
-      (
-        buffer[i] -
-        128
-      ) /
-      128;
-
-    sum +=
-      value *
-      value;
-  }
-
-  return Math.sqrt(
-    sum /
-    buffer.length
-  );
-}
-
-
-/* =========================================================
-   SILENCE DETECTION
-   ========================================================= */
-
-function monitorSilence() {
-  if (
-    !active ||
-    !recording ||
-    processing ||
-    speaking
-  ) {
-    return;
-  }
-
-  const level =
-    getAudioLevel();
-
-  if (
-    level >
-    SPEECH_THRESHOLD
-  ) {
-    speechDetected =
-      true;
-
-    setLog(
-      "Ich höre zu …"
-    );
-
-    if (
-      silenceTimer
-    ) {
-      clearTimeout(
-        silenceTimer
-      );
-
-      silenceTimer =
-        null;
-    }
-
-  } else if (
-    speechDetected &&
-    !silenceTimer
-  ) {
-    silenceTimer =
-      setTimeout(
-        () => {
-          stopRecordingAutomatically();
-        },
-        SILENCE_MS
-      );
-  }
-
-  monitorTimer =
-    requestAnimationFrame(
-      monitorSilence
-    );
-}
-
-
-/* =========================================================
-   STOP LISTENING MONITOR
-   ========================================================= */
-
-function stopListeningMonitor() {
-  if (
-    monitorTimer
-  ) {
-    cancelAnimationFrame(
-      monitorTimer
-    );
-
-    monitorTimer =
-      null;
-  }
-
-  if (
-    silenceTimer
-  ) {
-    clearTimeout(
-      silenceTimer
-    );
-
-    silenceTimer =
-      null;
-  }
-}
-
-
-/* =========================================================
-   CONTINUOUS LISTENING
-   ========================================================= */
-
-async function startContinuousListening() {
-  if (
-    !active ||
-    recording ||
-    processing ||
-    speaking
-  ) {
-    return;
-  }
-
-  try {
-    if (!mediaStream) {
-      mediaStream =
-        await navigator
-          .mediaDevices
-          .getUserMedia({
-            audio: {
-              echoCancellation:
-                true,
-
-              noiseSuppression:
-                true,
-
-              autoGainControl:
-                true,
-
-              channelCount:
-                1
-            }
-          });
-    }
-
-    if (!audioContext) {
-      const AudioContextClass =
-        window.AudioContext ||
-        window.webkitAudioContext;
-
-      audioContext =
-        new AudioContextClass();
-
-      if (
-        audioContext.state ===
-        "suspended"
-      ) {
-        await audioContext.resume();
-      }
-
-      analyser =
-        audioContext
-          .createAnalyser();
-
-      analyser.fftSize =
-        1024;
-
-      sourceNode =
-        audioContext
-          .createMediaStreamSource(
-            mediaStream
-          );
-
-      sourceNode.connect(
-        analyser
-      );
-    }
-
-    audioChunks = [];
-
-    speechDetected =
-      false;
-
-    let mimeType =
-      "";
-
-    if (
-      MediaRecorder
-        .isTypeSupported(
-          "audio/webm;codecs=opus"
-        )
-    ) {
-      mimeType =
-        "audio/webm;codecs=opus";
-
-    } else if (
-      MediaRecorder
-        .isTypeSupported(
-          "audio/webm"
-        )
-    ) {
-      mimeType =
-        "audio/webm";
-    }
-
-    mediaRecorder =
-      mimeType
-        ? new MediaRecorder(
-            mediaStream,
-            {
-              mimeType
-            }
-          )
-        : new MediaRecorder(
-            mediaStream
-          );
-
-    mediaRecorder.ondataavailable =
-      event => {
-        if (
-          event.data &&
-          event.data.size > 0
-        ) {
-          audioChunks.push(
-            event.data
-          );
-        }
-      };
-
-    mediaRecorder.onstop =
-      async () => {
-        const type =
-          mediaRecorder
-            ?.mimeType ||
-          "audio/webm";
-
-        const blob =
-          new Blob(
-            audioChunks,
-            {
-              type
-            }
-          );
-
-        mediaRecorder =
-          null;
-
-        audioChunks =
-          [];
-
-        recording =
-          false;
-
-        stopListeningMonitor();
-
-        if (
-          !active ||
-          blob.size === 0
-        ) {
-          return;
-        }
-
-        await processRecording(
-          blob
-        );
-      };
-
-    recordingStartedAt =
-      Date.now();
-
-    mediaRecorder.start();
-
-    recording =
-      true;
-
-    setStatus(
-      "Online"
-    );
-
-    setButtonActive(
-      true
-    );
-
-    setLog(
-      "JARVIS hört zu."
-    );
-
-    monitorSilence();
-
-  } catch (error) {
-    console.error(
-      "Continuous listening error:",
-      error
-    );
-
-    setLog(
-      "Mikrofon konnte nicht gestartet werden."
-    );
-
-    await stopJarvis();
-  }
-}
-
-
-/* =========================================================
-   AUTO STOP
-   ========================================================= */
-
-function stopRecordingAutomatically() {
-  if (
-    !recording ||
-    !mediaRecorder ||
-    mediaRecorder.state ===
-      "inactive"
-  ) {
-    return;
-  }
-
-  const duration =
-    Date.now() -
-    recordingStartedAt;
-
-  if (
-    duration <
-    MIN_RECORDING_MS
-  ) {
-    return;
-  }
-
-  stopListeningMonitor();
-
-  setLog(
-    "Verarbeite …"
-  );
-
-  try {
-    mediaRecorder.stop();
-
-  } catch (error) {
-    console.error(
-      "Automatic recorder stop error:",
-      error
-    );
-  }
-}
-
-
-/* =========================================================
-   START JARVIS
+   START REALTIME
    ========================================================= */
 
 async function startJarvis() {
   if (
     active ||
-    processing
+    connecting
   ) {
     return;
   }
 
-  active =
-    true;
+  connecting = true;
 
   button.disabled =
     true;
 
+  handledToolCalls.clear();
+
   setStatus(
-    "Online"
+    "Verbinde …"
   );
 
   setButtonActive(
@@ -1311,127 +726,371 @@ async function startJarvis() {
 
   try {
     /*
-     * Intro startet bei Sekunde 4.
+     * Intro zuerst starten.
      */
     await startIntro();
 
+    pc =
+      new RTCPeerConnection();
+
     /*
-     * Erst kurz Sound wirken lassen.
+     * Remote speech.
      */
-    await sleep(
-      INTRO_VOICE_DELAY_MS
-    );
+    pc.ontrack =
+      async event => {
+        const stream =
+          event.streams?.[0] ||
+          new MediaStream(
+            [event.track]
+          );
 
-    if (!active) {
-      return;
-    }
+        await connectRemoteAudio(
+          stream
+        );
+      };
+
+    pc.onconnectionstatechange =
+      () => {
+        const state =
+          pc?.connectionState;
+
+        console.log(
+          "Peer:",
+          state
+        );
+
+        if (
+          state === "failed"
+        ) {
+          setLog(
+            "Voice-Verbindung fehlgeschlagen."
+          );
+        }
+      };
+
+    dc =
+      pc.createDataChannel(
+        "oai-events"
+      );
+
+    dc.onopen =
+      async () => {
+        active = true;
+        connecting = false;
+
+        button.disabled =
+          false;
+
+        setStatus(
+          "Online"
+        );
+
+        setLog(
+          "JARVIS startet …"
+        );
+
+        /*
+         * Sound kurz alleine laufen lassen.
+         */
+        await sleep(
+          INTRO_VOICE_DELAY_MS
+        );
+
+        if (!active) {
+          return;
+        }
+
+        duckIntro();
+
+        requestStartupGreeting();
+      };
+
+    dc.onerror =
+      error => {
+        console.error(
+          "Data channel:",
+          error
+        );
+
+        setLog(
+          "Voice-Verbindung gestört."
+        );
+      };
+
+    dc.onclose =
+      () => {
+        if (
+          active ||
+          connecting
+        ) {
+          stopJarvis();
+        }
+      };
+
+    dc.onmessage =
+      async message => {
+        let event;
+
+        try {
+          event =
+            JSON.parse(
+              message.data
+            );
+
+        } catch {
+          return;
+        }
+
+        console.log(
+          "Realtime:",
+          event.type
+        );
+
+        if (
+          event.type ===
+          "input_audio_buffer.speech_started"
+        ) {
+          setLog(
+            "Ich höre zu …"
+          );
+        }
+
+        if (
+          event.type ===
+          "input_audio_buffer.speech_stopped"
+        ) {
+          setLog(
+            "Denke nach …"
+          );
+        }
+
+        if (
+          event.type ===
+          "output_audio_buffer.started"
+        ) {
+          setLog(
+            "JARVIS spricht."
+          );
+        }
+
+        if (
+          event.type ===
+          "output_audio_buffer.stopped"
+        ) {
+          if (active) {
+            setLog(
+              "JARVIS hört zu."
+            );
+          }
+        }
+
+        if (
+          event.type ===
+          "conversation.item.input_audio_transcription.completed"
+        ) {
+          const transcript =
+            String(
+              event.transcript ||
+              ""
+            ).trim();
+
+          if (transcript) {
+            setLog(
+              `Verstanden: ${transcript}`
+            );
+          }
+        }
+
+        if (
+          event.type ===
+          "response.function_call_arguments.done"
+        ) {
+          await runTool(
+            event
+          );
+        }
+
+        if (
+          event.type ===
+          "response.done"
+        ) {
+          if (
+            event.response?.status ===
+            "failed"
+          ) {
+            console.error(
+              "Response failed:",
+              event.response
+            );
+
+            setLog(
+              "JARVIS konnte nicht antworten."
+            );
+          }
+        }
+
+        if (
+          event.type ===
+          "error"
+        ) {
+          console.error(
+            "Realtime error:",
+            event
+          );
+
+          setLog(
+            event.error?.message ||
+            "JARVIS-Fehler."
+          );
+        }
+      };
 
     /*
-     * Lockerere Begrüßung.
+     * Mikrofon.
      *
-     * Gleichzeitig:
-     * Sound weich leiser +
-     * 15 Sekunden Fade.
+     * Browser-eigene Noise Suppression
+     * plus serverseitiges far_field.
      */
-    await speak(
-      getGreeting(),
-      {
-        startup: true,
-        duckIntro: true
-      }
-    );
+    localStream =
+      await navigator
+        .mediaDevices
+        .getUserMedia({
+          audio: {
+            echoCancellation:
+              true,
+
+            noiseSuppression:
+              true,
+
+            autoGainControl:
+              true,
+
+            channelCount:
+              1
+          }
+        });
+
+    for (
+      const track of
+      localStream
+        .getAudioTracks()
+    ) {
+      pc.addTrack(
+        track,
+        localStream
+      );
+    }
 
     /*
-     * Danach automatisch zuhören.
+     * WebRTC SDP.
      */
-    if (active) {
-      await startContinuousListening();
+    const offer =
+      await pc.createOffer();
+
+    await pc.setLocalDescription(
+      offer
+    );
+
+    const response =
+      await fetch(
+        "/session",
+        {
+          method:
+            "POST",
+
+          headers: {
+            "Content-Type":
+              "application/sdp"
+          },
+
+          body:
+            offer.sdp
+        }
+      );
+
+    if (!response.ok) {
+      throw new Error(
+        await response.text()
+      );
     }
+
+    const answer =
+      await response.text();
+
+    await pc.setRemoteDescription({
+      type:
+        "answer",
+
+      sdp:
+        answer
+    });
 
   } catch (error) {
     console.error(
-      "JARVIS start error:",
+      "Start error:",
       error
     );
 
-    if (active) {
-      await startContinuousListening();
-    }
+    await stopJarvis();
+
+    setLog(
+      `Start fehlgeschlagen: ${error.message}`
+    );
 
   } finally {
+    connecting =
+      false;
+
     button.disabled =
       false;
   }
 }
 
-
 /* =========================================================
-   STOP JARVIS
+   STOP
    ========================================================= */
 
 async function stopJarvis() {
   active = false;
-  recording = false;
-  processing = false;
-  speaking = false;
+  connecting = false;
 
-  stopListeningMonitor();
   stopIntro();
 
   try {
     if (
-      mediaRecorder &&
-      mediaRecorder.state !==
-        "inactive"
+      dc &&
+      dc.readyState ===
+        "open"
     ) {
-      mediaRecorder.stop();
+      dc.close();
     }
   } catch {}
 
-  mediaRecorder =
-    null;
+  try {
+    if (pc) {
+      pc.close();
+    }
+  } catch {}
 
   try {
-    if (mediaStream) {
+    if (localStream) {
       for (
         const track of
-        mediaStream.getTracks()
+        localStream.getTracks()
       ) {
         track.stop();
       }
     }
   } catch {}
 
-  mediaStream =
-    null;
+  localStream = null;
+  pc = null;
+  dc = null;
 
-  try {
-    if (sourceNode) {
-      sourceNode.disconnect();
-    }
-  } catch {}
-
-  sourceNode =
-    null;
-
-  analyser =
-    null;
-
-  try {
-    if (audioContext) {
-      await audioContext.close();
-    }
-  } catch {}
-
-  audioContext =
-    null;
+  handledToolCalls.clear();
 
   try {
     remoteAudio.pause();
-
-    remoteAudio.src =
-      "";
-
     remoteAudio.srcObject =
       null;
   } catch {}
@@ -1447,8 +1106,10 @@ async function stopJarvis() {
   setLog(
     "Bereit."
   );
-}
 
+  button.disabled =
+    false;
+}
 
 /* =========================================================
    BUTTON
@@ -1457,16 +1118,20 @@ async function stopJarvis() {
 button.addEventListener(
   "click",
   async () => {
+    if (
+      connecting
+    ) {
+      return;
+    }
+
     if (active) {
       await stopJarvis();
-
       return;
     }
 
     await startJarvis();
   }
 );
-
 
 /* =========================================================
    CLEANUP
