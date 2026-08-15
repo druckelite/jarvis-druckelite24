@@ -14,6 +14,8 @@ let responseInProgress = false;
 let greetingInProgress = false;
 let requestInProgress = false;
 
+let transcriptBuffer = "";
+let transcriptTimer = null;
 
 /* =========================================================
    UI
@@ -35,7 +37,6 @@ function setLog(text) {
   if (!logEl) return;
   logEl.textContent = text;
 }
-
 
 /* =========================================================
    HELPERS
@@ -64,7 +65,6 @@ function money(value, currency = "EUR") {
 
 function safeSend(payload) {
   if (!dc || dc.readyState !== "open") {
-    console.warn("DataChannel ist nicht offen.");
     return false;
   }
 
@@ -72,10 +72,7 @@ function safeSend(payload) {
     dc.send(JSON.stringify(payload));
     return true;
   } catch (error) {
-    console.error(
-      "DataChannel send error:",
-      error
-    );
+    console.error("DataChannel send error:", error);
     return false;
   }
 }
@@ -87,7 +84,6 @@ function setMicrophoneEnabled(enabled) {
     track.enabled = enabled;
   }
 }
-
 
 /* =========================================================
    RESPONSE CONTROL
@@ -110,47 +106,6 @@ function cancelCurrentResponse() {
   responseInProgress = false;
 }
 
-
-/* =========================================================
-   SPEAK EXACT TEXT
-   ========================================================= */
-
-function speakExact(text) {
-  const sentence =
-    String(text || "").trim();
-
-  if (!sentence) return;
-
-  console.log(
-    "JARVIS soll sagen:",
-    sentence
-  );
-
-  safeSend({
-    type: "response.create",
-
-    response: {
-      output_modalities: ["audio"],
-
-      tool_choice: "none",
-
-      max_output_tokens: 160,
-
-      instructions:
-        `Sprich ausschließlich auf Deutsch.
-
-Sprich exakt folgenden Inhalt und füge nichts hinzu:
-
-"${sentence}"
-
-Keine Rückfrage.
-Kein zusätzlicher Kommentar.
-Danach schweigen.`
-    }
-  });
-}
-
-
 /* =========================================================
    CLASSIFICATION
    ========================================================= */
@@ -160,7 +115,6 @@ function isShopifyQuery(text) {
 
   return (
     /\bshopify\b/.test(t) ||
-    /\bshop\b/.test(t) && /\b(umsatz|bestellung|verkauf|verkäufe)\b/.test(t) ||
     /\bumsatz\b/.test(t) ||
     /\bbestellungen?\b/.test(t) ||
     /\bverkäufe?\b/.test(t) ||
@@ -185,8 +139,7 @@ function isCalendarQuery(text) {
   return (
     /\bkalender\b/.test(t) ||
     /\btermine?\b/.test(t) ||
-    /\bwas steht heute an\b/.test(t) ||
-    /\bwas habe ich heute vor\b/.test(t)
+    /\bwas steht heute an\b/.test(t)
   );
 }
 
@@ -202,6 +155,38 @@ function isWeatherQuery(text) {
   );
 }
 
+/* =========================================================
+   SPEAK
+   ========================================================= */
+
+function speakExact(text) {
+  const sentence = String(text || "").trim();
+
+  if (!sentence) return;
+
+  safeSend({
+    type: "response.create",
+
+    response: {
+      output_modalities: ["audio"],
+
+      tool_choice: "none",
+
+      max_output_tokens: 180,
+
+      instructions:
+        `Sprich ausschließlich auf Deutsch.
+
+Sprich genau diesen Inhalt:
+
+"${sentence}"
+
+Kein zusätzlicher Kommentar.
+Keine Rückfrage.
+Danach schweigen.`
+    }
+  });
+}
 
 /* =========================================================
    SHOPIFY
@@ -215,38 +200,26 @@ async function handleShopify(transcript) {
       ? "yesterday"
       : "today";
 
-  setLog(
-    "Shopify wird abgefragt …"
-  );
-
-  console.log(
-    "Direkter Shopify-Aufruf:",
-    period
-  );
+  setLog("Shopify wird abgefragt …");
 
   try {
-    const response =
-      await fetch(
-        "/api/shopify-summary",
-        {
-          method: "POST",
+    const response = await fetch(
+      "/api/shopify-summary",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          period
+        })
+      }
+    );
 
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body: JSON.stringify({
-            period
-          })
-        }
-      );
-
-    const raw =
-      await response.text();
+    const raw = await response.text();
 
     console.log(
-      "Shopify HTTP:",
+      "SHOPIFY RESPONSE:",
       response.status,
       raw
     );
@@ -261,81 +234,51 @@ async function handleShopify(transcript) {
       };
     }
 
-
-    /*
-     * Shopify noch nicht verbunden.
-     */
-    if (
-      data.configured === false
-    ) {
+    if (data.configured === false) {
       speakExact(
         data.message ||
         data.error ||
-        "Mattl, Shopify ist momentan noch nicht vollständig verbunden."
+        "Mattl, Shopify ist noch nicht vollständig verbunden."
       );
-
       return;
     }
 
-
-    /*
-     * HTTP- oder API-Fehler.
-     */
-    if (
-      !response.ok ||
-      data.error
-    ) {
-      console.error(
-        "Shopify API Fehler:",
-        data
-      );
-
+    if (!response.ok || data.error) {
       speakExact(
-        "Mattl, ich erreiche Shopify, aber die Abfrage ist fehlgeschlagen. Ich habe deshalb keine Zahlen erfunden."
+        "Mattl, Shopify ist erreichbar, aber die Datenabfrage ist fehlgeschlagen. Ich nenne deshalb keine erfundenen Zahlen."
       );
-
       return;
     }
 
+    const orders = Number(
+      data.orders || 0
+    );
 
-    const orders =
-      Number(
-        data.orders || 0
-      );
+    const revenue = Number(
+      data.revenue || 0
+    );
 
-    const revenue =
-      Number(
-        data.revenue || 0
-      );
+    const average = Number(
+      data.average_order_value || 0
+    );
 
     const currency =
       data.currency || "EUR";
-
-    const average =
-      Number(
-        data.average_order_value || 0
-      );
 
     const dayText =
       period === "yesterday"
         ? "Gestern"
         : "Heute";
 
-
-    /*
-     * Antwort abhängig von der Frage.
-     */
     if (
-      /\bwie viele\b/.test(t) ||
-      /\banzahl\b/.test(t)
+      /\bwie viele\b/.test(t) &&
+      /\bbestellungen?\b/.test(t)
     ) {
       speakExact(
         `${dayText} hast du ${orders} Shopify-Bestellungen.`
       );
-
       return;
     }
-
 
     if (
       /\bumsatz\b/.test(t) ||
@@ -343,21 +286,19 @@ async function handleShopify(transcript) {
       /\bverkäufe\b/.test(t)
     ) {
       speakExact(
-        `${dayText} hast du bei Shopify ${money(
+        `${dayText} hast du ${money(
           revenue,
           currency
-        )} Umsatz mit ${orders} Bestellungen gemacht. Der durchschnittliche Bestellwert liegt bei ${money(
+        )} Shopify-Umsatz mit ${orders} Bestellungen. Der durchschnittliche Bestellwert beträgt ${money(
           average,
           currency
         )}.`
       );
-
       return;
     }
 
-
     speakExact(
-      `${dayText} hast du ${orders} Shopify-Bestellungen mit insgesamt ${money(
+      `${dayText} hast du ${orders} Shopify-Bestellungen mit ${money(
         revenue,
         currency
       )} Umsatz.`
@@ -370,41 +311,33 @@ async function handleShopify(transcript) {
     );
 
     speakExact(
-      "Mattl, die Verbindung zu Shopify ist gerade fehlgeschlagen. Ich kann die aktuellen Daten deshalb nicht zuverlässig nennen."
+      "Mattl, die Shopify-Verbindung ist gerade fehlgeschlagen."
     );
   }
 }
-
 
 /* =========================================================
    EMAIL
    ========================================================= */
 
 async function handleEmails() {
-  setLog(
-    "E-Mails werden geprüft …"
-  );
+  setLog("E-Mails werden geprüft …");
 
   try {
-    const response =
-      await fetch(
-        "/api/important-emails",
-        {
-          method: "POST",
+    const response = await fetch(
+      "/api/important-emails",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          limit: 5
+        })
+      }
+    );
 
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body: JSON.stringify({
-            limit: 5
-          })
-        }
-      );
-
-    const raw =
-      await response.text();
+    const raw = await response.text();
 
     let data;
 
@@ -416,25 +349,18 @@ async function handleEmails() {
       };
     }
 
-    if (
-      data.configured === false
-    ) {
+    if (data.configured === false) {
       speakExact(
         data.message ||
-        "Mattl, Gmail ist im Voice-JARVIS noch nicht verbunden."
+        "Mattl, Gmail ist noch nicht verbunden."
       );
-
       return;
     }
 
-    if (
-      !response.ok ||
-      data.error
-    ) {
+    if (!response.ok || data.error) {
       speakExact(
         "Mattl, ich konnte deine E-Mails gerade nicht zuverlässig abrufen."
       );
-
       return;
     }
 
@@ -447,68 +373,51 @@ async function handleEmails() {
       speakExact(
         "Mattl, ich habe aktuell keine wichtigen neuen E-Mails gefunden."
       );
-
       return;
     }
 
-    const summaries =
+    const text =
       emails
         .slice(0, 3)
-        .map((email, index) => {
-          const sender =
-            email.from || "unbekannter Absender";
-
-          const subject =
-            email.subject || "ohne Betreff";
-
-          return `${index + 1}. ${sender}, Betreff: ${subject}.`;
-        })
+        .map(
+          (mail, i) =>
+            `${i + 1}. ${mail.from || "Unbekannter Absender"}, ${mail.subject || "ohne Betreff"}.`
+        )
         .join(" ");
 
     speakExact(
-      `Mattl, ich habe ${emails.length} relevante E-Mails gefunden. ${summaries}`
+      `Mattl, ich habe ${emails.length} relevante E-Mails gefunden. ${text}`
     );
 
   } catch (error) {
-    console.error(
-      "Email Fetch Error:",
-      error
-    );
+    console.error(error);
 
     speakExact(
-      "Mattl, die E-Mail-Verbindung ist gerade nicht erreichbar."
+      "Mattl, Gmail ist gerade nicht erreichbar."
     );
   }
 }
-
 
 /* =========================================================
    CALENDAR
    ========================================================= */
 
 async function handleCalendar() {
-  setLog(
-    "Kalender wird geprüft …"
-  );
+  setLog("Kalender wird geprüft …");
 
   try {
-    const response =
-      await fetch(
-        "/api/calendar-today",
-        {
-          method: "POST",
+    const response = await fetch(
+      "/api/calendar-today",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({})
+      }
+    );
 
-          headers: {
-            "Content-Type":
-              "application/json"
-          },
-
-          body: JSON.stringify({})
-        }
-      );
-
-    const raw =
-      await response.text();
+    const raw = await response.text();
 
     let data;
 
@@ -520,25 +429,18 @@ async function handleCalendar() {
       };
     }
 
-    if (
-      data.configured === false
-    ) {
+    if (data.configured === false) {
       speakExact(
         data.message ||
-        "Mattl, Google Kalender ist im Voice-JARVIS noch nicht verbunden."
+        "Mattl, Google Kalender ist noch nicht verbunden."
       );
-
       return;
     }
 
-    if (
-      !response.ok ||
-      data.error
-    ) {
+    if (!response.ok || data.error) {
       speakExact(
         "Mattl, ich konnte deinen Kalender gerade nicht zuverlässig abrufen."
       );
-
       return;
     }
 
@@ -549,40 +451,34 @@ async function handleCalendar() {
 
     if (!events.length) {
       speakExact(
-        "Mattl, für heute stehen keine Termine in deinem Kalender."
+        "Mattl, heute stehen keine Termine in deinem Kalender."
       );
-
       return;
     }
 
-    const summaries =
+    const text =
       events
         .slice(0, 4)
-        .map(event => {
-          return (
+        .map(
+          event =>
             event.title ||
             event.summary ||
             "Termin"
-          );
-        })
+        )
         .join(", ");
 
     speakExact(
-      `Mattl, heute hast du ${events.length} Termine. ${summaries}.`
+      `Mattl, heute hast du ${events.length} Termine. ${text}.`
     );
 
   } catch (error) {
-    console.error(
-      "Calendar Fetch Error:",
-      error
-    );
+    console.error(error);
 
     speakExact(
-      "Mattl, die Kalenderverbindung ist gerade nicht erreichbar."
+      "Mattl, dein Kalender ist gerade nicht erreichbar."
     );
   }
 }
-
 
 /* =========================================================
    WEATHER
@@ -595,9 +491,6 @@ function extractWeatherLocation(transcript) {
   const normalized =
     normalize(original);
 
-  /*
-   * Bekannter häufiger Ort.
-   */
   if (
     normalized.includes(
       "ludwigshafen"
@@ -606,16 +499,15 @@ function extractWeatherLocation(transcript) {
     return "Ludwigshafen am Rhein";
   }
 
-  /*
-   * Einfacher Satz:
-   * "Wetter in Mannheim morgen"
-   */
   const match =
     original.match(
       /\bin\s+(.+?)(?:\s+(?:heute|morgen))?[?.!,]*$/i
     );
 
-  if (match && match[1]) {
+  if (
+    match &&
+    match[1]
+  ) {
     return match[1].trim();
   }
 
@@ -642,7 +534,6 @@ async function handleWeather(
     speakExact(
       "Für welchen Ort soll ich das Wetter prüfen?"
     );
-
     return;
   }
 
@@ -656,12 +547,10 @@ async function handleWeather(
         "/api/weather",
         {
           method: "POST",
-
           headers: {
             "Content-Type":
               "application/json"
           },
-
           body: JSON.stringify({
             location,
             day
@@ -675,7 +564,8 @@ async function handleWeather(
     let data;
 
     try {
-      data = JSON.parse(raw);
+      data =
+        JSON.parse(raw);
     } catch {
       data = {
         error: raw
@@ -689,7 +579,6 @@ async function handleWeather(
       speakExact(
         "Mattl, ich konnte das Wetter gerade nicht zuverlässig abrufen."
       );
-
       return;
     }
 
@@ -700,29 +589,17 @@ async function handleWeather(
     const forecast =
       data.forecast || {};
 
-    const max =
-      forecast.max_temperature;
-
-    const min =
-      forecast.min_temperature;
-
-    const rain =
-      forecast.precipitation_probability;
-
     const dayText =
       day === "tomorrow"
         ? "Morgen"
         : "Heute";
 
     speakExact(
-      `${dayText} in ${resolved}: maximal ${max} Grad, minimal ${min} Grad. Die höchste Regenwahrscheinlichkeit liegt bei ${rain} Prozent.`
+      `${dayText} in ${resolved}: maximal ${forecast.max_temperature} Grad, minimal ${forecast.min_temperature} Grad. Regenwahrscheinlichkeit bis ${forecast.precipitation_probability} Prozent.`
     );
 
   } catch (error) {
-    console.error(
-      "Weather Fetch Error:",
-      error
-    );
+    console.error(error);
 
     speakExact(
       "Mattl, die Wetterabfrage ist gerade fehlgeschlagen."
@@ -730,9 +607,8 @@ async function handleWeather(
   }
 }
 
-
 /* =========================================================
-   GENERAL ANSWER
+   GENERAL
    ========================================================= */
 
 function handleGeneral(
@@ -756,19 +632,14 @@ function handleGeneral(
 "${transcript}"
 
 Antworte ausschließlich auf Deutsch.
-
-Regeln:
-- beantworte exakt die Frage
-- kurz und präzise
-- keine Reisen, Workouts oder andere themenfremde Vorschläge
-- wenn du etwas nicht verstanden hast, frage kurz nach
-- keine erfundenen Live-Daten
-- keine automatische Anschlussfrage
-- danach schweigen`
+Beantworte exakt die Frage.
+Kurz und präzise.
+Keine erfundenen Live-Daten.
+Keine themenfremden Vorschläge.
+Danach schweigen.`
     }
   });
 }
-
 
 /* =========================================================
    ROUTER
@@ -780,19 +651,13 @@ async function routeTranscript(
   const text =
     normalize(transcript);
 
-  if (!text) return;
-
-  if (requestInProgress) {
-    console.log(
-      "Request läuft bereits."
-    );
+  if (!text) {
     return;
   }
 
-  console.log(
-    "TRANSKRIPTION:",
-    transcript
-  );
+  if (requestInProgress) {
+    return;
+  }
 
   if (
     responseInProgress ||
@@ -804,78 +669,92 @@ async function routeTranscript(
   requestInProgress = true;
 
   try {
+    setLog(
+      `Verstanden: ${transcript}`
+    );
+
     if (
       isShopifyQuery(text)
     ) {
-      console.log(
-        "ROUTE => SHOPIFY"
-      );
-
       await handleShopify(
         transcript
       );
-
       return;
     }
 
     if (
       isEmailQuery(text)
     ) {
-      console.log(
-        "ROUTE => EMAIL"
-      );
-
       await handleEmails();
-
       return;
     }
 
     if (
       isCalendarQuery(text)
     ) {
-      console.log(
-        "ROUTE => CALENDAR"
-      );
-
       await handleCalendar();
-
       return;
     }
 
     if (
       isWeatherQuery(text)
     ) {
-      console.log(
-        "ROUTE => WEATHER"
-      );
-
       await handleWeather(
         transcript
       );
-
       return;
     }
-
-    console.log(
-      "ROUTE => GENERAL"
-    );
 
     handleGeneral(
       transcript
     );
 
   } finally {
-    /*
-     * Bei direkten HTTP-Aufrufen können
-     * wir wieder freigeben.
-     *
-     * Die eigentliche Audioantwort
-     * läuft separat über Realtime.
-     */
-    requestInProgress = false;
+    requestInProgress =
+      false;
   }
 }
 
+/* =========================================================
+   TRANSCRIPTION FALLBACK
+   ========================================================= */
+
+function resetTranscriptBuffer() {
+  transcriptBuffer = "";
+
+  if (transcriptTimer) {
+    clearTimeout(
+      transcriptTimer
+    );
+  }
+
+  transcriptTimer = null;
+}
+
+function scheduleTranscriptFallback() {
+  if (transcriptTimer) {
+    clearTimeout(
+      transcriptTimer
+    );
+  }
+
+  transcriptTimer =
+    setTimeout(
+      async () => {
+        const text =
+          transcriptBuffer.trim();
+
+        if (text) {
+          resetTranscriptBuffer();
+
+          await routeTranscript(
+            text
+          );
+        }
+      },
+      900
+    );
+}
 
 /* =========================================================
    GREETING
@@ -889,10 +768,8 @@ function getGreeting() {
         {
           timeZone:
             "Europe/Berlin",
-
           hour:
             "2-digit",
-
           hour12:
             false
         }
@@ -919,7 +796,8 @@ function getGreeting() {
 }
 
 function requestGreeting() {
-  greetingInProgress = true;
+  greetingInProgress =
+    true;
 
   setMicrophoneEnabled(
     false
@@ -929,7 +807,6 @@ function requestGreeting() {
     getGreeting()
   );
 }
-
 
 /* =========================================================
    START
@@ -944,8 +821,9 @@ async function startJarvis() {
   }
 
   connecting = true;
-
   button.disabled = true;
+
+  resetTranscriptBuffer();
 
   setStatus(
     "Verbinde …"
@@ -959,10 +837,8 @@ async function startJarvis() {
     pc =
       new RTCPeerConnection();
 
-
     pc.ontrack =
       event => {
-
         if (
           event.streams?.[0]
         ) {
@@ -977,47 +853,16 @@ async function startJarvis() {
 
         remoteAudio
           .play()
-          .catch(error => {
-            console.warn(
-              "Audio play:",
-              error
-            );
-          });
+          .catch(() => {});
       };
-
-
-    pc.onconnectionstatechange =
-      () => {
-
-        console.log(
-          "Peer state:",
-          pc?.connectionState
-        );
-
-        if (
-          pc?.connectionState ===
-          "failed"
-        ) {
-          setLog(
-            "Voice-Verbindung fehlgeschlagen."
-          );
-        }
-      };
-
 
     dc =
       pc.createDataChannel(
         "oai-events"
       );
 
-
     dc.onopen =
       () => {
-
-        console.log(
-          "Realtime DataChannel offen."
-        );
-
         active = true;
         connecting = false;
 
@@ -1031,17 +876,10 @@ async function startJarvis() {
           "Online"
         );
 
-
         /*
-         * WICHTIG:
-         *
-         * VAD erkennt weiterhin
-         * Anfang und Ende deiner Sprache.
-         *
-         * OpenAI soll aber NICHT
-         * automatisch antworten.
-         *
-         * Erst unser Router entscheidet.
+         * VAD bleibt aktiv,
+         * aber OpenAI antwortet
+         * NICHT automatisch.
          */
         safeSend({
           type:
@@ -1050,18 +888,27 @@ async function startJarvis() {
           session: {
             audio: {
               input: {
+                transcription: {
+                  model:
+                    "gpt-4o-mini-transcribe",
+                  language:
+                    "de",
+                  prompt:
+                    "Deutsch. Druckelite24, Shopify, Bestellungen, Umsatz, E-Mail, Kalender und Wetter."
+                },
+
                 turn_detection: {
                   type:
                     "server_vad",
 
                   threshold:
-                    0.80,
+                    0.75,
 
                   prefix_padding_ms:
                     300,
 
                   silence_duration_ms:
-                    850,
+                    700,
 
                   create_response:
                     false,
@@ -1074,14 +921,11 @@ async function startJarvis() {
           }
         });
 
-
         requestGreeting();
       };
 
-
     dc.onerror =
       error => {
-
         console.error(
           "DataChannel error:",
           error
@@ -1092,14 +936,8 @@ async function startJarvis() {
         );
       };
 
-
     dc.onclose =
       () => {
-
-        console.log(
-          "DataChannel geschlossen."
-        );
-
         if (
           active ||
           connecting
@@ -1108,10 +946,8 @@ async function startJarvis() {
         }
       };
 
-
     dc.onmessage =
       async message => {
-
         let event;
 
         try {
@@ -1124,18 +960,16 @@ async function startJarvis() {
         }
 
         console.log(
-          "Realtime:",
-          event.type
+          "Realtime event:",
+          event.type,
+          event
         );
 
-
-        /*
-         * Mattl beginnt zu sprechen.
-         */
         if (
           event.type ===
           "input_audio_buffer.speech_started"
         ) {
+          resetTranscriptBuffer();
 
           if (
             assistantSpeaking ||
@@ -1149,62 +983,88 @@ async function startJarvis() {
           );
         }
 
-
-        /*
-         * Mattl hört auf.
-         */
         if (
           event.type ===
           "input_audio_buffer.speech_stopped"
         ) {
-
           setLog(
             "Verstehe …"
           );
+
+          scheduleTranscriptFallback();
         }
 
+        /*
+         * INKREMENTELLE TRANSKRIPTION
+         */
+        if (
+          event.type ===
+          "conversation.item.input_audio_transcription.delta"
+        ) {
+          transcriptBuffer +=
+            event.delta || "";
+
+          setLog(
+            `Verstanden: ${transcriptBuffer}`
+          );
+
+          scheduleTranscriptFallback();
+        }
 
         /*
-         * DAS IST UNSER ROUTER-EVENT.
-         *
-         * Die Realtime-Transkription
-         * ist jetzt fertig.
+         * FERTIGE TRANSKRIPTION
          */
         if (
           event.type ===
           "conversation.item.input_audio_transcription.completed"
         ) {
-
           const transcript =
             String(
-              event.transcript || ""
+              event.transcript ||
+              transcriptBuffer ||
+              ""
             ).trim();
 
-          setLog(
-            `Verstanden: ${transcript}`
-          );
+          resetTranscriptBuffer();
 
-          await routeTranscript(
-            transcript
-          );
+          if (transcript) {
+            await routeTranscript(
+              transcript
+            );
+          }
+
+          return;
         }
 
+        /*
+         * TRANSKRIPTION FEHLGESCHLAGEN
+         */
+        if (
+          event.type ===
+          "conversation.item.input_audio_transcription.failed"
+        ) {
+          console.error(
+            "Transcription failed:",
+            event
+          );
+
+          setLog(
+            "Spracherkennung fehlgeschlagen."
+          );
+        }
 
         if (
           event.type ===
           "response.created"
         ) {
-
           responseInProgress =
             true;
         }
-
 
         if (
           event.type ===
           "output_audio_buffer.started"
         ) {
-
           assistantSpeaking =
             true;
 
@@ -1216,20 +1076,16 @@ async function startJarvis() {
           );
         }
 
-
         if (
           event.type ===
           "output_audio_buffer.stopped"
         ) {
-
           assistantSpeaking =
             false;
-
 
           if (
             greetingInProgress
           ) {
-
             greetingInProgress =
               false;
 
@@ -1244,7 +1100,6 @@ async function startJarvis() {
             return;
           }
 
-
           if (active) {
             setLog(
               "JARVIS hört zu."
@@ -1252,22 +1107,10 @@ async function startJarvis() {
           }
         }
 
-
-        if (
-          event.type ===
-          "output_audio_buffer.cleared"
-        ) {
-
-          assistantSpeaking =
-            false;
-        }
-
-
         if (
           event.type ===
           "response.done"
         ) {
-
           responseInProgress =
             false;
 
@@ -1275,7 +1118,6 @@ async function startJarvis() {
             event.response?.status ===
             "failed"
           ) {
-
             console.error(
               "Response failed:",
               event.response
@@ -1287,11 +1129,9 @@ async function startJarvis() {
           }
         }
 
-
         if (
           event.type === "error"
         ) {
-
           console.error(
             "Realtime error:",
             event
@@ -1312,10 +1152,6 @@ async function startJarvis() {
         }
       };
 
-
-    /*
-     * MICROPHONE
-     */
     localStream =
       await navigator
         .mediaDevices
@@ -1335,39 +1171,26 @@ async function startJarvis() {
           }
         });
 
-
-    /*
-     * Bis Begrüßung fertig:
-     * Mikrofon aus.
-     */
     setMicrophoneEnabled(
       false
     );
-
 
     for (
       const track of
       localStream.getAudioTracks()
     ) {
-
       pc.addTrack(
         track,
         localStream
       );
     }
 
-
-    /*
-     * WEBRTC OFFER
-     */
     const offer =
       await pc.createOffer();
-
 
     await pc.setLocalDescription(
       offer
     );
-
 
     const response =
       await fetch(
@@ -1385,27 +1208,21 @@ async function startJarvis() {
         }
       );
 
-
     if (!response.ok) {
-
       throw new Error(
         await response.text()
       );
     }
 
-
     const answerSdp =
       await response.text();
-
 
     await pc.setRemoteDescription({
       type: "answer",
       sdp: answerSdp
     });
 
-
   } catch (error) {
-
     console.error(
       "JARVIS start error:",
       error
@@ -1418,24 +1235,21 @@ async function startJarvis() {
     );
 
   } finally {
-
     connecting = false;
-
     button.disabled = false;
   }
 }
-
 
 /* =========================================================
    STOP
    ========================================================= */
 
 function stopJarvis() {
+  resetTranscriptBuffer();
 
   try {
     cancelCurrentResponse();
   } catch {}
-
 
   try {
     if (
@@ -1446,38 +1260,28 @@ function stopJarvis() {
     }
   } catch {}
 
-
   try {
     if (pc) {
-      pc.ontrack = null;
-      pc.onconnectionstatechange =
-        null;
-
       pc.close();
     }
   } catch {}
 
-
   try {
     if (localStream) {
-
       for (
         const track of
         localStream.getTracks()
       ) {
-
         track.stop();
       }
     }
   } catch {}
-
 
   try {
     remoteAudio.pause();
     remoteAudio.srcObject =
       null;
   } catch {}
-
 
   pc = null;
   dc = null;
@@ -1486,26 +1290,16 @@ function stopJarvis() {
   active = false;
   connecting = false;
 
-  assistantSpeaking =
-    false;
+  assistantSpeaking = false;
+  responseInProgress = false;
+  greetingInProgress = false;
+  requestInProgress = false;
 
-  responseInProgress =
-    false;
-
-  greetingInProgress =
-    false;
-
-  requestInProgress =
-    false;
-
-
-  button.disabled =
-    false;
+  button.disabled = false;
 
   button.classList.remove(
     "active"
   );
-
 
   setStatus(
     "Offline"
@@ -1516,33 +1310,25 @@ function stopJarvis() {
   );
 }
 
-
 /* =========================================================
    BUTTON
    ========================================================= */
 
 button.addEventListener(
   "click",
-
   async () => {
-
     if (connecting) {
       return;
     }
 
-
     if (active) {
-
       stopJarvis();
-
       return;
     }
-
 
     await startJarvis();
   }
 );
-
 
 /* =========================================================
    CLEANUP
@@ -1550,7 +1336,6 @@ button.addEventListener(
 
 window.addEventListener(
   "pagehide",
-
   () => {
     stopJarvis();
   }
