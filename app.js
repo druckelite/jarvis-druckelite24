@@ -29,24 +29,11 @@ const SILENCE_MS = 1100;
 const SPEECH_THRESHOLD = 0.035;
 const MIN_RECORDING_MS = 500;
 
-/*
- * INTRO SETTINGS
- *
- * Intro startet bei Sekunde 4.
- * Nach 2,5 Sekunden beginnt JARVIS zu sprechen.
- *
- * Sobald JARVIS spricht:
- * 1. Musik wird über 1,5 Sekunden weich leiser.
- * 2. Danach läuft sie 15 Sekunden sanft aus.
- */
 const INTRO_START = 4;
-
 const INTRO_VOICE_DELAY_MS = 2500;
 
 const INTRO_BACKGROUND_VOLUME = 0.16;
-
 const INTRO_DUCK_DURATION_MS = 1500;
-
 const INTRO_FADE_DURATION_MS = 15000;
 
 let recordingStartedAt = 0;
@@ -99,32 +86,177 @@ function sleep(ms) {
   });
 }
 
+function pickRandom(items) {
+  return items[
+    Math.floor(
+      Math.random() * items.length
+    )
+  ];
+}
+
 
 /* =========================================================
-   GREETING
+   BERLIN TIME
    ========================================================= */
 
-function getGreeting() {
-  const hour = Number(
+/*
+ * hourCycle h23 sorgt dafür,
+ * dass wir sauber 0-23 bekommen.
+ *
+ * Damit vermeiden wir falsche
+ * Tageszeit-Zuordnungen.
+ */
+
+function getBerlinHour() {
+  const formatter =
     new Intl.DateTimeFormat(
       "de-DE",
       {
         timeZone: "Europe/Berlin",
-        hour: "2-digit",
-        hour12: false
+        hour: "numeric",
+        hourCycle: "h23"
       }
-    ).format(new Date())
+    );
+
+  const parts =
+    formatter.formatToParts(
+      new Date()
+    );
+
+  const hourPart =
+    parts.find(
+      part =>
+        part.type === "hour"
+    );
+
+  const hour =
+    Number(
+      hourPart?.value
+    );
+
+  if (
+    Number.isNaN(hour)
+  ) {
+    /*
+     * Sicherer Fallback.
+     */
+    return new Date().getHours();
+  }
+
+  return hour;
+}
+
+
+/* =========================================================
+   CASUAL JARVIS GREETING
+   ========================================================= */
+
+function getGreeting() {
+  const hour =
+    getBerlinHour();
+
+  console.log(
+    "Berlin hour:",
+    hour
   );
 
-  if (hour >= 5 && hour < 11) {
-    return "Guten Morgen, Mattl.";
+
+  /*
+   * 05:00 - 10:59
+   */
+  if (
+    hour >= 5 &&
+    hour < 11
+  ) {
+    return pickRandom([
+      "Morgen, Mattl. Bin da. Was steht an?",
+
+      "Morgen, Mattl. Na dann schauen wir mal, was heute wieder brennt.",
+
+      "Hey Mattl. Morgen. Ich bin bereit, falls du es auch bist.",
+
+      "Morgen, Mattl. Kaffee wäre jetzt vermutlich keine schlechte Strategie."
+    ]);
   }
 
-  if (hour >= 11 && hour < 18) {
-    return "Guten Tag, Mattl.";
+
+  /*
+   * 11:00 - 13:59
+   */
+  if (
+    hour >= 11 &&
+    hour < 14
+  ) {
+    return pickRandom([
+      "Hey Mattl. Bin da. Was gibt's?",
+
+      "Mattl, da bin ich. Was steht an?",
+
+      "Hey Mattl. Was machen wir?",
+
+      "Da bist du ja. Ich hatte schon Hoffnung auf einen ruhigen Vormittag.",
+
+      "Hey Mattl. Läuft. Was brauchst du?"
+    ]);
   }
 
-  return "Guten Abend, Mattl.";
+
+  /*
+   * 14:00 - 17:59
+   */
+  if (
+    hour >= 14 &&
+    hour < 18
+  ) {
+    return pickRandom([
+      "Hey Mattl. Bin wieder im Dienst. Tragisch, ich weiß.",
+
+      "Mattl, da bin ich. Was gibt's?",
+
+      "Hey Mattl. Was steht noch an?",
+
+      "Da bist du ja. Dann retten wir mal den Rest des Tages.",
+
+      "Mattl. Ich höre. Überrasch mich."
+    ]);
+  }
+
+
+  /*
+   * 18:00 - 22:59
+   */
+  if (
+    hour >= 18 &&
+    hour < 23
+  ) {
+    return pickRandom([
+      "Hey Mattl. Noch nicht genug für heute?",
+
+      "Mattl, da bin ich. Was liegt noch an?",
+
+      "Hey Mattl. Na gut, eine Runde geht noch.",
+
+      "Da bist du ja. Feierabend war wohl nur eine Theorie.",
+
+      "Mattl. Ich bin da. Was gibt's?"
+    ]);
+  }
+
+
+  /*
+   * 23:00 - 04:59
+   */
+  return pickRandom([
+    "Mattl ... ernsthaft? Na gut. Ich bin da.",
+
+    "Hey Mattl. Schlaf wird offenbar weiterhin überschätzt.",
+
+    "Mattl, es ist spät. Natürlich arbeiten wir noch.",
+
+    "Da bist du ja. Vernünftige Uhrzeiten werden auch völlig überbewertet.",
+
+    "Mattl. Ich bin da. Aber morgen beschwerst du dich nicht über Müdigkeit."
+  ]);
 }
 
 
@@ -134,7 +266,9 @@ function getGreeting() {
 
 function stopIntro() {
   if (introFadeTimer) {
-    clearInterval(introFadeTimer);
+    clearInterval(
+      introFadeTimer
+    );
 
     introFadeTimer = null;
   }
@@ -154,90 +288,96 @@ async function startIntro() {
   stopIntro();
 
   introAudio =
-    new Audio("/Intro.mp3?v=3");
+    new Audio(
+      "/Intro.mp3?v=4"
+    );
 
-  introAudio.preload = "auto";
+  introAudio.preload =
+    "auto";
 
-  introAudio.volume = 1;
+  introAudio.volume =
+    1;
 
-  return new Promise(resolve => {
-    let finished = false;
+  return new Promise(
+    resolve => {
+      let finished = false;
 
-    const done = () => {
-      if (finished) {
-        return;
-      }
+      const done = () => {
+        if (finished) {
+          return;
+        }
 
-      finished = true;
+        finished = true;
 
-      resolve();
-    };
+        resolve();
+      };
 
 
-    const playIntroAudio =
-      async () => {
-        try {
-          if (!introAudio) {
+      const playIntroAudio =
+        async () => {
+          try {
+            if (!introAudio) {
+              done();
+              return;
+            }
+
+            introAudio.currentTime =
+              INTRO_START;
+
+            await introAudio.play();
+
+            setLog(
+              "JARVIS startet …"
+            );
+
             done();
-            return;
+
+          } catch (error) {
+            console.error(
+              "Intro play error:",
+              error
+            );
+
+            done();
           }
+        };
 
-          introAudio.currentTime =
-            INTRO_START;
 
-          await introAudio.play();
+      introAudio.addEventListener(
+        "loadedmetadata",
+        playIntroAudio,
+        {
+          once: true
+        }
+      );
 
-          setLog(
-            "JARVIS startet …"
-          );
 
-          done();
-
-        } catch (error) {
+      introAudio.addEventListener(
+        "error",
+        error => {
           console.error(
-            "Intro play error:",
+            "Intro load error:",
             error
           );
 
           done();
+        },
+        {
+          once: true
         }
-      };
+      );
 
 
-    introAudio.addEventListener(
-      "loadedmetadata",
-      playIntroAudio,
-      {
-        once: true
+      if (
+        introAudio.readyState >= 1
+      ) {
+        playIntroAudio();
       }
-    );
 
 
-    introAudio.addEventListener(
-      "error",
-      error => {
-        console.error(
-          "Intro load error:",
-          error
-        );
-
-        done();
-      },
-      {
-        once: true
-      }
-    );
-
-
-    if (
-      introAudio.readyState >= 1
-    ) {
-      playIntroAudio();
+      introAudio.load();
     }
-
-
-    introAudio.load();
-  });
+  );
 }
 
 
@@ -253,7 +393,6 @@ function fadeIntroBehindVoice() {
     return;
   }
 
-
   if (introFadeTimer) {
     clearInterval(
       introFadeTimer
@@ -262,94 +401,83 @@ function fadeIntroBehindVoice() {
     introFadeTimer = null;
   }
 
-
   const initialVolume =
     introAudio.volume;
-
 
   const duckStart =
     performance.now();
 
 
   /*
-   * PHASE 1
-   *
-   * Nicht abrupt von 100 % auf 16 % springen.
-   *
-   * Stattdessen über 1,5 Sekunden
-   * weich herunterregeln.
+   * Phase 1:
+   * über 1,5 Sekunden weich
+   * auf Hintergrundlautstärke.
    */
 
   introFadeTimer =
-    setInterval(() => {
+    setInterval(
+      () => {
+        if (!introAudio) {
+          clearInterval(
+            introFadeTimer
+          );
 
-      if (!introAudio) {
-        clearInterval(
-          introFadeTimer
-        );
+          introFadeTimer = null;
 
-        introFadeTimer = null;
+          return;
+        }
 
-        return;
-      }
+        const elapsed =
+          performance.now() -
+          duckStart;
 
-
-      const elapsed =
-        performance.now() -
-        duckStart;
-
-
-      const progress =
-        Math.min(
-          elapsed /
-          INTRO_DUCK_DURATION_MS,
-          1
-        );
-
-
-      /*
-       * Smoothstep.
-       *
-       * Dadurch klingt der Übergang
-       * weniger linear und weniger hart.
-       */
-
-      const smooth =
-        progress *
-        progress *
-        (3 - 2 * progress);
-
-
-      const newVolume =
-        initialVolume -
-        (
-          initialVolume -
-          INTRO_BACKGROUND_VOLUME
-        ) *
-        smooth;
-
-
-      introAudio.volume =
-        Math.max(
-          0,
+        const progress =
           Math.min(
-            1,
-            newVolume
-          )
-        );
+            elapsed /
+            INTRO_DUCK_DURATION_MS,
+            1
+          );
 
+        const smooth =
+          progress *
+          progress *
+          (
+            3 -
+            2 * progress
+          );
 
-      if (progress >= 1) {
-        clearInterval(
-          introFadeTimer
-        );
+        const newVolume =
+          initialVolume -
+          (
+            initialVolume -
+            INTRO_BACKGROUND_VOLUME
+          ) *
+          smooth;
 
-        introFadeTimer = null;
+        introAudio.volume =
+          Math.max(
+            0,
+            Math.min(
+              1,
+              newVolume
+            )
+          );
 
-        startLongIntroFade();
-      }
+        if (
+          progress >= 1
+        ) {
+          clearInterval(
+            introFadeTimer
+          );
 
-    }, 40);
+          introFadeTimer =
+            null;
+
+          startLongIntroFade();
+        }
+      },
+      40
+    );
 }
 
 
@@ -365,86 +493,71 @@ function startLongIntroFade() {
     return;
   }
 
-
   const fadeStart =
     performance.now();
-
 
   const startVolume =
     INTRO_BACKGROUND_VOLUME;
 
 
-  /*
-   * PHASE 2
-   *
-   * 15 Sekunden langsames Ausblenden.
-   */
-
   introFadeTimer =
-    setInterval(() => {
+    setInterval(
+      () => {
+        if (!introAudio) {
+          clearInterval(
+            introFadeTimer
+          );
 
-      if (!introAudio) {
-        clearInterval(
-          introFadeTimer
-        );
+          introFadeTimer =
+            null;
 
-        introFadeTimer = null;
+          return;
+        }
 
-        return;
-      }
+        const elapsed =
+          performance.now() -
+          fadeStart;
 
+        const progress =
+          Math.min(
+            elapsed /
+            INTRO_FADE_DURATION_MS,
+            1
+          );
 
-      const elapsed =
-        performance.now() -
-        fadeStart;
+        const fadeCurve =
+          Math.pow(
+            1 - progress,
+            1.7
+          );
 
+        introAudio.volume =
+          Math.max(
+            0,
+            startVolume *
+            fadeCurve
+          );
 
-      const progress =
-        Math.min(
-          elapsed /
-          INTRO_FADE_DURATION_MS,
-          1
-        );
+        if (
+          progress >= 1
+        ) {
+          clearInterval(
+            introFadeTimer
+          );
 
+          introFadeTimer =
+            null;
 
-      /*
-       * Der Sound bleibt am Anfang
-       * etwas länger hörbar und wird
-       * zum Ende stärker ausgeblendet.
-       */
+          try {
+            introAudio.pause();
+          } catch {}
 
-      const fadeCurve =
-        Math.pow(
-          1 - progress,
-          1.7
-        );
-
-
-      introAudio.volume =
-        Math.max(
-          0,
-          startVolume *
-          fadeCurve
-        );
-
-
-      if (progress >= 1) {
-        clearInterval(
-          introFadeTimer
-        );
-
-        introFadeTimer = null;
-
-
-        try {
-          introAudio.pause();
-        } catch {}
-
-
-        introAudio = null;
-      }
-
-    }, 60);
+          introAudio =
+            null;
+        }
+      },
+      60
+    );
 }
 
 
@@ -461,7 +574,6 @@ async function speak(
       text || ""
     ).trim();
 
-
   if (
     !sentence ||
     !active
@@ -469,33 +581,20 @@ async function speak(
     return;
   }
 
-
   speaking = true;
-
   processing = false;
 
-
   stopListeningMonitor();
-
 
   setLog(
     "JARVIS spricht …"
   );
-
-
-  /*
-   * Beim Startup:
-   *
-   * Musik weich hinter
-   * die Stimme legen.
-   */
 
   if (
     options.duckIntro
   ) {
     fadeIntroBehindVoice();
   }
-
 
   try {
     const response =
@@ -511,90 +610,68 @@ async function speak(
 
           body:
             JSON.stringify({
-              text: sentence
+              text:
+                sentence
             })
         }
       );
 
-
-    if (!response.ok) {
+    if (
+      !response.ok
+    ) {
       const raw =
         await response.text();
-
 
       console.error(
         "Speech API error:",
         raw
       );
 
-
       throw new Error(
         "Sprachausgabe fehlgeschlagen."
       );
     }
 
-
     const blob =
       await response.blob();
-
 
     const url =
       URL.createObjectURL(
         blob
       );
 
-
     remoteAudio.srcObject =
       null;
-
 
     remoteAudio.src =
       url;
 
-
     await remoteAudio.play();
-
 
     await new Promise(
       resolve => {
-
         remoteAudio.onended =
           resolve;
       }
     );
 
-
     URL.revokeObjectURL(
       url
     );
 
-
   } catch (error) {
-
     console.error(
       "Speak error:",
       error
     );
-
 
     setLog(
       error.message ||
       "Sprachausgabe fehlgeschlagen."
     );
 
-
   } finally {
-
     speaking = false;
-
-
-    /*
-     * Bei normalen Antworten
-     * automatisch wieder zuhören.
-     *
-     * Beim Startup macht
-     * startJarvis() das selbst.
-     */
 
     if (
       active &&
@@ -613,17 +690,16 @@ async function speak(
 async function transcribe(
   audioBlob
 ) {
-
   setLog(
     "Verstehe …"
   );
-
 
   const response =
     await fetch(
       "/api/transcribe",
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
           "Content-Type":
@@ -636,34 +712,29 @@ async function transcribe(
       }
     );
 
-
   const raw =
     await response.text();
 
-
   let data;
-
 
   try {
     data =
       JSON.parse(raw);
 
   } catch {
-
     throw new Error(
       "Spracherkennung hat eine ungültige Antwort geliefert."
     );
   }
 
-
-  if (!response.ok) {
-
+  if (
+    !response.ok
+  ) {
     throw new Error(
       data.error ||
       "Spracherkennung fehlgeschlagen."
     );
   }
-
 
   return String(
     data.text || ""
@@ -678,17 +749,16 @@ async function transcribe(
 async function askJarvis(
   message
 ) {
-
   setLog(
     "Denke nach …"
   );
-
 
   const response =
     await fetch(
       "/api/ask",
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
           "Content-Type":
@@ -703,69 +773,61 @@ async function askJarvis(
       }
     );
 
-
   const raw =
     await response.text();
 
-
   let data;
-
 
   try {
     data =
       JSON.parse(raw);
 
   } catch {
-
     throw new Error(
       "JARVIS hat eine ungültige Serverantwort erhalten."
     );
   }
 
-
-  if (!response.ok) {
-
+  if (
+    !response.ok
+  ) {
     throw new Error(
       data.error ||
       "JARVIS konnte die Anfrage nicht bearbeiten."
     );
   }
 
-
   const reply =
     String(
       data.reply || ""
     ).trim();
 
-
   if (!reply) {
-
     throw new Error(
       "JARVIS hat keine Antwort geliefert."
     );
   }
 
-
   history.push({
     role: "user",
-    text: message
+    text:
+      message
   });
-
 
   history.push({
-    role: "assistant",
-    text: reply
-  });
+    role:
+      "assistant",
 
+    text:
+      reply
+  });
 
   if (
     history.length > 12
   ) {
-
     history =
       history.slice(-12);
   }
-
 
   return reply;
 }
@@ -778,7 +840,6 @@ async function askJarvis(
 async function processRecording(
   blob
 ) {
-
   if (
     processing ||
     !active
@@ -786,75 +847,59 @@ async function processRecording(
     return;
   }
 
-
-  processing = true;
-
+  processing =
+    true;
 
   try {
-
     const transcript =
       await transcribe(
         blob
       );
 
-
     if (!transcript) {
-
-      processing = false;
-
+      processing =
+        false;
 
       setLog(
         "JARVIS hört zu."
       );
 
-
       await startContinuousListening();
-
 
       return;
     }
 
-
     setLog(
       `Verstanden: ${transcript}`
     );
-
 
     const reply =
       await askJarvis(
         transcript
       );
 
-
     await speak(
       reply
     );
 
-
   } catch (error) {
-
     console.error(
       "Processing error:",
       error
     );
-
 
     setLog(
       error.message ||
       "Verarbeitung fehlgeschlagen."
     );
 
-
-    processing = false;
-
+    processing =
+      false;
 
     if (active) {
-
       setTimeout(
         () => {
-
           startContinuousListening();
-
         },
         700
       );
@@ -868,32 +913,27 @@ async function processRecording(
    ========================================================= */
 
 function getAudioLevel() {
-
   if (!analyser) {
     return 0;
   }
-
 
   const buffer =
     new Uint8Array(
       analyser.fftSize
     );
 
-
-  analyser.getByteTimeDomainData(
-    buffer
-  );
-
+  analyser
+    .getByteTimeDomainData(
+      buffer
+    );
 
   let sum = 0;
-
 
   for (
     let i = 0;
     i < buffer.length;
     i++
   ) {
-
     const value =
       (
         buffer[i] -
@@ -901,12 +941,10 @@ function getAudioLevel() {
       ) /
       128;
 
-
     sum +=
       value *
       value;
   }
-
 
   return Math.sqrt(
     sum /
@@ -920,7 +958,6 @@ function getAudioLevel() {
    ========================================================= */
 
 function monitorSilence() {
-
   if (
     !active ||
     !recording ||
@@ -930,53 +967,43 @@ function monitorSilence() {
     return;
   }
 
-
   const level =
     getAudioLevel();
-
 
   if (
     level >
     SPEECH_THRESHOLD
   ) {
-
     speechDetected =
       true;
-
 
     setLog(
       "Ich höre zu …"
     );
 
-
-    if (silenceTimer) {
-
+    if (
+      silenceTimer
+    ) {
       clearTimeout(
         silenceTimer
       );
-
 
       silenceTimer =
         null;
     }
 
-
   } else if (
     speechDetected &&
     !silenceTimer
   ) {
-
     silenceTimer =
       setTimeout(
         () => {
-
           stopRecordingAutomatically();
-
         },
         SILENCE_MS
       );
   }
-
 
   monitorTimer =
     requestAnimationFrame(
@@ -990,25 +1017,23 @@ function monitorSilence() {
    ========================================================= */
 
 function stopListeningMonitor() {
-
-  if (monitorTimer) {
-
+  if (
+    monitorTimer
+  ) {
     cancelAnimationFrame(
       monitorTimer
     );
-
 
     monitorTimer =
       null;
   }
 
-
-  if (silenceTimer) {
-
+  if (
+    silenceTimer
+  ) {
     clearTimeout(
       silenceTimer
     );
-
 
     silenceTimer =
       null;
@@ -1021,7 +1046,6 @@ function stopListeningMonitor() {
    ========================================================= */
 
 async function startContinuousListening() {
-
   if (
     !active ||
     recording ||
@@ -1031,17 +1055,13 @@ async function startContinuousListening() {
     return;
   }
 
-
   try {
-
     if (!mediaStream) {
-
       mediaStream =
         await navigator
           .mediaDevices
           .getUserMedia({
             audio: {
-
               echoCancellation:
                 true,
 
@@ -1057,35 +1077,27 @@ async function startContinuousListening() {
           });
     }
 
-
     if (!audioContext) {
-
       const AudioContextClass =
         window.AudioContext ||
         window.webkitAudioContext;
 
-
       audioContext =
         new AudioContextClass();
-
 
       if (
         audioContext.state ===
         "suspended"
       ) {
-
         await audioContext.resume();
       }
-
 
       analyser =
         audioContext
           .createAnalyser();
 
-
       analyser.fftSize =
         1024;
-
 
       sourceNode =
         audioContext
@@ -1093,22 +1105,18 @@ async function startContinuousListening() {
             mediaStream
           );
 
-
       sourceNode.connect(
         analyser
       );
     }
-
 
     audioChunks = [];
 
     speechDetected =
       false;
 
-
     let mimeType =
       "";
-
 
     if (
       MediaRecorder
@@ -1116,10 +1124,8 @@ async function startContinuousListening() {
           "audio/webm;codecs=opus"
         )
     ) {
-
       mimeType =
         "audio/webm;codecs=opus";
-
 
     } else if (
       MediaRecorder
@@ -1127,11 +1133,9 @@ async function startContinuousListening() {
           "audio/webm"
         )
     ) {
-
       mimeType =
         "audio/webm";
     }
-
 
     mediaRecorder =
       mimeType
@@ -1145,30 +1149,24 @@ async function startContinuousListening() {
             mediaStream
           );
 
-
     mediaRecorder.ondataavailable =
       event => {
-
         if (
           event.data &&
           event.data.size > 0
         ) {
-
           audioChunks.push(
             event.data
           );
         }
       };
 
-
     mediaRecorder.onstop =
       async () => {
-
         const type =
           mediaRecorder
             ?.mimeType ||
           "audio/webm";
-
 
         const blob =
           new Blob(
@@ -1178,20 +1176,16 @@ async function startContinuousListening() {
             }
           );
 
-
         mediaRecorder =
           null;
 
-
-        audioChunks = [];
-
+        audioChunks =
+          [];
 
         recording =
           false;
 
-
         stopListeningMonitor();
-
 
         if (
           !active ||
@@ -1200,54 +1194,42 @@ async function startContinuousListening() {
           return;
         }
 
-
         await processRecording(
           blob
         );
       };
 
-
     recordingStartedAt =
       Date.now();
 
-
     mediaRecorder.start();
-
 
     recording =
       true;
-
 
     setStatus(
       "Online"
     );
 
-
     setButtonActive(
       true
     );
-
 
     setLog(
       "JARVIS hört zu."
     );
 
-
     monitorSilence();
 
-
   } catch (error) {
-
     console.error(
       "Continuous listening error:",
       error
     );
 
-
     setLog(
       "Mikrofon konnte nicht gestartet werden."
     );
-
 
     await stopJarvis();
   }
@@ -1259,7 +1241,6 @@ async function startContinuousListening() {
    ========================================================= */
 
 function stopRecordingAutomatically() {
-
   if (
     !recording ||
     !mediaRecorder ||
@@ -1269,11 +1250,9 @@ function stopRecordingAutomatically() {
     return;
   }
 
-
   const duration =
     Date.now() -
     recordingStartedAt;
-
 
   if (
     duration <
@@ -1282,22 +1261,16 @@ function stopRecordingAutomatically() {
     return;
   }
 
-
   stopListeningMonitor();
-
 
   setLog(
     "Verarbeite …"
   );
 
-
   try {
-
     mediaRecorder.stop();
 
-
   } catch (error) {
-
     console.error(
       "Automatic recorder stop error:",
       error
@@ -1311,7 +1284,6 @@ function stopRecordingAutomatically() {
    ========================================================= */
 
 async function startJarvis() {
-
   if (
     active ||
     processing
@@ -1319,68 +1291,48 @@ async function startJarvis() {
     return;
   }
 
-
   active =
     true;
 
-
   button.disabled =
     true;
-
 
   setStatus(
     "Online"
   );
 
-
   setButtonActive(
     true
   );
-
 
   setLog(
     "JARVIS startet …"
   );
 
-
   try {
-
     /*
-     * 1.
      * Intro startet bei Sekunde 4.
      */
-
     await startIntro();
 
-
     /*
-     * 2.
-     * Musik darf kurz alleine wirken.
+     * Erst kurz Sound wirken lassen.
      */
-
     await sleep(
       INTRO_VOICE_DELAY_MS
     );
-
 
     if (!active) {
       return;
     }
 
-
     /*
-     * 3.
-     * JARVIS begrüßt Mattl.
+     * Lockerere Begrüßung.
      *
      * Gleichzeitig:
-     *
-     * Musik wird nicht abrupt leiser.
-     *
-     * 1,5 Sekunden weiches Ducking.
-     *
-     * Danach 15 Sekunden Fade.
+     * Sound weich leiser +
+     * 15 Sekunden Fade.
      */
-
     await speak(
       getGreeting(),
       {
@@ -1389,34 +1341,24 @@ async function startJarvis() {
       }
     );
 
-
     /*
-     * 4.
      * Danach automatisch zuhören.
      */
-
     if (active) {
-
       await startContinuousListening();
     }
 
-
   } catch (error) {
-
     console.error(
       "JARVIS start error:",
       error
     );
 
-
     if (active) {
-
       await startContinuousListening();
     }
 
-
   } finally {
-
     button.disabled =
       false;
   }
@@ -1428,93 +1370,63 @@ async function startJarvis() {
    ========================================================= */
 
 async function stopJarvis() {
-
   active = false;
-
   recording = false;
-
   processing = false;
-
   speaking = false;
 
-
   stopListeningMonitor();
-
   stopIntro();
 
-
   try {
-
     if (
       mediaRecorder &&
       mediaRecorder.state !==
         "inactive"
     ) {
-
       mediaRecorder.stop();
     }
-
   } catch {}
-
 
   mediaRecorder =
     null;
 
-
   try {
-
     if (mediaStream) {
-
       for (
         const track of
         mediaStream.getTracks()
       ) {
-
         track.stop();
       }
     }
-
   } catch {}
-
 
   mediaStream =
     null;
 
-
   try {
-
     if (sourceNode) {
-
       sourceNode.disconnect();
     }
-
   } catch {}
-
 
   sourceNode =
     null;
 
-
   analyser =
     null;
 
-
   try {
-
     if (audioContext) {
-
       await audioContext.close();
     }
-
   } catch {}
-
 
   audioContext =
     null;
 
-
   try {
-
     remoteAudio.pause();
 
     remoteAudio.src =
@@ -1522,19 +1434,15 @@ async function stopJarvis() {
 
     remoteAudio.srcObject =
       null;
-
   } catch {}
-
 
   setButtonActive(
     false
   );
 
-
   setStatus(
     "Offline"
   );
-
 
   setLog(
     "Bereit."
@@ -1548,16 +1456,12 @@ async function stopJarvis() {
 
 button.addEventListener(
   "click",
-
   async () => {
-
     if (active) {
-
       await stopJarvis();
 
       return;
     }
-
 
     await startJarvis();
   }
@@ -1570,9 +1474,7 @@ button.addEventListener(
 
 window.addEventListener(
   "pagehide",
-
   () => {
-
     stopJarvis();
   }
 );
