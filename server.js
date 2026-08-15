@@ -1,7 +1,18 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
-   V8.3 · ZAHLEN-FIX BEI LIVE-DATEN
-   (Basis: V8.2, überarbeitet am 15.08.2026)
+   V8.4 · "MATTL"-AUSSPRACHE + SPORT-BEGRIFFE
+   (Basis: V8.3, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN IN V8.4:
+   20. "Mattl" wurde als "Maddl" gesprochen - die Anweisung dazu in
+       JARVIS_INSTRUCTIONS wirkt nicht auf die tatsächliche Aussprache
+       (die steuert nur ChatGPTs Textverständnis, nicht ElevenLabs'
+       Stimme). Jetzt über PRONUNCIATION_FIXES korrigiert, wie schon
+       bei "Druckelite24".
+   21. Fußball/Sport-Begriffe zur Websuche-Erkennung ergänzt
+       (Bundesliga, Fußball, Tabellenstand etc.) - Fußballergebnisse
+       wurden bisher nicht gefunden, weil die Websuche dafür gar
+       nicht erst ausgelöst wurde.
 
    ÄNDERUNGEN IN V8.3:
    19. Shopify liefert Zahlen roh mit PUNKT als Dezimaltrennzeichen
@@ -210,7 +221,14 @@ const PRONUNCIATION_FIXES = [
     pattern: /Druckelite\s*-?\s*24(\.de)?/gi,
     replacement: (match, deSuffix) => (deSuffix ? "Druck Elite24 Punkt de" : "Druck Elite24")
   },
-  { pattern: /Druckelite/gi, replacement: "Druck Elite" }
+  { pattern: /Druckelite/gi, replacement: "Druck Elite" },
+
+  // FIX: "Mattl" wurde von ElevenLabs als "Maddl" gesprochen (weiches D
+  // statt klarem T). Die Anweisung dazu in JARVIS_INSTRUCTIONS wirkt
+  // nicht auf die Aussprache - die steuert nur, WIE ChatGPT den Namen
+  // gedanklich behandelt, nicht wie die Stimme ihn ausspricht. Der
+  // Bindestrich erzwingt hier eine klare Silbentrennung.
+  { pattern: /\bMattl\b/g, replacement: "Matt-l" }
 ];
 
 /*
@@ -1440,7 +1458,21 @@ function isWebSearchQuestion(text) {
     "börse",
     "ergebnis",
     "spielstand",
-    "gewonnen"
+    "gewonnen",
+    // Sport/Fußball - fehlte bisher komplett, Anfragen dazu liefen
+    // ins Leere, weil die Websuche gar nicht erst ausgelöst wurde.
+    "fußball",
+    "bundesliga",
+    "champions league",
+    "tabellenstand",
+    "spiel gegen",
+    "gegen gespielt",
+    "verloren",
+    "unentschieden",
+    "meisterschaft",
+    "pokal",
+    "torschütze",
+    "tore geschossen"
   ];
   return keywords.some(word => n.includes(word));
 }
