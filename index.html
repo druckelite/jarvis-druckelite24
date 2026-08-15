@@ -1353,6 +1353,30 @@ audio { display: none; }
       <!-- ============ RECHTE PANEL-SPALTE ============ -->
       <aside class="column column-right">
 
+        <!-- ENTWURF (E-Mails etc.) - erscheint erst, wenn JARVIS einen erstellt hat -->
+        <section class="panel" id="draftPanel" style="display: none;">
+          <div class="panel-head">
+            <span>ENTWURF</span>
+            <span class="panel-dot ok"></span>
+          </div>
+          <div
+            id="draftSubject"
+            style="color: var(--text); font-family: var(--font-body); font-size: 0.85rem; font-weight: 600; letter-spacing: normal; text-transform: none;"
+          ></div>
+          <div
+            id="draftBody"
+            style="white-space: pre-wrap; font-size: 0.8rem; line-height: 1.5; max-height: 220px; overflow-y: auto; color: var(--text-dim); font-family: var(--font-body); letter-spacing: normal; text-transform: none;"
+          ></div>
+          <button
+            id="draftCopyBtn"
+            class="command-chip"
+            type="button"
+            style="cursor: pointer; align-self: flex-start; border: 1px solid var(--panel-border); background: var(--panel);"
+          >
+            Text kopieren
+          </button>
+        </section>
+
         <!-- WETTER LIVE (echte Daten) -->
         <section class="panel">
           <div class="panel-head">
