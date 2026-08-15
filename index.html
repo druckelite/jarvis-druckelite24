@@ -799,25 +799,6 @@ h1 {
   animation: h1-glitch 9s linear infinite;
 }
 
-/* Radar-Linie: wandert langsam über den ganzen Screen */
-.radar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  height: 2px;
-  top: -3%;
-  z-index: 45;
-  pointer-events: none;
-  background: linear-gradient(
-    to right,
-    transparent,
-    rgba(231, 7, 121, 0.55),
-    transparent
-  );
-  box-shadow: 0 0 14px 2px rgba(231, 7, 121, 0.35);
-  animation: radar-drift 11s linear infinite;
-}
-
 .voice-panel {
   display: flex;
   flex-direction: column;
@@ -1080,13 +1061,6 @@ audio { display: none; }
   to { background-position: -200% 0; }
 }
 
-@keyframes radar-drift {
-  0% { top: -3%; opacity: 0; }
-  8% { opacity: 0.5; }
-  92% { opacity: 0.5; }
-  100% { top: 103%; opacity: 0; }
-}
-
 @keyframes h1-glitch {
   0%, 91%, 100% { transform: none; text-shadow: 0 0 52px rgba(231, 7, 121, 0.4); }
   92% { transform: translateX(2px); text-shadow: -3px 0 rgba(231, 7, 121, 0.8), 3px 0 rgba(64, 220, 255, 0.5); }
@@ -1150,56 +1124,13 @@ audio { display: none; }
    ========================================================= */
 
 @media (max-width: 920px) {
-  .cockpit {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .stage { order: 1; }
-
-  /* Panels wandern per Skript in eine wischbare Konsole */
-  .panel-carousel {
-    order: 2;
-    display: flex;
-    gap: 0.8rem;
-    overflow-x: auto;
-    scroll-snap-type: x mandatory;
-    padding: 0.2rem 0.2rem 0.9rem;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-
-  .panel-carousel::-webkit-scrollbar { display: none; }
-
-  .panel-carousel .panel {
-    min-width: min(82vw, 340px);
-    scroll-snap-align: center;
-    flex-shrink: 0;
-  }
-
-  /* Wisch-Hinweis unter der Konsole */
-  .swipe-hint {
-    order: 3;
-    text-align: center;
-    font-family: var(--font-mono);
-    font-size: 0.58rem;
-    letter-spacing: 0.3em;
-    color: var(--text-faint);
-    animation: dot-pulse 2.6s ease-in-out infinite;
-  }
-
-  /* Falls das Skript nicht greift: Spalten normal stapeln */
-  .column-left { order: 4; }
-  .column-right { order: 5; }
-
-  /* Reaktor größer - er ist der Star */
+  /* Widgets stehen auch am Handy sauber untereinander */
   .voice-button {
-    width: min(320px, 80vw);
+    width: min(300px, 76vw);
   }
 
   h1 {
-    font-size: clamp(2.6rem, 12vw, 3.6rem);
+    font-size: clamp(2.4rem, 11vw, 3.4rem);
   }
 
   /* Command-Chips als Wisch-Reihe statt Stapel */
@@ -1233,6 +1164,12 @@ audio { display: none; }
   .top-center { display: none; }
 
   .brand-logo { height: 26px; }
+
+  .top-right {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
+  }
 
   .top-clock { font-size: 1rem; }
 }
@@ -1271,8 +1208,6 @@ audio { display: none; }
 
 
   <div class="hud">
-
-    <div class="radar" aria-hidden="true"></div>
 
     <!-- =================================================
          TOPBAR
@@ -1984,29 +1919,6 @@ audio { display: none; }
           var y = (e.clientY / window.innerHeight - 0.5) * 9;
           panel.style.transform = "translate(" + x + "px, " + y + "px)";
         });
-      }
-
-
-      /* ---------- MOBILE: Panels in Wisch-Konsole ---------- */
-      if (window.innerWidth <= 920) {
-        var cockpit = document.querySelector(".cockpit");
-        var panels = document.querySelectorAll(".column .panel");
-
-        if (cockpit && panels.length) {
-          var carousel = document.createElement("div");
-          carousel.className = "panel-carousel";
-
-          panels.forEach(function (pEl) {
-            carousel.appendChild(pEl);
-          });
-
-          cockpit.appendChild(carousel);
-
-          var hint = document.createElement("div");
-          hint.className = "swipe-hint";
-          hint.textContent = "◄ WISCHEN FÜR MEHR MODULE ►";
-          cockpit.appendChild(hint);
-        }
       }
 
 
