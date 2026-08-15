@@ -1,27 +1,26 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
-   V7.3 · VOICE QUALITY FIX
-   (Basis: V7.2, überarbeitet am 15.08.2026)
+   V7.5 · AUSSPRACHE- UND EURO-FIX
+   (Basis: V7.4, überarbeitet am 15.08.2026)
 
-   ÄNDERUNGEN GEGENÜBER V7.2:
-   1. ElevenLabs-Modell von "eleven_flash_v2_5" (schnell, aber
-      ungenauer bei Aussprache) auf "eleven_multilingual_v2"
-      (langsamer, aber deutlich sauberere deutsche Aussprache)
-      umgestellt. Da zwischen Sprechen und Antwort ohnehin
-      schon mehrere Sekunden vergehen, fällt der minimale
-      Geschwindigkeitsverlust kaum auf.
-   2. Text wird vor dem Senden an ElevenLabs bereinigt:
-      Prozent-/Euro-Zeichen, "&", Abkürzungen wie "z.B." und
-      übrig gebliebene Markdown-Zeichen werden in gut
-      vorlesbare Wörter umgewandelt.
-   3. Die 3000-Zeichen-Grenze schneidet nicht mehr stur mitten
-      im Wort ab, sondern an der letzten Satz- oder Wortgrenze.
-   4. Der an OpenAI geschickte "threshold"-Parameter wurde
-      entfernt - dieser Endpunkt unterstützt ihn gar nicht,
-      er hatte also nie eine Wirkung.
-   5. JARVIS-Anweisungen ergänzt: Zahlen, Prozent- und
-      Währungsangaben sowie Abkürzungen sollen von ChatGPT
-      von vornherein ausgeschrieben werden.
+   ÄNDERUNGEN IN V7.5:
+   8. "Druckelite24" wird jetzt unabhängig von Leerzeichen, Bindestrich
+      oder ".de"-Endung korrekt erkannt und ausgesprochen.
+   9. Euro-Beträge mit Komma ("49,90 €") wurden vorher nur zu
+      "49,90 Euro" - das Komma blieb stehen und wurde falsch
+      vorgelesen. Jetzt: "49 Euro 90" (Centbetrag als eigene Zahl).
+
+   ÄNDERUNGEN IN V7.4 (Tempo + Aussprache von "Druckelite24"):
+   5. Eigenes Aussprache-Wörterbuch (PRONUNCIATION_FIXES) für
+      Kunstwörter wie "Druckelite24", die keine TTS-Stimme
+      zuverlässig richtig betont - einfach um weitere Wörter
+      erweiterbar, sobald welche auffallen.
+   6. ElevenLabs-Modell auf "eleven_turbo_v2_5" gestellt - der
+      Mittelweg zwischen dem schnellen, aber ungenauen
+      "eleven_flash_v2_5" und dem genauen, aber langsamen
+      "eleven_multilingual_v2".
+   7. ChatGPT-Reasoning-Aufwand von "low" auf "minimal" gesenkt -
+      für ein Sprachgespräch ausreichend und spürbar schneller.
 
    =========================================================
    ARCHITEKTUR
@@ -112,13 +111,38 @@ function timeoutSignal(ms) {
    ========================================================= */
 
 /*
+ * Bekannte Wörter, die ElevenLabs falsch ausspricht - hier einfach
+ * ergänzbar. "Druckelite24" ist ein Kunstwort, keine TTS-Stimme kann
+ * die Betonung zuverlässig erraten, deshalb sagen wir ihr explizit,
+ * wie es gelesen werden soll. Das Muster erkennt "Druckelite24",
+ * "Druckelite 24", "Druckelite-24" und "Druckelite24.de" gleichermaßen.
+ * Reihenfolge wichtig: speziellere Muster (mit "24") zuerst, sonst
+ * greift das kürzere zuerst.
+ *
+ * Neue Problemwörter einfach als weitere Zeile ergänzen.
+ */
+const PRONUNCIATION_FIXES = [
+  {
+    pattern: /Druckelite\s*-?\s*24(\.de)?/gi,
+    replacement: (match, deSuffix) => (deSuffix ? "Druck Elite vierundzwanzig Punkt de" : "Druck Elite vierundzwanzig")
+  },
+  { pattern: /Druckelite/gi, replacement: "Druck Elite" }
+];
+
+/*
  * Wandelt Symbole und Abkürzungen, die ElevenLabs erfahrungsgemäß
  * falsch oder unnatürlich vorliest, in ausgeschriebene Wörter um.
  * Läuft als zusätzliches Sicherheitsnetz, falls ChatGPT trotz
  * Anweisung mal ein Sonderzeichen stehen lässt.
  */
 function sanitizeForSpeech(text) {
-  return String(text || "")
+  let result = String(text || "");
+
+  for (const fix of PRONUNCIATION_FIXES) {
+    result = result.replace(fix.pattern, fix.replacement);
+  }
+
+  return result
     // übrig gebliebene Markdown-Reste
     .replace(/\*\*/g, "")
     .replace(/[*_`#]/g, "")
@@ -132,9 +156,16 @@ function sanitizeForSpeech(text) {
     .replace(/exkl\./gi, "exklusive")
     // Symbole in Wörter umwandeln
     .replace(/&/g, " und ")
-    .replace(/(\d)\s?%/g, "$1 Prozent")
-    .replace(/(\d)\s?€/g, "$1 Euro")
-    .replace(/€\s?(\d)/g, "$1 Euro")
+    .replace(/(\d+)\s?%/g, "$1 Prozent")
+    // FIX: Euro-Beträge mit Komma - "49,90 €" wurde vorher nur zu
+    // "49,90 Euro" (das Komma blieb stehen und wurde komisch vorgelesen).
+    // Jetzt wird der Centbetrag als eigene ausgeschriebene Zahl gelesen:
+    // "49,90 €" -> "49 Euro 90".
+    .replace(/(\d+),(\d{2})\s?€/g, "$1 Euro $2")
+    .replace(/€\s?(\d+),(\d{2})/g, "$1 Euro $2")
+    // Ganze Euro-Beträge ohne Komma.
+    .replace(/(\d+)\s?€/g, "$1 Euro")
+    .replace(/€\s?(\d+)/g, "$1 Euro")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -279,6 +310,7 @@ WICHTIG ZUR STIMME:
 - Schreibe deshalb natürlich gesprochenes Deutsch.
 - Zahlen sollen sich gut vorlesen lassen.
 - Schreibe Prozent- und Währungsangaben aus, zum Beispiel "20 Prozent" statt "20%" und "50 Euro" statt "50€".
+- Schreibe Centbeträge als eigene Zahl aus, zum Beispiel "49 Euro 90" statt "49,90 Euro" oder "49,90€".
 - Schreibe Abkürzungen wie "z.B.", "u.a." oder "usw." aus statt sie abzukürzen.
 - Vermeide unnötige Sonderzeichen.
 
@@ -547,13 +579,13 @@ Für aktuelle Werte sind ausschließlich die LIVE-DATEN maßgeblich.
 Erfinde keine weiteren aktuellen Zahlen.`;
   }
 
-  // ERSTER VERSUCH: niedriger Reasoning-Aufwand, damit genug Tokens
-  // für den sichtbaren Antworttext bleiben.
+  // ERSTER VERSUCH: minimaler Reasoning-Aufwand - für ein Sprachgespräch
+  // reicht das völlig aus und spart spürbar Antwortzeit gegenüber "low".
   let data = await requestOpenAIResponse({
     inputText,
     previousResponseId,
     maxOutputTokens: 1200,
-    reasoningEffort: "low"
+    reasoningEffort: "minimal"
   });
 
   let outputText = extractResponseText(data);
@@ -584,7 +616,7 @@ Keine lange interne Analyse.
 Die Antwort soll für eine Sprachausgabe geeignet sein.`,
       previousResponseId,
       maxOutputTokens: 2400,
-      reasoningEffort: "low"
+      reasoningEffort: "minimal"
     });
 
     outputText = extractResponseText(data);
@@ -1114,12 +1146,12 @@ app.post("/api/elevenlabs-tts", async (req, res) => {
         text: safeText,
 
         // FIX: "eleven_flash_v2_5" war auf minimale Latenz getrimmt,
-        // opfert dafür aber Aussprachegenauigkeit - besonders bei
-        // Fachbegriffen, Markennamen und deutschen Wörtern.
-        // "eleven_multilingual_v2" ist etwas langsamer, aber deutlich
-        // sauberer in der Aussprache. Fällt bei der ohnehin schon
-        // mehrsekündigen Pipeline (Transkription + ChatGPT) kaum auf.
-        model_id: "eleven_multilingual_v2",
+        // opfert dafür aber Aussprachegenauigkeit. "eleven_multilingual_v2"
+        // war die genaueste Stufe, aber spürbar langsam. "eleven_turbo_v2_5"
+        // ist der Mittelweg: deutlich schneller als multilingual_v2, aber
+        // sauberer als flash. Bekannte Problemwörter (z.B. Druckelite24)
+        // werden zusätzlich über PRONUNCIATION_FIXES oben korrigiert.
+        model_id: "eleven_turbo_v2_5",
 
         voice_settings: {
           stability: 0.58,
@@ -1204,16 +1236,16 @@ app.post("/api/calendar-today", (req, res) => {
 app.get("/health", (req, res) => {
   return res.json({
     ok: true,
-    version: "JARVIS V7.3",
+    version: "JARVIS V7.4",
     architecture: "mediarecorder -> transcription -> responses -> elevenlabs",
     realtime: false,
     cedar: false,
     transcription_model: process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe",
     text_model: process.env.OPENAI_TEXT_MODEL || "gpt-5-mini",
-    reasoning_effort: "low",
+    reasoning_effort: "minimal",
     max_output_tokens: 1200,
     speech_output: "elevenlabs-only",
-    elevenlabs_model: "eleven_multilingual_v2",
+    elevenlabs_model: "eleven_turbo_v2_5",
     elevenlabs_speed: 0.96,
     language: "de",
     connected_shop: "Druckelite24",
@@ -1240,12 +1272,12 @@ app.get("/", (req, res) => {
    ========================================================= */
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`JARVIS V7.3 läuft auf Port ${PORT}`);
+  console.log(`JARVIS V7.4 läuft auf Port ${PORT}`);
   console.log("Realtime: DEAKTIVIERT");
   console.log("Mikrofon: Browser MediaRecorder");
   console.log("Transkription: OpenAI Audio API");
   console.log("Antwort: OpenAI Responses API");
   console.log("Reasoning: LOW");
   console.log("Antwortlimit: 1200 Tokens + automatischer Fallback");
-  console.log("Stimme: ElevenLabs · eleven_multilingual_v2");
+  console.log("Stimme: ElevenLabs · eleven_turbo_v2_5");
 });
