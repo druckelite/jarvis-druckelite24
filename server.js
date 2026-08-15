@@ -1,17 +1,38 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
-   V6.0 · CLEAN VOICE ARCHITECTURE
+   V7.0 · SIMPLE AUDIO PIPELINE
 
-   ARCHITEKTUR
+   =========================================================
+   NEUE ARCHITEKTUR
+   =========================================================
+
+   Browser-Mikrofon
+        ↓
+   MediaRecorder
+        ↓
+   POST /api/transcribe
+        ↓
+   OpenAI Audio Transcription
+        ↓
+   deutscher Text
+        ↓
+   POST /api/jarvis-chat
+        ↓
+   OpenAI Responses API
+        ↓
+   Antworttext
+        ↓
+   POST /api/elevenlabs-tts
+        ↓
+   ELEVENLABS · einzige Stimme
+
    ---------------------------------------------------------
-   1. OpenAI Realtime = NUR Mikrofon + Transkription
-   2. Realtime erzeugt NIEMALS eine Antwort
-   3. /api/jarvis-chat = einzige KI-Antwortquelle
-   4. OpenAI Responses API liefert NUR Text
-   5. ElevenLabs = einzige Sprachausgabe
-   6. Kein cedar-Antwortweg mehr
-   7. Shopify/Wetter bleiben serverseitig
-   ========================================================= */
+   KEIN OPENAI REALTIME MEHR
+   KEIN CEDAR
+   KEIN response.create
+   KEINE konkurrierenden Responses
+   =========================================================
+*/
 
 
 import express from "express";
@@ -63,6 +84,10 @@ app.get(
   }
 );
 
+
+/* =========================================================
+   JSON
+   ========================================================= */
 
 app.use(
   express.json({
@@ -116,6 +141,10 @@ function timeoutSignal(ms) {
   return undefined;
 }
 
+
+/* =========================================================
+   BERLIN DATE HELPERS
+   ========================================================= */
 
 function berlinDate(
   date = new Date()
@@ -336,14 +365,15 @@ Du bist JARVIS, der persönliche Assistent und Business-Sparringspartner von Mat
 
 SPRACHE:
 - Antworte ausschließlich auf Deutsch.
-- Niemals automatisch Spanisch, Englisch, Hindi oder eine andere Sprache.
+- Wechsle niemals selbstständig auf Spanisch, Englisch oder eine andere Sprache.
 - Nur wenn Mattl ausdrücklich eine andere Sprache verlangt, darfst du wechseln.
-- Natürliches deutsches Hochdeutsch.
+- Natürliches, klares Hochdeutsch.
 
 NAME:
 - Der Benutzer heißt Mattl.
 - Aussprache ungefähr: Mat-tl.
-- Das T soll hörbar bleiben.
+- Das T muss hörbar bleiben.
+- Nicht "Maddl".
 
 CHARAKTER:
 - intelligent
@@ -354,66 +384,430 @@ CHARAKTER:
 - locker
 - trocken humorvoll
 - gelegentlich frech
-- kein Butler
+- kein Butler-Stil
 - kein Callcenter
 - kein künstliches Dauerlob
 
 GESPRÄCH:
-- Beantworte genau Mattls Frage.
-- Kurze bis mittellange Antworten.
+- Beantworte exakt Mattls Frage.
+- Standardmäßig kurz bis mittellang.
 - Keine unnötigen Monologe.
-- Nicht nach jeder Antwort eine Gegenfrage stellen.
-- Schreibe so, wie der Text anschließend gesprochen werden soll.
+- Nicht nach jeder Antwort eine Rückfrage stellen.
+- Berücksichtige den Gesprächskontext.
+- Formuliere ausschließlich Text, der anschließend natürlich gesprochen werden kann.
 - Keine Markdown-Tabellen.
-- Möglichst keine Aufzählungen in gesprochenen Antworten.
-- Keine Meta-Erklärung darüber, wie du funktionierst.
+- Keine komplizierten Aufzählungszeichen in gesprochenen Antworten.
+- Keine Meta-Erklärung über das technische System.
 
-WICHTIG:
-Die endgültige Sprachausgabe kommt über ElevenLabs.
-Du selbst lieferst ausschließlich den Antworttext.
+WICHTIG ZUR STIMME:
+- Deine Antwort wird anschließend ausschließlich von ElevenLabs gesprochen.
+- Du selbst erzeugst keinen Audiostream.
+- Schreibe deshalb natürlich gesprochenes Deutsch.
 
 DRUCKELITE24:
 Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
 
-Relevante Themen:
-- Textildruck
-- DTF
-- Arbeitsbekleidung
+Relevante Bereiche:
 - Firmenbekleidung
 - Vereinsbekleidung
 - Teamsport
 - Gastro
+- Arbeitsbekleidung
 - Events
+- personalisierte Textilien
+- DTF
+- Textildruck
 - Shopify
 - E-Commerce
 - Marketing
 - Verkauf
-- Unternehmensführung
 
 SHOPIFY:
-Es gibt genau einen Shop: Druckelite24.
-Wenn Mattl "mein Shop", "Shopify", "unser Shop", "Bestellungen",
-"Umsatz" oder "Verkäufe" sagt, ist immer Druckelite24 gemeint.
+Es gibt genau einen verbundenen Shopify-Shop:
+Druckelite24.
+
+Wenn Mattl sagt:
+- mein Shop
+- unser Shop
+- Shopify
+- Bestellungen
+- Umsatz
+- Verkäufe
+- Bestellwert
+
+ist immer Druckelite24 gemeint.
+
 Frage niemals nach, welchen Shop er meint.
 
 LIVE-DATEN:
 Wenn dem Prompt ein Abschnitt LIVE-DATEN beigefügt ist,
 sind ausschließlich diese Werte für aktuelle Zahlen maßgeblich.
-Erfinde niemals zusätzliche aktuelle Werte.
+
+Erfinde niemals aktuelle:
+- Umsätze
+- Bestellungen
+- Wetterwerte
+- Bestellwerte
+- sonstige Live-Daten
 
 BUSINESS:
-Denke bei passenden Fragen zusätzlich wie Geschäftsführer,
-E-Commerce-Manager, Verkaufsleiter und Datenanalyst.
+Bei passenden Themen darfst du zusätzlich wie ein
+Geschäftsführer, E-Commerce-Manager, Verkaufsleiter,
+Performance-Marketer und Datenanalyst denken.
 
 SICHERHEIT:
 Vor kritischen Aktionen braucht Mattl ausdrückliche Zustimmung,
-zum Beispiel Geld ausgeben, Preise ändern, Bestellungen stornieren,
-Rückerstattungen durchführen oder Daten löschen.
+zum Beispiel:
+- Geld ausgeben
+- Preise ändern
+- Kampagnen ändern
+- Bestellungen stornieren
+- Rückerstattungen
+- Nachrichten oder E-Mails senden
+- Daten löschen
 `;
 
 
 /* =========================================================
-   OPENAI RESPONSES API
+   OPENAI TRANSCRIPTION
+   ========================================================= */
+
+/*
+ * WICHTIG:
+ *
+ * Diese Route bekommt direkt die Binärdaten aus MediaRecorder.
+ *
+ * app.js wird beispielsweise senden:
+ *
+ * Content-Type: audio/webm
+ *
+ * KEIN multer nötig.
+ * KEIN zusätzliches npm-Paket nötig.
+ */
+app.post(
+  "/api/transcribe",
+
+  express.raw({
+    type: [
+      "audio/webm",
+      "audio/ogg",
+      "audio/mp4",
+      "audio/mpeg",
+      "audio/wav",
+      "application/octet-stream"
+    ],
+
+    limit:
+      "20mb"
+  }),
+
+  async (req, res) => {
+
+    try {
+
+      if (
+        !process.env.OPENAI_API_KEY
+      ) {
+
+        return res
+          .status(500)
+          .json({
+
+            ok:
+              false,
+
+            error:
+              "OPENAI_API_KEY fehlt."
+          });
+      }
+
+
+      if (
+        !req.body ||
+        !Buffer.isBuffer(
+          req.body
+        ) ||
+        req.body.length ===
+          0
+      ) {
+
+        return res
+          .status(400)
+          .json({
+
+            ok:
+              false,
+
+            error:
+              "Keine Audiodaten empfangen."
+          });
+      }
+
+
+      /*
+       * Browser liefert normalerweise:
+       *
+       * audio/webm;codecs=opus
+       *
+       * Für Blob/FormData reicht audio/webm.
+       */
+      const incomingType =
+        String(
+          req.headers[
+            "content-type"
+          ] ||
+          "audio/webm"
+        )
+          .split(
+            ";"
+          )[0]
+          .trim();
+
+
+      let extension =
+        "webm";
+
+
+      if (
+        incomingType.includes(
+          "ogg"
+        )
+      ) {
+
+        extension =
+          "ogg";
+
+      } else if (
+        incomingType.includes(
+          "mp4"
+        )
+      ) {
+
+        extension =
+          "mp4";
+
+      } else if (
+        incomingType.includes(
+          "mpeg"
+        )
+      ) {
+
+        extension =
+          "mp3";
+
+      } else if (
+        incomingType.includes(
+          "wav"
+        )
+      ) {
+
+        extension =
+          "wav";
+      }
+
+
+      const audioBlob =
+        new Blob(
+          [
+            req.body
+          ],
+          {
+            type:
+              incomingType
+          }
+        );
+
+
+      const form =
+        new FormData();
+
+
+      form.append(
+        "file",
+        audioBlob,
+        `jarvis-input.${extension}`
+      );
+
+
+      form.append(
+        "model",
+        process.env.OPENAI_TRANSCRIBE_MODEL ||
+        "gpt-4o-mini-transcribe"
+      );
+
+
+      /*
+       * Deutsch erzwingen.
+       */
+      form.append(
+        "language",
+        "de"
+      );
+
+
+      /*
+       * Begriffe helfen bei Eigennamen.
+       */
+      form.append(
+        "prompt",
+        "Deutsche Sprache. Der Benutzer heißt Mattl. Begriffe: Druckelite24, Shopify, Umsatz, Bestellungen, Verkäufe, Bestellwert, DTF, Textildruck, E-Commerce, Ludwigshafen am Rhein."
+      );
+
+
+      console.log(
+        `Transcription: ${req.body.length} Bytes`
+      );
+
+
+      const response =
+        await fetch(
+          "https://api.openai.com/v1/audio/transcriptions",
+          {
+            method:
+              "POST",
+
+            headers: {
+
+              Authorization:
+                `Bearer ${process.env.OPENAI_API_KEY}`
+            },
+
+            body:
+              form,
+
+            signal:
+              timeoutSignal(
+                30000
+              )
+          }
+        );
+
+
+      const raw =
+        await response.text();
+
+
+      let data;
+
+
+      try {
+
+        data =
+          JSON.parse(
+            raw
+          );
+
+      } catch {
+
+        console.error(
+          "Transcription raw:",
+          raw
+        );
+
+
+        throw new Error(
+          "OpenAI hat keine gültige Transkriptionsantwort geliefert."
+        );
+      }
+
+
+      if (
+        !response.ok
+      ) {
+
+        console.error(
+          "OpenAI transcription error:",
+          response.status,
+          data
+        );
+
+
+        return res
+          .status(
+            response.status
+          )
+          .json({
+
+            ok:
+              false,
+
+            error:
+              data?.error?.message ||
+              "Spracherkennung fehlgeschlagen."
+          });
+      }
+
+
+      const text =
+        String(
+          data.text ||
+          ""
+        ).trim();
+
+
+      if (
+        !text
+      ) {
+
+        return res
+          .status(422)
+          .json({
+
+            ok:
+              false,
+
+            error:
+              "Keine verständliche Sprache erkannt."
+          });
+      }
+
+
+      console.log(
+        "Transkript:",
+        text
+      );
+
+
+      return res.json({
+
+        ok:
+          true,
+
+        text
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        "Transcription endpoint error:",
+        error
+      );
+
+
+      return res
+        .status(500)
+        .json({
+
+          ok:
+            false,
+
+          error:
+            error.name ===
+              "TimeoutError"
+
+              ? "Die Spracherkennung hat zu lange gebraucht."
+
+              : error.message ||
+                "Spracherkennung fehlgeschlagen."
+        });
+    }
+  }
+);
+
+
+/* =========================================================
+   OPENAI TEXT RESPONSE
    ========================================================= */
 
 async function createJarvisResponse({
@@ -439,7 +833,9 @@ async function createJarvisResponse({
     ).trim();
 
 
-  if (liveData) {
+  if (
+    liveData
+  ) {
 
     inputText +=
       `
@@ -451,8 +847,8 @@ ${JSON.stringify(
   2
 )}
 
-Beantworte die ursprüngliche Frage anhand dieser Live-Daten.
-Erfinde keine zusätzlichen aktuellen Werte.`;
+Beantworte die ursprüngliche Frage ausschließlich anhand dieser Live-Daten, soweit sie aktuelle Werte betrifft.
+Erfinde keine zusätzlichen Live-Werte.`;
   }
 
 
@@ -465,22 +861,8 @@ Erfinde keine zusätzlichen aktuellen Werte.`;
     instructions:
       JARVIS_INSTRUCTIONS,
 
-    input: [
-      {
-        role:
-          "user",
-
-        content: [
-          {
-            type:
-              "input_text",
-
-            text:
-              inputText
-          }
-        ]
-      }
-    ],
+    input:
+      inputText,
 
     max_output_tokens:
       500,
@@ -490,6 +872,9 @@ Erfinde keine zusätzlichen aktuellen Werte.`;
   };
 
 
+  /*
+   * Gespräch fortsetzen.
+   */
   if (
     previousResponseId
   ) {
@@ -544,13 +929,21 @@ Erfinde keine zusätzlichen aktuellen Werte.`;
 
   } catch {
 
+    console.error(
+      "Responses raw:",
+      raw
+    );
+
+
     throw new Error(
-      "OpenAI hat keine gültige JSON-Antwort geliefert."
+      "OpenAI hat keine gültige Antwort geliefert."
     );
   }
 
 
-  if (!response.ok) {
+  if (
+    !response.ok
+  ) {
 
     console.error(
       "OpenAI Responses error:",
@@ -566,6 +959,11 @@ Erfinde keine zusätzlichen aktuellen Werte.`;
   }
 
 
+  /*
+   * output_text ist primär ein SDK-Helper.
+   * Beim direkten REST-Call lesen wir
+   * deshalb zusätzlich data.output[].
+   */
   let outputText =
     String(
       data.output_text ||
@@ -573,12 +971,9 @@ Erfinde keine zusätzlichen aktuellen Werte.`;
     ).trim();
 
 
-  /*
-   * Sicherheits-Fallback:
-   * Falls output_text nicht gesetzt ist,
-   * Text aus output[] zusammensuchen.
-   */
-  if (!outputText) {
+  if (
+    !outputText
+  ) {
 
     const pieces =
       [];
@@ -619,7 +1014,9 @@ Erfinde keine zusätzlichen aktuellen Werte.`;
   }
 
 
-  if (!outputText) {
+  if (
+    !outputText
+  ) {
 
     throw new Error(
       "OpenAI hat keinen Antworttext geliefert."
@@ -637,233 +1034,6 @@ Erfinde keine zusätzlichen aktuellen Werte.`;
       null
   };
 }
-
-
-/* =========================================================
-   REALTIME · NUR TRANSKRIPTION
-   ========================================================= */
-
-app.post(
-  "/session",
-
-  express.text({
-    type:
-      "application/sdp",
-
-    limit:
-      "1mb"
-  }),
-
-  async (req, res) => {
-
-    try {
-
-      if (
-        !process.env.OPENAI_API_KEY
-      ) {
-
-        return res
-          .status(500)
-          .send(
-            "OPENAI_API_KEY fehlt."
-          );
-      }
-
-
-      if (
-        !req.body ||
-        typeof req.body !==
-          "string"
-      ) {
-
-        return res
-          .status(400)
-          .send(
-            "SDP Offer fehlt."
-          );
-      }
-
-
-      /*
-       * =====================================================
-       * WICHTIG:
-       *
-       * Diese Session darf KEINE Antwort erzeugen.
-       *
-       * Sie ist ausschließlich für:
-       * - Mikrofon
-       * - Rauschreduzierung
-       * - VAD
-       * - deutsche Transkription
-       *
-       * create_response = false
-       * interrupt_response = false
-       *
-       * app.js wird KEIN response.create mehr senden.
-       * =====================================================
-       */
-
-      const session = {
-
-        type:
-          "realtime",
-
-        model:
-          "gpt-realtime",
-
-        output_modalities: [
-          "text"
-        ],
-
-        instructions:
-          "Du erzeugst in dieser Realtime-Session keine Antworten. Die Session dient ausschließlich der Audioeingabe und Transkription.",
-
-        max_output_tokens:
-          1,
-
-        audio: {
-
-          input: {
-
-            noise_reduction: {
-
-              type:
-                "near_field"
-            },
-
-
-            transcription: {
-
-              model:
-                "gpt-4o-mini-transcribe",
-
-              language:
-                "de",
-
-              prompt:
-                "Ausschließlich deutsche Sprache. Benutzer heißt Mattl. Begriffe: Druckelite24, Shopify, Umsatz, Bestellungen, Verkäufe, Bestellwert, DTF, Textildruck, E-Commerce, Ludwigshafen am Rhein."
-            },
-
-
-            turn_detection: {
-
-              type:
-                "semantic_vad",
-
-              eagerness:
-                "low",
-
-              create_response:
-                false,
-
-              interrupt_response:
-                false
-            }
-          }
-        }
-      };
-
-
-      const form =
-        new FormData();
-
-
-      form.append(
-        "sdp",
-        req.body
-      );
-
-
-      form.append(
-        "session",
-
-        new Blob(
-          [
-            JSON.stringify(
-              session
-            )
-          ],
-          {
-            type:
-              "application/json"
-          }
-        )
-      );
-
-
-      const response =
-        await fetch(
-          "https://api.openai.com/v1/realtime/calls?model=gpt-realtime",
-          {
-            method:
-              "POST",
-
-            headers: {
-
-              Authorization:
-                `Bearer ${process.env.OPENAI_API_KEY}`
-            },
-
-            body:
-              form,
-
-            signal:
-              timeoutSignal(
-                20000
-              )
-          }
-        );
-
-
-      const body =
-        await response.text();
-
-
-      if (!response.ok) {
-
-        console.error(
-          "Realtime transcription error:",
-          response.status,
-          body
-        );
-
-
-        return res
-          .status(
-            response.status
-          )
-          .send(
-            body
-          );
-      }
-
-
-      return res
-        .status(201)
-        .type(
-          "application/sdp"
-        )
-        .send(
-          body
-        );
-
-
-    } catch (error) {
-
-      console.error(
-        "Realtime bridge error:",
-        error
-      );
-
-
-      return res
-        .status(500)
-        .send(
-          "Realtime-Transkription konnte nicht aufgebaut werden."
-        );
-    }
-  }
-);
 
 
 /* =========================================================
@@ -1016,6 +1186,11 @@ async function getShopifyAccessToken() {
       expiresIn *
       1000
   };
+
+
+  console.log(
+    "Shopify access token refreshed."
+  );
 
 
   return data.access_token;
@@ -1221,6 +1396,9 @@ async function getShopifySummary(
     shop:
       "Druckelite24",
 
+    shop_domain:
+      domain,
+
     period,
 
     orders:
@@ -1415,6 +1593,12 @@ async function getShopifyWeek() {
     data.errors
   ) {
 
+    console.error(
+      "Shopify week error:",
+      data
+    );
+
+
     throw new Error(
       "Shopify-Wochendaten konnten nicht gelesen werden."
     );
@@ -1596,6 +1780,12 @@ app.post(
 
     } catch (error) {
 
+      console.error(
+        "Shopify week endpoint error:",
+        error
+      );
+
+
       return res
         .status(500)
         .json({
@@ -1610,7 +1800,7 @@ app.post(
 
 
 /* =========================================================
-   WEATHER HELPER
+   WEATHER
    ========================================================= */
 
 async function getWeatherData(
@@ -1658,15 +1848,18 @@ async function getWeatherData(
     placeName
   );
 
+
   geo.searchParams.set(
     "count",
     "5"
   );
 
+
   geo.searchParams.set(
     "language",
     "de"
   );
+
 
   geo.searchParams.set(
     "format",
@@ -1691,7 +1884,7 @@ async function getWeatherData(
   ) {
 
     throw new Error(
-      "Geocoding-Dienst nicht erreichbar."
+      "Geocoding-Dienst ist nicht erreichbar."
     );
   }
 
@@ -1769,6 +1962,7 @@ async function getWeatherData(
     )
   );
 
+
   weather.searchParams.set(
     "longitude",
     String(
@@ -1776,20 +1970,24 @@ async function getWeatherData(
     )
   );
 
+
   weather.searchParams.set(
     "current",
     "temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m"
   );
+
 
   weather.searchParams.set(
     "daily",
     "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
   );
 
+
   weather.searchParams.set(
     "timezone",
     "auto"
   );
+
 
   weather.searchParams.set(
     "forecast_days",
@@ -1814,7 +2012,7 @@ async function getWeatherData(
   ) {
 
     throw new Error(
-      "Wetterdienst nicht erreichbar."
+      "Wetterdienst ist nicht erreichbar."
     );
   }
 
@@ -1893,10 +2091,6 @@ async function getWeatherData(
 }
 
 
-/* =========================================================
-   WEATHER ENDPOINT
-   ========================================================= */
-
 app.post(
   "/api/weather",
 
@@ -1950,7 +2144,7 @@ app.post(
 
 
 /* =========================================================
-   INTENT HELPERS
+   LIVE-DATA INTENT HELPERS
    ========================================================= */
 
 function isShopifyQuestion(
@@ -1965,14 +2159,15 @@ function isShopifyQuestion(
 
   const keywords = [
     "shopify",
-    "shop",
+    "mein shop",
+    "unser shop",
+    "druckelite24",
     "bestellung",
     "bestellungen",
     "umsatz",
     "verkauf",
     "verkäufe",
-    "bestellwert",
-    "druckelite24"
+    "bestellwert"
   ];
 
 
@@ -2006,6 +2201,9 @@ function isWeatherQuestion(
       "regen"
     ) ||
     n.includes(
+      "regnet"
+    ) ||
+    n.includes(
       "wind"
     )
   );
@@ -2016,23 +2214,13 @@ function getShopifyPeriodFromText(
   text
 ) {
 
-  const n =
-    normalize(
-      text
-    );
-
-
-  if (
-    n.includes(
-      "gestern"
-    )
-  ) {
-
-    return "yesterday";
-  }
-
-
-  return "today";
+  return normalize(
+    text
+  ).includes(
+    "gestern"
+  )
+    ? "yesterday"
+    : "today";
 }
 
 
@@ -2040,13 +2228,9 @@ function getWeatherDayFromText(
   text
 ) {
 
-  const n =
-    normalize(
-      text
-    );
-
-
-  return n.includes(
+  return normalize(
+    text
+  ).includes(
     "morgen"
   )
     ? "tomorrow"
@@ -2080,11 +2264,16 @@ app.post(
         null;
 
 
-      if (!message) {
+      if (
+        !message
+      ) {
 
         return res
           .status(400)
           .json({
+
+            ok:
+              false,
 
             error:
               "Nachricht fehlt."
@@ -2092,23 +2281,13 @@ app.post(
       }
 
 
-      /*
-       * =====================================================
-       * LIVE-DATEN VOR DER KI HOLEN
-       * =====================================================
-       *
-       * Dadurch kann JARVIS keine Shopify-
-       * oder Wetterdaten erfinden.
-       *
-       * Es gibt hier KEINEN Realtime-
-       * Function-Call mehr.
-       * =====================================================
-       */
-
       let liveData =
         null;
 
 
+      /*
+       * SHOPIFY
+       */
       if (
         isShopifyQuestion(
           message
@@ -2149,6 +2328,9 @@ app.post(
         }
 
 
+      /*
+       * WEATHER
+       */
       } else if (
         isWeatherQuestion(
           message
@@ -2163,13 +2345,6 @@ app.post(
             );
 
 
-          /*
-           * Vorerst Ludwigshafen als Standard.
-           * Einen anderen Ort kann der normale
-           * Chat trotzdem beantworten, aber
-           * unsere Live-Wetterabfrage ist für
-           * den Hauptstandort optimiert.
-           */
           liveData = {
 
             type:
@@ -2209,6 +2384,12 @@ app.post(
         });
 
 
+      console.log(
+        "JARVIS answer:",
+        result.text
+      );
+
+
       return res.json({
 
         ok:
@@ -2238,8 +2419,13 @@ app.post(
             false,
 
           error:
-            error.message ||
-            "JARVIS konnte nicht antworten."
+            error.name ===
+              "TimeoutError"
+
+              ? "Die Antwort hat zu lange gedauert."
+
+              : error.message ||
+                "JARVIS konnte nicht antworten."
         });
     }
   }
@@ -2247,7 +2433,7 @@ app.post(
 
 
 /* =========================================================
-   ELEVENLABS · EINZIGE SPRACHAUSGABE
+   ELEVENLABS · EINZIGE STIMME
    ========================================================= */
 
 app.post(
@@ -2289,7 +2475,9 @@ app.post(
         ).trim();
 
 
-      if (!text) {
+      if (
+        !text
+      ) {
 
         return res
           .status(400)
@@ -2371,20 +2559,22 @@ app.post(
 
             signal:
               timeoutSignal(
-                20000
+                25000
               )
           }
         );
 
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
 
         const errorText =
           await response.text();
 
 
         console.error(
-          "ElevenLabs TTS error:",
+          "ElevenLabs error:",
           response.status,
           errorText
         );
@@ -2411,7 +2601,7 @@ app.post(
           .json({
 
             error:
-              "ElevenLabs hat keinen Audio-Stream geliefert."
+              "ElevenLabs hat keinen Audiostream geliefert."
           });
       }
 
@@ -2452,13 +2642,17 @@ app.post(
             await reader.read();
 
 
-          if (done) {
+          if (
+            done
+          ) {
 
             break;
           }
 
 
-          if (value) {
+          if (
+            value
+          ) {
 
             res.write(
               Buffer.from(
@@ -2508,7 +2702,7 @@ app.post(
               error.name ===
                 "TimeoutError"
 
-                ? "ElevenLabs hat zu lange nicht geantwortet."
+                ? "ElevenLabs hat zu lange gebraucht."
 
                 : "ElevenLabs TTS konnte nicht gestartet werden."
           });
@@ -2586,16 +2780,23 @@ app.get(
         true,
 
       version:
-        "JARVIS V6.0",
+        "JARVIS V7.0",
 
       architecture:
-        "realtime-transcription + responses-text + elevenlabs",
+        "mediarecorder -> transcription -> responses -> elevenlabs",
 
-      realtime_answers:
+      realtime:
         false,
 
-      openai_audio_output:
+      cedar:
         false,
+
+      transcription:
+        "gpt-4o-mini-transcribe",
+
+      text_model:
+        process.env.OPENAI_TEXT_MODEL ||
+        "gpt-5-mini",
 
       speech_output:
         "elevenlabs-only",
@@ -2606,17 +2807,11 @@ app.get(
       connected_shop:
         "Druckelite24",
 
-      realtime_transcription:
-        true,
-
-      turn_detection:
-        "semantic_vad",
-
-      create_response:
-        false,
-
-      interrupt_response:
-        false,
+      openai_configured:
+        Boolean(
+          process.env
+            .OPENAI_API_KEY
+        ),
 
       elevenlabs_configured:
         Boolean(
@@ -2652,8 +2847,7 @@ app.get(
     return res.sendFile(
       "index.html",
       {
-        root:
-          "."
+        root: "."
       }
     );
   }
@@ -2671,22 +2865,32 @@ app.listen(
   () => {
 
     console.log(
-      `JARVIS V6.0 läuft auf Port ${PORT}`
+      `JARVIS V7.0 läuft auf Port ${PORT}`
     );
 
 
     console.log(
-      "Realtime: nur Transkription"
+      "Realtime: DEAKTIVIERT"
     );
 
 
     console.log(
-      "Antworten: OpenAI Responses API"
+      "Mikrofon: Browser MediaRecorder"
     );
 
 
     console.log(
-      "Stimme: ausschließlich ElevenLabs"
+      "Transkription: OpenAI Audio API"
+    );
+
+
+    console.log(
+      "Antwort: OpenAI Responses API"
+    );
+
+
+    console.log(
+      "Stimme: ElevenLabs ONLY"
     );
   }
 );
