@@ -2,8 +2,29 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V7.5 · ECHTE LAUTSTÄRKE-NORMALISIERUNG
-   (Basis: V7.4, überarbeitet am 15.08.2026)
+   V7.8 · PROAKTIVER HINWEIS
+   (Basis: V7.7, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN GEGENÜBER V7.7:
+   12. JARVIS meldet sich jetzt auch von sich aus, ohne dass Mattl ihn
+       anspricht - aktuell für offene/unbearbeitete Shopify-Bestellungen.
+       Prüft alle 20 Minuten im Hintergrund (erster Check nach 2
+       Minuten), meldet sich aber nur, wenn der Server tatsächlich
+       etwas Neues findet (siehe /api/jarvis-checkin in server.js) -
+       nicht bei jedem Check aufs Neue. E-Mails sind noch nicht dabei,
+       da Gmail bei Mattl noch nicht verbunden ist (Phase 2).
+
+   ÄNDERUNGEN GEGENÜBER V7.6:
+   11. JARVIS hört jetzt durchgehend zu (Mikro bleibt nach dem Start
+       offen), reagiert aber nur, wenn "Jarvis" im Gesagten vorkommt -
+       Hintergrundgespräche, Telefonate etc. werden still ignoriert.
+       Kein separater Erkennungsdienst nötig: die Prüfung läuft einfach
+       auf dem bereits vorhandenen Transkriptions-Text.
+       Einmal geweckt, bleibt JARVIS für AWAKE_TIMEOUT_MS (aktuell 60s)
+       "wach" und reagiert auf alles, ohne dass "Jarvis" wiederholt
+       werden muss - erst nach einer echten Gesprächspause muss er
+       wieder geweckt werden. Der Start-Klick selbst zählt schon als
+       Wecken, die erste Frage danach braucht das Wort nicht.
 
    ÄNDERUNGEN GEGENÜBER V7.4:
    7. Der kurze Lautstärke-Ausgleich am Anfang (nur die ersten 350ms)
@@ -74,6 +95,14 @@ let starting = false;
 let assistantSpeaking = false;
 let processing = false;
 
+/* ============ WECKWORT ============ */
+let jarvisAwake = false;
+let lastInteractionAt = 0;
+
+/* ============ PROAKTIVER CHECK ============ */
+let proactiveCheckTimer = null;
+let proactiveFirstCheckTimer = null;
+
 /* ============ MICROPHONE ============ */
 let micStream = null;
 let mediaRecorder = null;
@@ -115,7 +144,9 @@ let introFadeTimer = null;
 /* ============ SETTINGS · INTRO ============ */
 const INTRO_START = 4;
 const INTRO_START_VOLUME = 0.28;
-const INTRO_VOICE_DELAY_MS = 2000;
+// War 2000ms - nur noch kurz anspielen, damit JARVIS schneller
+// zum eigentlichen Zuhören kommt.
+const INTRO_VOICE_DELAY_MS = 500;
 const INTRO_BACKGROUND_VOLUME = 0.025;
 const INTRO_DUCK_DURATION_MS = 1500;
 const INTRO_FADE_DURATION_MS = 7000;
@@ -132,8 +163,27 @@ const NOISE_MULTIPLIER = 1.8;
 const VOICE_CONFIRM_MS = 120;
 const WAIT_FOR_VOICE_MS = 15000;
 const MAX_RECORDING_MS = 20000;
-const NOISE_CALIBRATION_MS = 650;
+// War 650ms - kürzer, damit JARVIS schneller ins Zuhören kommt.
+// Für eine grobe Raumpegel-Schätzung reicht das weiterhin.
+const NOISE_CALIBRATION_MS = 400;
+
+/*
+ * Wie lange JARVIS nach der letzten echten Interaktion "wach" bleibt,
+ * ohne dass "Jarvis" erneut gesagt werden muss. Danach braucht es
+ * wieder das Weckwort. Frei einstellbar - länger für gemütlichere
+ * Gespräche, kürzer, falls er zu oft auf Hintergrundgespräche reagiert.
+ */
+const AWAKE_TIMEOUT_MS = 60000;
 const LISTENING_RESUME_DELAY_MS = 1100;
+
+/*
+ * Wie oft JARVIS im Hintergrund prüft, ob es etwas Wichtiges zu sagen
+ * gibt (z.B. offene Bestellungen) - auch ohne dass Mattl ihn anspricht.
+ * Er meldet sich nur, wenn der Server tatsächlich etwas Neues findet,
+ * nicht bei jedem Check aufs Neue (siehe /api/jarvis-checkin).
+ */
+const PROACTIVE_CHECK_INTERVAL_MS = 20 * 60 * 1000; // alle 20 Minuten
+const PROACTIVE_FIRST_CHECK_DELAY_MS = 2 * 60 * 1000; // erster Check nach 2 Minuten
 
 /* ============ NETWORK TIMEOUTS ============ */
 const TRANSCRIPTION_TIMEOUT_MS = 30000;
@@ -507,7 +557,31 @@ async function calibrateAmbientNoise() {
   console.log("Ambient:", ambientNoiseLevel.toFixed(4));
   console.log("Voice threshold:", dynamicVoiceThreshold.toFixed(4));
 
-  setLog("JARVIS hört zu.");
+  setLog(jarvisAwake ? "JARVIS hört zu." : "Warte auf \"Jarvis\" …");
+}
+
+
+/* =========================================================
+   WECKWORT
+   ========================================================= */
+
+/*
+ * Prüft, ob "Jarvis" im transkribierten Text vorkommt - inklusive
+ * ein paar gängiger Varianten, falls die Spracherkennung den Namen
+ * mal anders versteht. Neue Varianten einfach ergänzen, falls JARVIS
+ * öfter mal nicht aufwacht, obwohl der Name gesagt wurde.
+ */
+const WAKE_WORD_PATTERNS = [
+  /\bjarvis\b/i,
+  /\bjarwis\b/i,
+  /\bdscharvis\b/i,
+  /\bcharvis\b/i,
+  /\byarvis\b/i
+];
+
+function containsWakeWord(text) {
+  const value = String(text || "");
+  return WAKE_WORD_PATTERNS.some(pattern => pattern.test(value));
 }
 
 
@@ -603,7 +677,7 @@ async function startRecordingTurn() {
       audioChunks = [];
       discardCurrentRecording = false;
       setJarvisState("listening");
-      setLog("JARVIS hört zu.");
+      setLog(jarvisAwake ? "JARVIS hört zu." : "Warte auf \"Jarvis\" …");
 
       setTimeout(async () => {
         if (!active || processing || assistantSpeaking) return;
@@ -646,7 +720,7 @@ async function startRecordingTurn() {
 
   recordingStartedAt = Date.now();
   setJarvisState("listening");
-  setLog("JARVIS hört zu.");
+  setLog(jarvisAwake ? "JARVIS hört zu." : "Warte auf \"Jarvis\" …");
 
   mediaRecorder.start(200);
   startSilenceMonitor();
@@ -1041,6 +1115,8 @@ async function processRecordedAudio(blob) {
   if (!active || processing) return;
   processing = true;
 
+  let spokeResponse = false;
+
   try {
     setJarvisState("thinking");
     setLog("Verarbeite Sprache …");
@@ -1049,6 +1125,25 @@ async function processRecordedAudio(blob) {
     if (!active) return;
 
     console.log("Mattl:", transcript);
+
+    // FIX: JARVIS hört jetzt durchgehend zu, reagiert aber nur, wenn
+    // entweder "Jarvis" im Gesagten vorkommt, oder er aus einer noch
+    // laufenden Unterhaltung heraus bereits "wach" ist (siehe
+    // AWAKE_TIMEOUT_MS). Alles andere - Hintergrundgespräch, Telefonat,
+    // Selbstgespräch - wird still ignoriert.
+    const stillAwake = jarvisAwake && Date.now() - lastInteractionAt < AWAKE_TIMEOUT_MS;
+
+    if (!stillAwake && !containsWakeWord(transcript)) {
+      console.log("Kein Weckwort erkannt, ignoriere:", transcript);
+      jarvisAwake = false;
+      setJarvisState("listening");
+      setLog("Warte auf \"Jarvis\" …");
+      return;
+    }
+
+    jarvisAwake = true;
+    lastInteractionAt = Date.now();
+
     setLog(`Verstanden: ${transcript}`);
 
     await sleep(150);
@@ -1060,6 +1155,7 @@ async function processRecordedAudio(blob) {
     console.log("JARVIS:", answer);
 
     await speakWithElevenLabs(answer);
+    spokeResponse = true;
   } catch (error) {
     console.error("JARVIS turn error:", error);
 
@@ -1074,13 +1170,106 @@ async function processRecordedAudio(blob) {
     processing = false;
     assistantSpeaking = false;
 
-    // Keine erneute Kalibrierung direkt nach jeder Antwort -
-    // sonst könnte Lautsprecher-Restschall die Schwelle verfälschen.
     if (active) {
+      // Nach einer ignorierten Aufnahme (kein Weckwort, nichts gesagt)
+      // muss nicht auf Lautsprecher-Echo gewartet werden - also kurze
+      // Pause. Nur nach einer echten JARVIS-Antwort die längere Pause,
+      // damit kein Lautsprecher-Restschall aufgeschnappt wird.
+      const resumeDelay = spokeResponse ? LISTENING_RESUME_DELAY_MS : 150;
+
       setTimeout(() => {
         if (active && !processing && !assistantSpeaking) startRecordingTurn();
-      }, LISTENING_RESUME_DELAY_MS);
+      }, resumeDelay);
     }
+  }
+}
+
+
+/* =========================================================
+   PROAKTIVER HINTERGRUND-CHECK
+   =========================================================
+
+   Läuft periodisch im Hintergrund, unabhängig davon, ob Mattl gerade
+   etwas fragt. Fragt den Server, ob es etwas Wichtiges gibt (z.B.
+   offene Bestellungen) - der Server entscheidet, ob es sich lohnt,
+   sich zu melden (siehe /api/jarvis-checkin), damit JARVIS nicht bei
+   jedem Check dieselbe Sache wiederholt.
+   ========================================================= */
+
+async function checkProactiveNotice() {
+  if (!active || processing || assistantSpeaking) return;
+
+  processing = true;
+  let spokeResponse = false;
+
+  try {
+    // Laufende, aber noch "leere" Aufnahme sauber unterbrechen, falls
+    // JARVIS gerade passiv zuhört, während der Check auslöst.
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      discardCurrentRecording = true;
+      try { mediaRecorder.stop(); } catch {}
+    }
+
+    const response = await fetch("/api/jarvis-checkin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ previous_response_id: previousResponseId })
+    });
+
+    if (!response.ok) return;
+
+    const data = await response.json();
+    if (!data || !data.ok || !data.hasNotice || !data.text) return;
+    if (!active) return;
+
+    console.log("JARVIS (von sich aus):", data.text);
+
+    if (data.response_id) {
+      previousResponseId = data.response_id;
+    }
+
+    // Ein proaktiver Hinweis zählt als "Ansprechen" - die direkte
+    // Reaktion darauf braucht kein erneutes "Jarvis".
+    jarvisAwake = true;
+    lastInteractionAt = Date.now();
+
+    await speakWithElevenLabs(data.text);
+    spokeResponse = true;
+  } catch (error) {
+    console.warn("Proaktiver Check fehlgeschlagen:", error);
+  } finally {
+    processing = false;
+    assistantSpeaking = false;
+
+    if (active) {
+      const resumeDelay = spokeResponse ? LISTENING_RESUME_DELAY_MS : 150;
+      setTimeout(() => {
+        if (active && !processing && !assistantSpeaking) startRecordingTurn();
+      }, resumeDelay);
+    }
+  }
+}
+
+function startProactiveChecks() {
+  stopProactiveChecks();
+
+  proactiveFirstCheckTimer = setTimeout(() => {
+    checkProactiveNotice();
+  }, PROACTIVE_FIRST_CHECK_DELAY_MS);
+
+  proactiveCheckTimer = setInterval(() => {
+    checkProactiveNotice();
+  }, PROACTIVE_CHECK_INTERVAL_MS);
+}
+
+function stopProactiveChecks() {
+  if (proactiveFirstCheckTimer) {
+    clearTimeout(proactiveFirstCheckTimer);
+    proactiveFirstCheckTimer = null;
+  }
+  if (proactiveCheckTimer) {
+    clearInterval(proactiveCheckTimer);
+    proactiveCheckTimer = null;
   }
 }
 
@@ -1135,12 +1324,19 @@ async function startJarvis() {
     // Intro vollständig stoppen, bevor der Raumpegel gemessen wird.
     stopIntro();
     stopElevenAudio();
-    await sleep(600);
+    await sleep(200);
 
     await calibrateAmbientNoise();
     if (!active) return;
 
-    await sleep(250);
+    // Der Start-Klick selbst zählt schon als "Wecken" - die erste
+    // Frage danach braucht "Jarvis" nicht nochmal.
+    jarvisAwake = true;
+    lastInteractionAt = Date.now();
+
+    startProactiveChecks();
+
+    await sleep(100);
     startRecordingTurn();
   } catch (error) {
     console.error("JARVIS Start error:", error);
@@ -1151,6 +1347,7 @@ async function startJarvis() {
     setButtonActive(false);
     setLog(`Start fehlgeschlagen: ${error.message}`);
 
+    stopProactiveChecks();
     stopMicrophoneTracks();
     stopAudioAnalysis();
   } finally {
@@ -1173,7 +1370,10 @@ async function stopJarvis() {
   voiceDetected = false;
   voiceCandidateStartedAt = 0;
   discardCurrentRecording = false;
+  jarvisAwake = false;
+  lastInteractionAt = 0;
 
+  stopProactiveChecks();
   stopSilenceMonitor();
 
   if (mediaRecorder && mediaRecorder.state !== "inactive") {
