@@ -2,8 +2,16 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V7.3 · MIKROFON- UND STABILITÄTS-FIX
-   (Basis: V7.2, überarbeitet am 15.08.2026)
+   V7.4 · SATZWEISE SPRACHAUSGABE + LAUTSTÄRKE-AUSGLEICH
+   (Basis: V7.3, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN GEGENÜBER V7.3:
+   5. Antworten werden satzweise vertont und abgespielt (Fließband-
+      Prinzip), statt auf die komplette Sprachausgabe zu warten -
+      JARVIS fängt jetzt an zu sprechen, sobald der erste Satz fertig
+      ist, während der Rest im Hintergrund weiter generiert wird.
+   6. Kurzer automatischer Lautstärke-Ausgleich am Anfang jedes
+      Audio-Clips gegen das "leise Anlaufen" der Stimme.
 
    ÄNDERUNGEN GEGENÜBER V7.2:
    1. Pegelmessung startet nicht mehr bei 0, sondern beim
@@ -810,7 +818,123 @@ async function askJarvis(transcript) {
 
 /* =========================================================
    ELEVENLABS SPEAK
+   =========================================================
+
+   FIX (V7.4): Vorher wurde IMMER auf die komplette vertonte Antwort
+   gewartet, bevor JARVIS überhaupt zu sprechen anfing. Jetzt wird die
+   Antwort in einzelne Sätze zerlegt, satzweise vertont und wie am
+   Fließband abgespielt: Satz 1 startet, sobald er fertig ist - Satz 2
+   wird währenddessen schon im Hintergrund generiert. Bei kurzen
+   Antworten (nur ein Satz) verhält es sich wie vorher.
+
+   Zusätzlich: Ein kurzer Lautstärke-Ausgleich am Anfang jedes
+   Audio-Clips gleicht das "leise Anlaufen" der Stimme aus.
    ========================================================= */
+
+let playbackAudioContext = null;
+
+function getPlaybackAudioContext() {
+  // Bevorzugt denselben AudioContext wie die Mikrofonanalyse -
+  // nur falls der (noch) nicht existiert oder bereits geschlossen ist,
+  // legen wir einen eigenen für die Wiedergabe an.
+  if (audioContext && audioContext.state !== "closed") {
+    return audioContext;
+  }
+
+  if (!playbackAudioContext || playbackAudioContext.state === "closed") {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+    playbackAudioContext = new AudioContextClass();
+  }
+
+  return playbackAudioContext;
+}
+
+/*
+ * Zerlegt einen Antworttext in einzelne Sätze, damit die Sprachausgabe
+ * satzweise starten kann, statt auf die komplette Antwort zu warten.
+ */
+function splitSentences(text) {
+  const value = String(text || "").trim();
+  if (!value) return [];
+
+  const matches = value.match(/[^.!?]+[.!?]+(?:\s+|$)/g);
+  if (!matches || !matches.length) return [value];
+
+  const sentences = matches.map(part => part.trim()).filter(Boolean);
+
+  // Rest ohne abschließendes Satzzeichen (z.B. letzter Satz) nicht verlieren.
+  const consumedLength = matches.join("").length;
+  if (consumedLength < value.length) {
+    const remainder = value.slice(consumedLength).trim();
+    if (remainder) sentences.push(remainder);
+  }
+
+  return sentences.length ? sentences : [value];
+}
+
+async function fetchTtsBlob(text, controller) {
+  const cleanText = String(text || "").trim();
+  if (!cleanText) return null;
+
+  const response = await fetch("/api/elevenlabs-tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: cleanText }),
+    signal: controller.signal
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`ElevenLabs HTTP ${response.status}: ${errorText}`);
+  }
+
+  const blob = await response.blob();
+  if (!blob || blob.size === 0) {
+    throw new Error("ElevenLabs hat kein Audio geliefert.");
+  }
+
+  return blob;
+}
+
+function playBlob(blob) {
+  return new Promise((resolve, reject) => {
+    stopElevenAudio();
+
+    elevenObjectUrl = URL.createObjectURL(blob);
+    elevenAudio = new Audio(elevenObjectUrl);
+    elevenAudio.preload = "auto";
+    elevenAudio.volume = 1;
+
+    elevenAudio.onended = () => resolve();
+    elevenAudio.onerror = () => reject(new Error("ElevenLabs-Audio konnte nicht abgespielt werden."));
+
+    // FIX: kurzer Lautstärke-Ausgleich gegen das "leise Anlaufen".
+    // Die ersten 350ms werden angehoben und pendeln dann auf normale
+    // Lautstärke ein. Falls der Browser das nicht zulässt (z.B. sehr
+    // altes Gerät), spielt der Clip trotzdem ganz normal ab.
+    try {
+      const ctx = getPlaybackAudioContext();
+      if (ctx) {
+        if (ctx.state === "suspended") ctx.resume().catch(() => {});
+
+        const source = ctx.createMediaElementSource(elevenAudio);
+        const gain = ctx.createGain();
+
+        const now = ctx.currentTime;
+        gain.gain.setValueAtTime(1.6, now);
+        gain.gain.linearRampToValueAtTime(1.0, now + 0.35);
+
+        source.connect(gain);
+        gain.connect(ctx.destination);
+      }
+    } catch (gainError) {
+      console.warn("Lautstärke-Ausgleich nicht verfügbar, spiele normal ab:", gainError);
+    }
+
+    elevenAudio.play().catch(reject);
+  });
+}
 
 async function speakWithElevenLabs(text) {
   const cleanText = String(text || "").trim();
@@ -827,46 +951,34 @@ async function speakWithElevenLabs(text) {
     try { ttsController?.abort(); } catch {}
   }, ELEVEN_TIMEOUT_MS);
 
+  assistantSpeaking = true;
+
   try {
     setJarvisState("thinking");
     setLog("JARVIS bereitet die Stimme vor …");
 
-    const response = await fetch("/api/elevenlabs-tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: cleanText }),
-      signal: ttsController.signal
-    });
+    const sentences = splitSentences(cleanText);
+    const chunks = sentences.length > 1 ? sentences : [cleanText];
 
-    clearTimeout(timeout);
+    // Ersten Satz sofort anfordern - der Rest folgt im Hintergrund,
+    // während schon abgespielt wird.
+    let nextBlobPromise = fetchTtsBlob(chunks[0], ttsController);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`ElevenLabs HTTP ${response.status}: ${errorText}`);
+    for (let i = 0; i < chunks.length; i++) {
+      if (!active) break;
+
+      const blob = await nextBlobPromise;
+      if (!active || !blob) break;
+
+      if (i + 1 < chunks.length) {
+        nextBlobPromise = fetchTtsBlob(chunks[i + 1], ttsController);
+      }
+
+      setJarvisState("speaking");
+      setLog("JARVIS spricht.");
+
+      await playBlob(blob);
     }
-
-    const blob = await response.blob();
-    if (!blob || blob.size === 0) {
-      throw new Error("ElevenLabs hat kein Audio geliefert.");
-    }
-
-    if (!active) return;
-
-    elevenObjectUrl = URL.createObjectURL(blob);
-    elevenAudio = new Audio(elevenObjectUrl);
-    elevenAudio.preload = "auto";
-    elevenAudio.volume = 1;
-
-    assistantSpeaking = true;
-    setJarvisState("speaking");
-    setLog("JARVIS spricht.");
-
-    await new Promise((resolve, reject) => {
-      if (!elevenAudio) return resolve();
-      elevenAudio.onended = () => resolve();
-      elevenAudio.onerror = () => reject(new Error("ElevenLabs-Audio konnte nicht abgespielt werden."));
-      elevenAudio.play().catch(reject);
-    });
   } finally {
     clearTimeout(timeout);
     assistantSpeaking = false;
