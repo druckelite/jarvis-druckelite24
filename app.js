@@ -2,8 +2,13 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V8.3 · SCHNELLERES ABFLACHEN DER INTRO-MUSIK
-   (Basis: V8.2, überarbeitet am 15.08.2026)
+   V8.4 · LÄNGERES WACH-FENSTER FÜR GESPRÄCHE
+   (Basis: V8.3, überarbeitet am 15.08.2026)
+
+   ÄNDERUNGEN GEGENÜBER V8.3:
+   19. AWAKE_TIMEOUT_MS von 60s auf 2 Minuten erhöht - für ein
+       normales Gespräch mit Denk- und Redepausen war 60s zu knapp,
+       Mattl musste "Jarvis" zu oft wiederholen.
 
    ÄNDERUNGEN GEGENÜBER V8.2:
    18. Die Musik wurde bisher über 1500ms hinweg leiser, während die
@@ -230,10 +235,12 @@ const NOISE_CALIBRATION_MS = 400;
 /*
  * Wie lange JARVIS nach der letzten echten Interaktion "wach" bleibt,
  * ohne dass "Jarvis" erneut gesagt werden muss. Danach braucht es
- * wieder das Weckwort. Frei einstellbar - länger für gemütlichere
- * Gespräche, kürzer, falls er zu oft auf Hintergrundgespräche reagiert.
+ * wieder das Weckwort. War 60s - für ein normales Gespräch mit Denk-
+ * und Redepausen zu knapp, jetzt auf 2 Minuten erhöht. Frei einstellbar -
+ * länger für gemütlichere Gespräche, kürzer, falls er zu oft auf
+ * Hintergrundgespräche reagiert.
  */
-const AWAKE_TIMEOUT_MS = 60000;
+const AWAKE_TIMEOUT_MS = 120000;
 const LISTENING_RESUME_DELAY_MS = 1100;
 
 /*
