@@ -21,15 +21,31 @@ let monitorTimer = null;
 
 let history = [];
 
+/* =========================================================
+   SETTINGS
+   ========================================================= */
+
 const SILENCE_MS = 1100;
 const SPEECH_THRESHOLD = 0.035;
 const MIN_RECORDING_MS = 500;
 
+/*
+ * INTRO
+ *
+ * Datei beginnt technisch bei Sekunde 4.
+ * Nach 2,5 Sekunden beginnt JARVIS zu sprechen.
+ * Dann läuft das Intro noch 7 Sekunden leise weiter.
+ */
 const INTRO_START = 4;
-const INTRO_END = 10;
+const INTRO_VOICE_DELAY_MS = 2500;
+const INTRO_BACKGROUND_VOLUME = 0.18;
+const INTRO_FADE_DURATION_MS = 7000;
 
 let recordingStartedAt = 0;
 let speechDetected = false;
+
+let introAudio = null;
+let introFadeTimer = null;
 
 /* =========================================================
    UI
@@ -63,6 +79,16 @@ function setButtonActive(value) {
 }
 
 /* =========================================================
+   HELPERS
+   ========================================================= */
+
+function sleep(ms) {
+  return new Promise(resolve => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/* =========================================================
    GREETING
    ========================================================= */
 
@@ -90,107 +116,187 @@ function getGreeting() {
 }
 
 /* =========================================================
-   INTRO SOUND
+   INTRO AUDIO
    ========================================================= */
 
-async function playIntro() {
-  return new Promise((resolve) => {
-    const intro = new Audio("/Intro.mp3");
+function stopIntro() {
+  if (introFadeTimer) {
+    clearInterval(introFadeTimer);
+    introFadeTimer = null;
+  }
 
-    intro.preload = "auto";
-    intro.volume = 1;
+  if (introAudio) {
+    try {
+      introAudio.pause();
+      introAudio.currentTime = 0;
+    } catch {}
 
-    let finished = false;
+    introAudio = null;
+  }
+}
 
-    const finish = () => {
-      if (finished) return;
+async function startIntro() {
+  stopIntro();
 
-      finished = true;
+  introAudio = new Audio("/Intro.mp3?v=2");
 
-      try {
-        intro.pause();
-      } catch {}
+  introAudio.preload = "auto";
+  introAudio.volume = 1;
 
-      intro.removeEventListener(
-        "timeupdate",
-        handleTime
-      );
+  return new Promise(resolve => {
+    let resolved = false;
 
-      intro.removeEventListener(
-        "error",
-        handleError
-      );
+    const done = () => {
+      if (resolved) return;
 
+      resolved = true;
       resolve();
     };
 
-    const handleTime = () => {
-      if (intro.currentTime >= INTRO_END) {
-        finish();
+    const playFromStartPosition = async () => {
+      try {
+        introAudio.currentTime = INTRO_START;
+
+        await introAudio.play();
+
+        setLog("JARVIS startet …");
+
+        done();
+
+      } catch (error) {
+        console.error(
+          "Intro play error:",
+          error
+        );
+
+        done();
       }
     };
 
-    const handleError = (error) => {
-      console.error(
-        "Intro sound error:",
-        error
-      );
-
-      finish();
-    };
-
-    intro.addEventListener(
-      "timeupdate",
-      handleTime
-    );
-
-    intro.addEventListener(
-      "error",
-      handleError
-    );
-
-    intro.addEventListener(
+    introAudio.addEventListener(
       "loadedmetadata",
-      async () => {
-        try {
-          intro.currentTime = INTRO_START;
+      playFromStartPosition,
+      { once: true }
+    );
 
-          await intro.play();
+    introAudio.addEventListener(
+      "error",
+      error => {
+        console.error(
+          "Intro load error:",
+          error
+        );
 
-          setLog(
-            "JARVIS startet …"
-          );
-        } catch (error) {
-          console.error(
-            "Intro play error:",
-            error
-          );
-
-          finish();
-        }
+        done();
       },
       { once: true }
     );
 
     /*
-     * Sicherheits-Fallback:
-     * Falls der Browser timeupdate nicht sauber liefert.
+     * Falls die Datei bereits im Browser-Cache liegt
+     * und die Metadaten schon verfügbar sind.
      */
-    setTimeout(
-      finish,
-      7000
-    );
+    if (introAudio.readyState >= 1) {
+      playFromStartPosition();
+    }
+
+    introAudio.load();
   });
+}
+
+/* =========================================================
+   INTRO DUCKING + 7 SECOND FADE
+   ========================================================= */
+
+function fadeIntroBehindVoice() {
+  if (
+    !introAudio ||
+    introAudio.paused
+  ) {
+    return;
+  }
+
+  /*
+   * Sobald JARVIS spricht:
+   * Musik sofort deutlich leiser.
+   */
+  introAudio.volume =
+    INTRO_BACKGROUND_VOLUME;
+
+  if (introFadeTimer) {
+    clearInterval(introFadeTimer);
+  }
+
+  const startTime = performance.now();
+
+  const startVolume =
+    INTRO_BACKGROUND_VOLUME;
+
+  introFadeTimer =
+    setInterval(() => {
+      if (!introAudio) {
+        clearInterval(
+          introFadeTimer
+        );
+
+        introFadeTimer = null;
+
+        return;
+      }
+
+      const elapsed =
+        performance.now() -
+        startTime;
+
+      const progress =
+        Math.min(
+          elapsed /
+            INTRO_FADE_DURATION_MS,
+          1
+        );
+
+      /*
+       * Sanft von 18 % auf 0.
+       */
+      introAudio.volume =
+        Math.max(
+          0,
+          startVolume *
+            (1 - progress)
+        );
+
+      if (progress >= 1) {
+        clearInterval(
+          introFadeTimer
+        );
+
+        introFadeTimer = null;
+
+        try {
+          introAudio.pause();
+        } catch {}
+
+        introAudio = null;
+      }
+
+    }, 80);
 }
 
 /* =========================================================
    SPEAK
    ========================================================= */
 
-async function speak(text) {
-  const sentence = String(text || "").trim();
+async function speak(
+  text,
+  options = {}
+) {
+  const sentence =
+    String(text || "").trim();
 
-  if (!sentence || !active) {
+  if (
+    !sentence ||
+    !active
+  ) {
     return;
   }
 
@@ -199,26 +305,40 @@ async function speak(text) {
 
   stopListeningMonitor();
 
-  setLog("JARVIS spricht …");
+  setLog(
+    "JARVIS spricht …"
+  );
+
+  /*
+   * Beim Start darf das Intro unter
+   * JARVIS weiterlaufen.
+   */
+  if (options.duckIntro) {
+    fadeIntroBehindVoice();
+  }
 
   try {
-    const response = await fetch(
-      "/api/speak",
-      {
-        method: "POST",
+    const response =
+      await fetch(
+        "/api/speak",
+        {
+          method: "POST",
 
-        headers: {
-          "Content-Type": "application/json"
-        },
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
 
-        body: JSON.stringify({
-          text: sentence
-        })
-      }
-    );
+          body:
+            JSON.stringify({
+              text: sentence
+            })
+        }
+      );
 
     if (!response.ok) {
-      const raw = await response.text();
+      const raw =
+        await response.text();
 
       console.error(
         "Speech API error:",
@@ -230,21 +350,32 @@ async function speak(text) {
       );
     }
 
-    const blob = await response.blob();
+    const blob =
+      await response.blob();
 
     const url =
-      URL.createObjectURL(blob);
+      URL.createObjectURL(
+        blob
+      );
 
-    remoteAudio.srcObject = null;
-    remoteAudio.src = url;
+    remoteAudio.srcObject =
+      null;
+
+    remoteAudio.src =
+      url;
 
     await remoteAudio.play();
 
-    await new Promise(resolve => {
-      remoteAudio.onended = resolve;
-    });
+    await new Promise(
+      resolve => {
+        remoteAudio.onended =
+          resolve;
+      }
+    );
 
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(
+      url
+    );
 
   } catch (error) {
     console.error(
@@ -260,18 +391,32 @@ async function speak(text) {
   } finally {
     speaking = false;
 
-    if (active) {
+    /*
+     * Beim normalen Gespräch:
+     * sofort wieder zuhören.
+     *
+     * Beim Start übernimmt startJarvis()
+     * den Übergang.
+     */
+    if (
+      active &&
+      !options.startup
+    ) {
       await startContinuousListening();
     }
   }
 }
 
 /* =========================================================
-   TRANSCRIBE
+   TRANSCRIPTION
    ========================================================= */
 
-async function transcribe(audioBlob) {
-  setLog("Verstehe …");
+async function transcribe(
+  audioBlob
+) {
+  setLog(
+    "Verstehe …"
+  );
 
   const response =
     await fetch(
@@ -295,7 +440,9 @@ async function transcribe(audioBlob) {
   let data;
 
   try {
-    data = JSON.parse(raw);
+    data =
+      JSON.parse(raw);
+
   } catch {
     throw new Error(
       "Spracherkennung hat eine ungültige Antwort geliefert."
@@ -318,8 +465,12 @@ async function transcribe(audioBlob) {
    ASK JARVIS
    ========================================================= */
 
-async function askJarvis(message) {
-  setLog("Denke nach …");
+async function askJarvis(
+  message
+) {
+  setLog(
+    "Denke nach …"
+  );
 
   const response =
     await fetch(
@@ -328,13 +479,15 @@ async function askJarvis(message) {
         method: "POST",
 
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type":
+            "application/json"
         },
 
-        body: JSON.stringify({
-          message,
-          history
-        })
+        body:
+          JSON.stringify({
+            message,
+            history
+          })
       }
     );
 
@@ -344,7 +497,9 @@ async function askJarvis(message) {
   let data;
 
   try {
-    data = JSON.parse(raw);
+    data =
+      JSON.parse(raw);
+
   } catch {
     throw new Error(
       "JARVIS hat eine ungültige Serverantwort erhalten."
@@ -379,7 +534,9 @@ async function askJarvis(message) {
     text: reply
   });
 
-  if (history.length > 12) {
+  if (
+    history.length > 12
+  ) {
     history =
       history.slice(-12);
   }
@@ -391,7 +548,9 @@ async function askJarvis(message) {
    PROCESS RECORDING
    ========================================================= */
 
-async function processRecording(blob) {
+async function processRecording(
+  blob
+) {
   if (
     processing ||
     !active
@@ -406,11 +565,11 @@ async function processRecording(blob) {
       await transcribe(blob);
 
     if (!transcript) {
+      processing = false;
+
       setLog(
         "JARVIS hört zu."
       );
-
-      processing = false;
 
       await startContinuousListening();
 
@@ -488,7 +647,8 @@ function getAudioLevel() {
   }
 
   return Math.sqrt(
-    sum / buffer.length
+    sum /
+    buffer.length
   );
 }
 
@@ -585,10 +745,17 @@ async function startContinuousListening() {
           .mediaDevices
           .getUserMedia({
             audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-              channelCount: 1
+              echoCancellation:
+                true,
+
+              noiseSuppression:
+                true,
+
+              autoGainControl:
+                true,
+
+              channelCount:
+                1
             }
           });
     }
@@ -611,12 +778,14 @@ async function startContinuousListening() {
       analyser =
         audioContext.createAnalyser();
 
-      analyser.fftSize = 1024;
+      analyser.fftSize =
+        1024;
 
       sourceNode =
-        audioContext.createMediaStreamSource(
-          mediaStream
-        );
+        audioContext
+          .createMediaStreamSource(
+            mediaStream
+          );
 
       sourceNode.connect(
         analyser
@@ -629,17 +798,19 @@ async function startContinuousListening() {
     let mimeType = "";
 
     if (
-      MediaRecorder.isTypeSupported(
-        "audio/webm;codecs=opus"
-      )
+      MediaRecorder
+        .isTypeSupported(
+          "audio/webm;codecs=opus"
+        )
     ) {
       mimeType =
         "audio/webm;codecs=opus";
 
     } else if (
-      MediaRecorder.isTypeSupported(
-        "audio/webm"
-      )
+      MediaRecorder
+        .isTypeSupported(
+          "audio/webm"
+        )
     ) {
       mimeType =
         "audio/webm";
@@ -676,12 +847,12 @@ async function startContinuousListening() {
         const blob =
           new Blob(
             audioChunks,
-            {
-              type
-            }
+            { type }
           );
 
-        mediaRecorder = null;
+        mediaRecorder =
+          null;
+
         audioChunks = [];
 
         recording = false;
@@ -768,6 +939,7 @@ function stopRecordingAutomatically() {
 
   try {
     mediaRecorder.stop();
+
   } catch (error) {
     console.error(
       "Automatic recorder stop error:",
@@ -806,32 +978,50 @@ async function startJarvis() {
 
   try {
     /*
-     * 1. Eigenes Intro:
-     * Sekunde 4 bis 10
+     * 1. INTRO startet bei Sekunde 4.
      */
-    await playIntro();
+    await startIntro();
 
     /*
-     * 2. Begrüßung
+     * 2. Intro darf kurz alleine wirken.
+     */
+    await sleep(
+      INTRO_VOICE_DELAY_MS
+    );
+
+    if (!active) {
+      return;
+    }
+
+    /*
+     * 3. JARVIS beginnt zu sprechen.
+     *
+     * Gleichzeitig:
+     * - Intro auf 18 %
+     * - über 7 Sekunden auf 0
      */
     await speak(
-      getGreeting()
+      getGreeting(),
+      {
+        startup: true,
+        duckIntro: true
+      }
     );
+
+    /*
+     * 4. Jetzt frei zuhören.
+     */
+    if (active) {
+      await startContinuousListening();
+    }
 
   } catch (error) {
     console.error(
-      "Start error:",
+      "JARVIS start error:",
       error
     );
 
-    /*
-     * Selbst wenn Intro scheitert:
-     * JARVIS soll trotzdem weiterlaufen.
-     */
-    if (
-      active &&
-      !speaking
-    ) {
+    if (active) {
       await startContinuousListening();
     }
 
@@ -851,6 +1041,7 @@ async function stopJarvis() {
   speaking = false;
 
   stopListeningMonitor();
+  stopIntro();
 
   try {
     if (
