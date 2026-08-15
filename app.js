@@ -2,13 +2,13 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V5.4
+   V5.5
    - ElevenLabs für Startbegrüßung
+   - Doppelbegrüßung behoben
+   - cedar-Fallback nur bei echtem ElevenLabs-Fehler
    - OpenAI Realtime weiterhin für normale Antworten
    - Intro leise + sanftes Ausblenden
-   - JARVIS-Ausgabe verstärkt
-   - Mikro bleibt während JARVIS spricht aus
-   - Semantic VAD läuft serverseitig
+   - Mikro während JARVIS spricht aus
    ========================================================= */
 
 
@@ -34,21 +34,14 @@ const remoteAudio =
    ========================================================= */
 
 let pc = null;
-
 let dc = null;
-
 let localStream = null;
 
-
 let active = false;
-
 let connecting = false;
 
-
 let assistantSpeaking = false;
-
 let waitingForAssistant = false;
-
 let startupGreeting = false;
 
 
@@ -57,13 +50,9 @@ let startupGreeting = false;
    ========================================================= */
 
 let outputAudioContext = null;
-
 let outputSource = null;
-
 let outputGain = null;
-
 let outputCompressor = null;
-
 let lastRemoteStream = null;
 
 
@@ -72,8 +61,15 @@ let lastRemoteStream = null;
    ========================================================= */
 
 let elevenGreetingAudio = null;
-
 let elevenGreetingObjectUrl = null;
+
+/*
+ * Wichtig:
+ * Verhindert, dass nach einem erfolgreich
+ * beendeten ElevenLabs-Audio noch der
+ * cedar-Fallback ausgelöst wird.
+ */
+let elevenGreetingSettled = false;
 
 
 /* =========================================================
@@ -81,7 +77,6 @@ let elevenGreetingObjectUrl = null;
    ========================================================= */
 
 let introAudio = null;
-
 let introFadeTimer = null;
 
 
@@ -107,75 +102,30 @@ const MAX_HANDLED_TOOL_CALLS =
    SETTINGS
    ========================================================= */
 
-/*
- * OpenAI-JARVIS-Ausgabe.
- *
- * Normale Antworten laufen vorerst
- * weiterhin über cedar.
- */
 const JARVIS_OUTPUT_GAIN =
   2.75;
 
-
-/*
- * Intro beginnt ab Sekunde 4.
- */
 const INTRO_START =
   4;
 
-
-/*
- * Intro bereits beim Start
- * deutlich leiser.
- */
 const INTRO_START_VOLUME =
   0.28;
 
-
-/*
- * Kurze Zeit Intro alleine,
- * bevor JARVIS begrüßt.
- */
 const INTRO_VOICE_DELAY_MS =
   2000;
 
-
-/*
- * Sobald JARVIS spricht,
- * bleibt Intro nur noch sehr
- * leise im Hintergrund.
- */
 const INTRO_BACKGROUND_VOLUME =
   0.025;
 
-
-/*
- * Sanftes Ducking.
- */
 const INTRO_DUCK_DURATION_MS =
   1800;
 
-
-/*
- * Intro danach noch 15 Sekunden
- * sanft auslaufen lassen.
- */
 const INTRO_FADE_DURATION_MS =
   15000;
 
-
-/*
- * Nach einer OpenAI-Antwort:
- * kleine Echo-Pause.
- */
 const LISTENING_RESUME_DELAY_MS =
   700;
 
-
-/*
- * ElevenLabs darf maximal so
- * lange auf die Begrüßung warten.
- */
 const ELEVEN_GREETING_TIMEOUT_MS =
   20000;
 
@@ -190,10 +140,8 @@ function setStatus(text) {
     return;
   }
 
-
   statusEl.textContent =
     text;
-
 
   if (
     text === "Online"
@@ -218,7 +166,6 @@ function setLog(text) {
     return;
   }
 
-
   logEl.textContent =
     text;
 }
@@ -229,7 +176,6 @@ function setButtonActive(value) {
   if (!button) {
     return;
   }
-
 
   if (value) {
 
@@ -246,16 +192,6 @@ function setButtonActive(value) {
 }
 
 
-/*
- * Steuert das bestehende HUD.
- *
- * offline
- * connecting
- * listening
- * hearing
- * thinking
- * speaking
- */
 function setJarvisState(state) {
 
   document.body.dataset.jarvisState =
@@ -304,7 +240,6 @@ function safeSend(payload) {
       )
     );
 
-
     return true;
 
 
@@ -314,7 +249,6 @@ function safeSend(payload) {
       "DataChannel send error:",
       error
     );
-
 
     return false;
   }
@@ -405,11 +339,6 @@ function setMicrophoneEnabled(
 }
 
 
-/*
- * Während JARVIS nachdenkt
- * oder spricht:
- * Mikro komplett aus.
- */
 function muteForAssistant() {
 
   waitingForAssistant =
@@ -427,10 +356,6 @@ function muteForAssistant() {
 }
 
 
-/*
- * Erst nach kompletter Antwort
- * wieder zuhören.
- */
 function resumeListening() {
 
   clearResponseWatchdog();
@@ -444,10 +369,8 @@ function resumeListening() {
   waitingForAssistant =
     false;
 
-
   assistantSpeaking =
     false;
-
 
   startupGreeting =
     false;
@@ -558,9 +481,6 @@ function getGreeting() {
     getBerlinHour();
 
 
-  /*
-   * MORGEN
-   */
   if (
     hour >= 5 &&
     hour < 11
@@ -574,9 +494,6 @@ function getGreeting() {
   }
 
 
-  /*
-   * MITTAG
-   */
   if (
     hour >= 11 &&
     hour < 14
@@ -591,9 +508,6 @@ function getGreeting() {
   }
 
 
-  /*
-   * NACHMITTAG
-   */
   if (
     hour >= 14 &&
     hour < 18
@@ -607,9 +521,6 @@ function getGreeting() {
   }
 
 
-  /*
-   * ABEND
-   */
   if (
     hour >= 18 &&
     hour < 23
@@ -623,9 +534,6 @@ function getGreeting() {
   }
 
 
-  /*
-   * NACHT
-   */
   return pickRandom([
     "Mattl ... ernsthaft? Na gut. Ich bin da.",
     "Hey Mattl. Schlaf wird offenbar weiterhin überschätzt.",
@@ -645,7 +553,6 @@ function stopIntro() {
     clearInterval(
       introFadeTimer
     );
-
 
     introFadeTimer =
       null;
@@ -667,10 +574,6 @@ function stopIntro() {
 }
 
 
-/*
- * Intro startet bereits
- * deutlich leiser.
- */
 async function startIntro() {
 
   stopIntro();
@@ -707,7 +610,6 @@ async function startIntro() {
 
           resolved =
             true;
-
 
           resolve();
         };
@@ -782,7 +684,7 @@ async function startIntro() {
 
 
 /* =========================================================
-   INTRO DUCKING
+   INTRO DUCK
    ========================================================= */
 
 function duckIntro() {
@@ -801,7 +703,6 @@ function duckIntro() {
     clearInterval(
       introFadeTimer
     );
-
 
     introFadeTimer =
       null;
@@ -826,10 +727,8 @@ function duckIntro() {
             introFadeTimer
           );
 
-
           introFadeTimer =
             null;
-
 
           return;
         }
@@ -846,15 +745,13 @@ function duckIntro() {
           );
 
 
-        /*
-         * Smoothstep.
-         */
         const smooth =
           progress *
           progress *
           (
             3 -
-            2 * progress
+            2 *
+            progress
           );
 
 
@@ -875,7 +772,6 @@ function duckIntro() {
             introFadeTimer
           );
 
-
           introFadeTimer =
             null;
 
@@ -890,7 +786,7 @@ function duckIntro() {
 
 
 /* =========================================================
-   INTRO LONG FADE
+   INTRO FADE
    ========================================================= */
 
 function fadeIntroOut() {
@@ -922,10 +818,8 @@ function fadeIntroOut() {
             introFadeTimer
           );
 
-
           introFadeTimer =
             null;
-
 
           return;
         }
@@ -986,7 +880,7 @@ function fadeIntroOut() {
 
 
 /* =========================================================
-   OPENAI JARVIS AUDIO
+   OPENAI AUDIO
    ========================================================= */
 
 function setJarvisGain(
@@ -1103,10 +997,6 @@ async function connectRemoteAudio(
           .createDynamicsCompressor();
 
 
-      /*
-       * Etwas mehr Lautstärke,
-       * aber Peaks abfangen.
-       */
       outputCompressor
         .threshold.value =
         -10;
@@ -1167,39 +1057,74 @@ async function connectRemoteAudio(
    ELEVENLABS CLEANUP
    ========================================================= */
 
+/*
+ * WICHTIGER FIX:
+ *
+ * onended und onerror werden zuerst entfernt.
+ * Erst DANACH wird src entfernt.
+ *
+ * Dadurch kann das normale Aufräumen
+ * KEIN künstliches error-Event mehr erzeugen,
+ * das anschließend cedar startet.
+ */
 function stopElevenGreeting() {
 
-  if (elevenGreetingAudio) {
+  const audio =
+    elevenGreetingAudio;
+
+
+  elevenGreetingAudio =
+    null;
+
+
+  if (audio) {
+
+    /*
+     * Eventhandler VOR src-Änderung entfernen.
+     */
+    audio.onended =
+      null;
+
+    audio.onerror =
+      null;
+
 
     try {
 
-      elevenGreetingAudio.pause();
+      audio.pause();
 
     } catch {}
 
 
-    elevenGreetingAudio.src =
-      "";
-
-
-    elevenGreetingAudio =
-      null;
-  }
-
-
-  if (elevenGreetingObjectUrl) {
-
     try {
 
-      URL.revokeObjectURL(
-        elevenGreetingObjectUrl
+      audio.removeAttribute(
+        "src"
       );
 
     } catch {}
+  }
+
+
+  if (
+    elevenGreetingObjectUrl
+  ) {
+
+    const oldUrl =
+      elevenGreetingObjectUrl;
 
 
     elevenGreetingObjectUrl =
       null;
+
+
+    try {
+
+      URL.revokeObjectURL(
+        oldUrl
+      );
+
+    } catch {}
   }
 }
 
@@ -1208,20 +1133,20 @@ function stopElevenGreeting() {
    OPENAI FALLBACK GREETING
    ========================================================= */
 
-/*
- * Falls ElevenLabs aus irgendeinem Grund
- * nicht erreichbar ist, soll JARVIS nicht
- * komplett hängen bleiben.
- *
- * Dann nutzt nur die Startbegrüßung
- * automatisch cedar als Fallback.
- */
 function requestOpenAIFallbackGreeting(
   greeting
 ) {
 
+  /*
+   * Fallback darf nur einmal laufen.
+   */
+  if (!active) {
+    return;
+  }
+
+
   console.warn(
-    "ElevenLabs nicht verfügbar – OpenAI-Fallback wird verwendet."
+    "ElevenLabs nicht verfügbar – OpenAI-Fallback."
   );
 
 
@@ -1270,13 +1195,6 @@ Danach schweigen.`
    ELEVENLABS STARTUP GREETING
    ========================================================= */
 
-/*
- * NUR DIE STARTBEGRÜSSUNG
- * läuft jetzt über ElevenLabs.
- *
- * Normale Antworten bleiben
- * vorerst OpenAI Realtime.
- */
 async function requestStartupGreeting() {
 
   startupGreeting =
@@ -1284,9 +1202,12 @@ async function requestStartupGreeting() {
 
 
   /*
-   * Während Laden + Begrüßung
-   * Mikro garantiert aus.
+   * Neuer Begrüßungsvorgang.
    */
+  elevenGreetingSettled =
+    false;
+
+
   muteForAssistant();
 
 
@@ -1299,9 +1220,6 @@ async function requestStartupGreeting() {
     getGreeting();
 
 
-  /*
-   * Sicherheits-Timer.
-   */
   const controller =
     new AbortController();
 
@@ -1319,16 +1237,21 @@ async function requestStartupGreeting() {
 
   try {
 
+    /*
+     * Alte Audioinstanz sauber
+     * entfernen.
+     */
     stopElevenGreeting();
 
 
     /*
-     * Der Browser schickt NUR Text
-     * an unseren eigenen Server.
-     *
-     * API-Key und Voice-ID bleiben
-     * sicher bei Render.
+     * Nach Cleanup bleibt der neue
+     * Vorgang aktiv.
      */
+    elevenGreetingSettled =
+      false;
+
+
     const response =
       await fetch(
         "/api/elevenlabs-tts",
@@ -1371,9 +1294,6 @@ async function requestStartupGreeting() {
     }
 
 
-    /*
-     * MP3-Audio vom Server laden.
-     */
     const blob =
       await response.blob();
 
@@ -1395,31 +1315,24 @@ async function requestStartupGreeting() {
       );
 
 
-    elevenGreetingAudio =
+    const audio =
       new Audio(
         elevenGreetingObjectUrl
       );
 
 
-    elevenGreetingAudio.preload =
+    elevenGreetingAudio =
+      audio;
+
+
+    audio.preload =
       "auto";
 
 
-    /*
-     * ElevenLabs-Stimme auf
-     * voller Element-Lautstärke.
-     *
-     * Die eigentliche Lautstärke
-     * der erzeugten Stimme bleibt
-     * damit unangetastet.
-     */
-    elevenGreetingAudio.volume =
+    audio.volume =
       1;
 
 
-    /*
-     * Jetzt spricht JARVIS.
-     */
     assistantSpeaking =
       true;
 
@@ -1443,11 +1356,37 @@ async function requestStartupGreeting() {
     );
 
 
-    elevenGreetingAudio.onended =
+    /*
+     * =====================================================
+     * ERFOLGREICH BEENDET
+     * =====================================================
+     */
+    audio.onended =
       () => {
 
+        /*
+         * Wenn bereits verarbeitet,
+         * nichts mehr tun.
+         */
+        if (
+          elevenGreetingSettled
+        ) {
+
+          return;
+        }
+
+
+        /*
+         * SOFORT sperren.
+         * Dadurch kann kein späteres
+         * error-Event mehr cedar starten.
+         */
+        elevenGreetingSettled =
+          true;
+
+
         console.log(
-          "ElevenLabs Begrüßung beendet."
+          "ElevenLabs Begrüßung erfolgreich beendet."
         );
 
 
@@ -1459,13 +1398,14 @@ async function requestStartupGreeting() {
           false;
 
 
+        /*
+         * Handler werden in
+         * stopElevenGreeting zuerst
+         * entfernt.
+         */
         stopElevenGreeting();
 
 
-        /*
-         * Kurze Echo-Pause,
-         * dann Mikro öffnen.
-         */
         setTimeout(
           () => {
 
@@ -1480,26 +1420,46 @@ async function requestStartupGreeting() {
       };
 
 
-    elevenGreetingAudio.onerror =
-      error => {
+    /*
+     * =====================================================
+     * ECHTER AUDIOFEHLER
+     * =====================================================
+     */
+    audio.onerror =
+      event => {
+
+        /*
+         * Nach erfolgreichem Ende
+         * niemals Fallback starten.
+         */
+        if (
+          elevenGreetingSettled
+        ) {
+
+          return;
+        }
+
+
+        elevenGreetingSettled =
+          true;
+
 
         console.error(
-          "ElevenLabs Audio playback error:",
-          error
+          "ElevenLabs echter Audiofehler:",
+          event
         );
-
-
-        stopElevenGreeting();
 
 
         assistantSpeaking =
           false;
 
 
+        stopElevenGreeting();
+
+
         /*
-         * Wenn MP3 zwar geladen,
-         * aber nicht abgespielt werden
-         * konnte, cedar als Fallback.
+         * NUR bei echtem Fehler
+         * cedar verwenden.
          */
         requestOpenAIFallbackGreeting(
           greeting
@@ -1507,7 +1467,7 @@ async function requestStartupGreeting() {
       };
 
 
-    await elevenGreetingAudio.play();
+    await audio.play();
 
 
   } catch (error) {
@@ -1517,24 +1477,39 @@ async function requestStartupGreeting() {
     );
 
 
+    /*
+     * Wenn ElevenLabs bereits
+     * erfolgreich fertig war,
+     * darf dieser Catch ebenfalls
+     * keinen Fallback starten.
+     */
+    if (
+      elevenGreetingSettled
+    ) {
+
+      return;
+    }
+
+
+    elevenGreetingSettled =
+      true;
+
+
     console.error(
       "ElevenLabs greeting error:",
       error
     );
 
 
-    stopElevenGreeting();
-
-
     assistantSpeaking =
       false;
 
 
+    stopElevenGreeting();
+
+
     /*
-     * Wichtig:
-     * JARVIS bleibt benutzbar,
-     * auch wenn ElevenLabs mal
-     * ausfällt.
+     * Nur hier echter Fallback.
      */
     requestOpenAIFallbackGreeting(
       greeting
@@ -1565,9 +1540,6 @@ async function runTool(event) {
   );
 
 
-  /*
-   * Set begrenzen.
-   */
   if (
     handledToolCalls.size >
     MAX_HANDLED_TOOL_CALLS
@@ -1586,11 +1558,6 @@ async function runTool(event) {
   }
 
 
-  /*
-   * Während Live-Daten
-   * geladen werden:
-   * Mikro aus.
-   */
   muteForAssistant();
 
 
@@ -1742,10 +1709,6 @@ async function runTool(event) {
   }
 
 
-  /*
-   * Echtes Tool-Ergebnis
-   * zurück an OpenAI.
-   */
   safeSend({
     type:
       "conversation.item.create",
@@ -1766,14 +1729,6 @@ async function runTool(event) {
   });
 
 
-  /*
-   * Normale Tool-Antwort
-   * weiterhin über cedar.
-   *
-   * ElevenLabs stellen wir erst
-   * um, wenn die Begrüßung
-   * zuverlässig funktioniert.
-   */
   safeSend({
     type:
       "response.create",
@@ -1858,11 +1813,8 @@ async function startJarvis() {
   try {
 
     /*
-     * AudioContext früh nach dem
+     * AudioContext direkt nach
      * Benutzer-Klick aktivieren.
-     *
-     * Hilft gegen Browser-
-     * Autoplay-Beschränkungen.
      */
     try {
 
@@ -1900,25 +1852,13 @@ async function startJarvis() {
     }
 
 
-    /*
-     * Intro.
-     */
     await startIntro();
 
 
-    /*
-     * WebRTC.
-     */
     pc =
       new RTCPeerConnection();
 
 
-    /*
-     * OpenAI Remote Audio.
-     *
-     * Wird weiterhin für
-     * normale Antworten gebraucht.
-     */
     pc.ontrack =
       async event => {
 
@@ -1961,9 +1901,6 @@ async function startJarvis() {
       };
 
 
-    /*
-     * Realtime DataChannel.
-     */
     dc =
       pc.createDataChannel(
         "oai-events"
@@ -1993,10 +1930,6 @@ async function startJarvis() {
         );
 
 
-        /*
-         * Während Intro und Begrüßung
-         * bleibt Mikro aus.
-         */
         setMicrophoneEnabled(
           false
         );
@@ -2007,9 +1940,6 @@ async function startJarvis() {
         );
 
 
-        /*
-         * Intro kurz alleine laufen.
-         */
         await sleep(
           INTRO_VOICE_DELAY_MS
         );
@@ -2021,17 +1951,16 @@ async function startJarvis() {
         }
 
 
-        /*
-         * Musik sanft runter.
-         */
         duckIntro();
 
 
         /*
-         * NEU:
+         * Nur ElevenLabs startet
+         * die Begrüßung.
          *
-         * Startbegrüßung läuft
-         * über ElevenLabs.
+         * Hier wird KEIN zusätzliches
+         * response.create an OpenAI
+         * gesendet.
          */
         await requestStartupGreeting();
       };
@@ -2100,12 +2029,6 @@ async function startJarvis() {
           "input_audio_buffer.speech_started"
         ) {
 
-          /*
-           * Während ElevenLabs-
-           * Begrüßung oder OpenAI-
-           * Ausgabe darf hier
-           * nichts passieren.
-           */
           if (
             !assistantSpeaking &&
             !waitingForAssistant
@@ -2132,10 +2055,6 @@ async function startJarvis() {
           "input_audio_buffer.speech_stopped"
         ) {
 
-          /*
-           * Semantic VAD hat den
-           * Turn beendet.
-           */
           muteForAssistant();
 
 
@@ -2197,18 +2116,11 @@ async function startJarvis() {
           clearResponseWatchdog();
 
 
-          /*
-           * Mikro garantiert aus.
-           */
           setMicrophoneEnabled(
             false
           );
 
 
-          /*
-           * OpenAI cedar
-           * verstärken.
-           */
           setJarvisGain(
             JARVIS_OUTPUT_GAIN
           );
@@ -2233,13 +2145,6 @@ async function startJarvis() {
             false;
 
 
-          startupGreeting =
-            false;
-
-
-          /*
-           * Kleine Echo-Pause.
-           */
           setTimeout(
             () => {
 
@@ -2395,30 +2300,19 @@ async function startJarvis() {
         .getUserMedia({
           audio: {
 
-            /*
-             * Echo von JARVIS
-             * reduzieren.
-             */
             echoCancellation:
               true,
 
-
-            /*
-             * Browser-Rauschfilter.
-             */
             noiseSuppression:
               true,
 
-
             /*
-             * AUS:
-             * Leise Nebengeräusche
-             * sollen nicht künstlich
-             * verstärkt werden.
+             * Aus, damit leise
+             * Hintergrundgeräusche
+             * nicht hochgeregelt werden.
              */
             autoGainControl:
               false,
-
 
             channelCount:
               1
@@ -2426,9 +2320,6 @@ async function startJarvis() {
         });
 
 
-    /*
-     * Start zunächst stumm.
-     */
     setMicrophoneEnabled(
       false
     );
@@ -2531,7 +2422,7 @@ async function startJarvis() {
 
 
 /* =========================================================
-   STOP JARVIS
+   STOP
    ========================================================= */
 
 async function stopJarvis() {
@@ -2556,24 +2447,23 @@ async function stopJarvis() {
     false;
 
 
+  /*
+   * Verhindert auch beim manuellen
+   * Stoppen einen Fallback.
+   */
+  elevenGreetingSettled =
+    true;
+
+
   clearResponseWatchdog();
 
 
-  /*
-   * ElevenLabs-Audio stoppen.
-   */
   stopElevenGreeting();
 
 
-  /*
-   * Intro stoppen.
-   */
   stopIntro();
 
 
-  /*
-   * Mikro aus.
-   */
   setMicrophoneEnabled(
     false
   );
@@ -2642,10 +2532,8 @@ async function stopJarvis() {
 
     remoteAudio.pause();
 
-
     remoteAudio.srcObject =
       null;
-
 
   } catch {}
 
