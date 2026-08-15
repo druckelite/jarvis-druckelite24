@@ -2,7 +2,7 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V7.0 · MEDIARECORDER PIPELINE
+   V7.1 · NOISE FILTER + VOICE CONFIRMATION
 
    =========================================================
    ARCHITEKTUR
@@ -11,6 +11,10 @@
    Browser-Mikrofon
         ↓
    MediaRecorder
+        ↓
+   automatische Raumpegel-Kalibrierung
+        ↓
+   Spracherkennung / Stille-Erkennung
         ↓
    /api/transcribe
         ↓
@@ -117,6 +121,48 @@ let lastVoiceAt =
   0;
 
 
+/*
+ * Sprachbestätigung.
+ */
+let voiceDetected =
+  false;
+
+
+let voiceCandidateStartedAt =
+  0;
+
+
+/*
+ * Wenn wir nur auf Sprache
+ * gewartet haben und nichts kam,
+ * wird die Aufnahme verworfen.
+ */
+let discardCurrentRecording =
+  false;
+
+
+/*
+ * Geglätteter Mikrofonpegel.
+ */
+let smoothedAudioLevel =
+  0;
+
+
+/*
+ * Automatisch gemessener Raumpegel.
+ */
+let ambientNoiseLevel =
+  0.01;
+
+
+/*
+ * Tatsächlich verwendete
+ * Sprachschwelle.
+ */
+let dynamicVoiceThreshold =
+  0.035;
+
+
 /* =========================================================
    CONVERSATION
    ========================================================= */
@@ -169,6 +215,7 @@ let introFadeTimer =
    SETTINGS
    ========================================================= */
 
+
 /*
  * Intro.
  */
@@ -196,51 +243,109 @@ const INTRO_FADE_DURATION_MS =
   15000;
 
 
+/* =========================================================
+   SPRACHERKENNUNG
+   ========================================================= */
+
 /*
- * Sprachaufnahme.
+ * Aufnahme muss mindestens
+ * so lange laufen.
  */
 const MIN_RECORDING_MS =
-  500;
+  600;
 
 
 /*
- * Nach dieser Stille gilt der Satz
- * als beendet.
+ * Nach dieser echten Stille
+ * ist der Satz beendet.
  */
 const SILENCE_DURATION_MS =
+  750;
+
+
+/*
+ * Mindest-Sprachschwelle.
+ *
+ * Selbst in sehr leiser Umgebung
+ * wird JARVIS nicht empfindlicher
+ * als dieser Wert.
+ */
+const MIN_VOICE_THRESHOLD =
+  0.032;
+
+
+/*
+ * Höchstwert der automatischen
+ * Schwelle.
+ *
+ * Dadurch wird sie in lauter
+ * Umgebung nicht völlig absurd.
+ */
+const MAX_VOICE_THRESHOLD =
+  0.085;
+
+
+/*
+ * Gemessener Raumpegel wird
+ * mit diesem Faktor multipliziert.
+ *
+ * Höher = weniger empfindlich.
+ */
+const NOISE_MULTIPLIER =
+  2.8;
+
+
+/*
+ * Ein Geräusch muss mindestens
+ * so lange über der Schwelle liegen,
+ * bevor es als Sprache zählt.
+ *
+ * Kurzes Klacken, Tastatur usw.
+ * wird dadurch ignoriert.
+ */
+const VOICE_CONFIRM_MS =
+  220;
+
+
+/*
+ * Wie lange JARVIS wartet,
+ * bis du anfängst zu sprechen.
+ *
+ * Danach beginnt einfach eine
+ * neue Hör-Runde.
+ */
+const WAIT_FOR_VOICE_MS =
+  12000;
+
+
+/*
+ * Sicherheitslimit für einen
+ * kompletten gesprochenen Turn.
+ */
+const MAX_RECORDING_MS =
+  20000;
+
+
+/*
+ * Raumpegel-Kalibrierung.
+ */
+const NOISE_CALIBRATION_MS =
+  850;
+
+
+/*
+ * Kurze Pause nach JARVIS-Ausgabe,
+ * damit der Lautsprecher nicht
+ * selbst aufgenommen wird.
+ */
+const LISTENING_RESUME_DELAY_MS =
   900;
 
 
-/*
- * Unterhalb dieses Pegels
- * behandeln wir das Signal als leise.
- *
- * Je nach Mikrofon kann später
- * feinjustiert werden.
- */
-const SILENCE_THRESHOLD =
-  0.018;
+/* =========================================================
+   NETWORK TIMEOUTS
+   ========================================================= */
 
-
-/*
- * Sicherheitslimit:
- * Kein Turn darf endlos aufnehmen.
- */
-const MAX_RECORDING_MS =
-  30000;
-
-
-/*
- * Nach Jarvis-Ausgabe kurze Pause
- * gegen Lautsprecher-Echo.
- */
-const LISTENING_RESUME_DELAY_MS =
-  700;
-
-
-/*
- * Requests.
- */
 const TRANSCRIPTION_TIMEOUT_MS =
   30000;
 
@@ -340,6 +445,22 @@ function sleep(ms) {
         ms
       );
     }
+  );
+}
+
+
+function clamp(
+  value,
+  min,
+  max
+) {
+
+  return Math.min(
+    max,
+    Math.max(
+      min,
+      value
+    )
   );
 }
 
@@ -911,7 +1032,7 @@ function stopElevenAudio() {
 
 
 /* =========================================================
-   MICROPHONE CLEANUP
+   AUDIO ANALYSIS CLEANUP
    ========================================================= */
 
 function stopSilenceMonitor() {
@@ -999,10 +1120,10 @@ function stopMicrophoneTracks() {
 
 
 /* =========================================================
-   AUDIO LEVEL
+   RAW AUDIO LEVEL
    ========================================================= */
 
-function getAudioLevel() {
+function getRawAudioLevel() {
 
   if (
     !analyser
@@ -1055,6 +1176,32 @@ function getAudioLevel() {
 
 
 /* =========================================================
+   SMOOTHED AUDIO LEVEL
+   ========================================================= */
+
+function getAudioLevel() {
+
+  const raw =
+    getRawAudioLevel();
+
+
+  /*
+   * Glättung verhindert,
+   * dass einzelne Peaks sofort
+   * als Sprache gelten.
+   */
+  smoothedAudioLevel =
+    smoothedAudioLevel *
+    0.72 +
+    raw *
+    0.28;
+
+
+  return smoothedAudioLevel;
+}
+
+
+/* =========================================================
    START AUDIO ANALYSIS
    ========================================================= */
 
@@ -1080,12 +1227,9 @@ async function startAudioAnalysis() {
     !AudioContextClass
   ) {
 
-    console.warn(
-      "AudioContext nicht verfügbar."
+    throw new Error(
+      "AudioContext wird von diesem Browser nicht unterstützt."
     );
-
-
-    return;
   }
 
 
@@ -1115,6 +1259,10 @@ async function startAudioAnalysis() {
     1024;
 
 
+  analyser.smoothingTimeConstant =
+    0.25;
+
+
   sourceNode =
     audioContext
       .createMediaStreamSource(
@@ -1124,6 +1272,133 @@ async function startAudioAnalysis() {
 
   sourceNode.connect(
     analyser
+  );
+
+
+  smoothedAudioLevel =
+    0;
+}
+
+
+/* =========================================================
+   AMBIENT NOISE CALIBRATION
+   ========================================================= */
+
+async function calibrateAmbientNoise() {
+
+  if (
+    !active ||
+    !analyser
+  ) {
+
+    return;
+  }
+
+
+  setJarvisState(
+    "listening"
+  );
+
+
+  setLog(
+    "Mikrofon wird angepasst …"
+  );
+
+
+  const samples =
+    [];
+
+
+  const started =
+    Date.now();
+
+
+  while (
+    active &&
+    Date.now() -
+      started <
+      NOISE_CALIBRATION_MS
+  ) {
+
+    samples.push(
+      getRawAudioLevel()
+    );
+
+
+    await sleep(
+      50
+    );
+  }
+
+
+  if (
+    !samples.length
+  ) {
+
+    return;
+  }
+
+
+  /*
+   * Sortieren und oberen Extrembereich
+   * ignorieren.
+   *
+   * Dadurch beeinflusst ein zufälliges
+   * Klacken die Messung kaum.
+   */
+  samples.sort(
+    (
+      a,
+      b
+    ) =>
+      a -
+      b
+  );
+
+
+  const usefulIndex =
+    Math.floor(
+      samples.length *
+      0.7
+    );
+
+
+  ambientNoiseLevel =
+    samples[
+      Math.min(
+        usefulIndex,
+        samples.length -
+        1
+      )
+    ];
+
+
+  dynamicVoiceThreshold =
+    clamp(
+      ambientNoiseLevel *
+      NOISE_MULTIPLIER,
+
+      MIN_VOICE_THRESHOLD,
+
+      MAX_VOICE_THRESHOLD
+    );
+
+
+  console.log(
+    "Ambient noise:",
+    ambientNoiseLevel.toFixed(
+      4
+    ),
+
+    "Voice threshold:",
+    dynamicVoiceThreshold.toFixed(
+      4
+    )
+  );
+
+
+  setLog(
+    "JARVIS hört zu."
   );
 }
 
@@ -1163,7 +1438,7 @@ function getSupportedMimeType() {
 
 
 /* =========================================================
-   START RECORDING
+   START RECORDING TURN
    ========================================================= */
 
 async function startRecordingTurn() {
@@ -1198,6 +1473,26 @@ async function startRecordingTurn() {
 
   audioChunks =
     [];
+
+
+  voiceDetected =
+    false;
+
+
+  voiceCandidateStartedAt =
+    0;
+
+
+  discardCurrentRecording =
+    false;
+
+
+  lastVoiceAt =
+    0;
+
+
+  smoothedAudioLevel =
+    0;
 
 
   const mimeType =
@@ -1265,6 +1560,15 @@ async function startRecordingTurn() {
         recordingStartedAt;
 
 
+      /*
+       * Recorderreferenz erst hier
+       * wieder freigeben.
+       */
+      const recorderType =
+        mediaRecorder?.mimeType ||
+        "audio/webm";
+
+
       if (
         !active
       ) {
@@ -1273,10 +1577,28 @@ async function startRecordingTurn() {
       }
 
 
+      /*
+       * Keine bestätigte Stimme:
+       * Aufnahme komplett ignorieren.
+       */
       if (
-        duration <
-        MIN_RECORDING_MS
+        discardCurrentRecording ||
+        !voiceDetected
       ) {
+
+        audioChunks =
+          [];
+
+
+        setJarvisState(
+          "listening"
+        );
+
+
+        setLog(
+          "JARVIS hört zu."
+        );
+
 
         setTimeout(
           () => {
@@ -1291,7 +1613,37 @@ async function startRecordingTurn() {
             }
 
           },
-          300
+          250
+        );
+
+
+        return;
+      }
+
+
+      if (
+        duration <
+        MIN_RECORDING_MS
+      ) {
+
+        audioChunks =
+          [];
+
+
+        setTimeout(
+          () => {
+
+            if (
+              active &&
+              !processing &&
+              !assistantSpeaking
+            ) {
+
+              startRecordingTurn();
+            }
+
+          },
+          250
         );
 
 
@@ -1304,8 +1656,7 @@ async function startRecordingTurn() {
           audioChunks,
           {
             type:
-              mediaRecorder.mimeType ||
-              "audio/webm"
+              recorderType
           }
         );
 
@@ -1316,11 +1667,11 @@ async function startRecordingTurn() {
 
       if (
         blob.size <
-        1000
+        1200
       ) {
 
         setLog(
-          "Ich höre zu …"
+          "JARVIS hört zu."
         );
 
 
@@ -1337,7 +1688,7 @@ async function startRecordingTurn() {
             }
 
           },
-          300
+          250
         );
 
 
@@ -1352,10 +1703,6 @@ async function startRecordingTurn() {
 
 
   recordingStartedAt =
-    Date.now();
-
-
-  lastVoiceAt =
     Date.now();
 
 
@@ -1379,7 +1726,7 @@ async function startRecordingTurn() {
 
 
 /* =========================================================
-   SILENCE MONITOR
+   SILENCE + VOICE MONITOR
    ========================================================= */
 
 function startSilenceMonitor() {
@@ -1409,9 +1756,130 @@ function startSilenceMonitor() {
           getAudioLevel();
 
 
+        const recordingDuration =
+          now -
+          recordingStartedAt;
+
+
+        /*
+         * =================================================
+         * NOCH KEINE SPRACHE ERKANNT
+         * =================================================
+         */
+        if (
+          !voiceDetected
+        ) {
+
+          if (
+            level >
+            dynamicVoiceThreshold
+          ) {
+
+            if (
+              !voiceCandidateStartedAt
+            ) {
+
+              voiceCandidateStartedAt =
+                now;
+            }
+
+
+            /*
+             * Erst wenn der Pegel lange
+             * genug anhält, gilt es als
+             * echte Stimme.
+             */
+            if (
+              now -
+                voiceCandidateStartedAt >=
+              VOICE_CONFIRM_MS
+            ) {
+
+              voiceDetected =
+                true;
+
+
+              lastVoiceAt =
+                now;
+
+
+              setJarvisState(
+                "hearing"
+              );
+
+
+              setLog(
+                "Ich höre zu …"
+              );
+
+
+              console.log(
+                "Voice confirmed."
+              );
+            }
+
+
+          } else {
+
+            /*
+             * Kurzer Peak war offenbar
+             * nur Geräusch.
+             */
+            voiceCandidateStartedAt =
+              0;
+          }
+
+
+          /*
+           * Niemand spricht:
+           * Aufnahme verwerfen und
+           * neu anfangen.
+           */
+          if (
+            recordingDuration >
+            WAIT_FOR_VOICE_MS
+          ) {
+
+            discardCurrentRecording =
+              true;
+
+
+            try {
+
+              mediaRecorder.stop();
+
+            } catch {}
+
+
+            return;
+          }
+
+
+          return;
+        }
+
+
+        /*
+         * =================================================
+         * SPRACHE WURDE BEREITS ERKANNT
+         * =================================================
+         */
+
+
+        /*
+         * Während eines echten Satzes
+         * darf die Schwelle etwas niedriger
+         * sein, damit leise Silben nicht
+         * abgeschnitten werden.
+         */
+        const continuationThreshold =
+          dynamicVoiceThreshold *
+          0.72;
+
+
         if (
           level >
-          SILENCE_THRESHOLD
+          continuationThreshold
         ) {
 
           lastVoiceAt =
@@ -1421,17 +1889,7 @@ function startSilenceMonitor() {
           setJarvisState(
             "hearing"
           );
-
-
-          setLog(
-            "Ich höre zu …"
-          );
         }
-
-
-        const recordingDuration =
-          now -
-          recordingStartedAt;
 
 
         const silenceDuration =
@@ -1440,7 +1898,7 @@ function startSilenceMonitor() {
 
 
         /*
-         * Satzende nach kurzer Stille.
+         * Satzende.
          */
         if (
           recordingDuration >
@@ -1448,6 +1906,11 @@ function startSilenceMonitor() {
           silenceDuration >
             SILENCE_DURATION_MS
         ) {
+
+          console.log(
+            "Sentence finished after silence."
+          );
+
 
           try {
 
@@ -1461,12 +1924,17 @@ function startSilenceMonitor() {
 
 
         /*
-         * Sicherheitslimit.
+         * Absolutes Sicherheitslimit.
          */
         if (
           recordingDuration >
           MAX_RECORDING_MS
         ) {
+
+          console.warn(
+            "Maximum recording duration reached."
+          );
+
 
           try {
 
@@ -1476,7 +1944,7 @@ function startSilenceMonitor() {
         }
 
       },
-      100
+      80
     );
 }
 
@@ -1961,7 +2429,7 @@ async function speakWithElevenLabs(
 
 
         elevenAudio.onerror =
-          event => {
+          () => {
 
             reject(
               new Error(
@@ -2060,7 +2528,7 @@ async function processRecordedAudio(
 
 
     await sleep(
-      150
+      120
     );
 
 
@@ -2120,7 +2588,7 @@ async function processRecordedAudio(
 
 
     await sleep(
-      1200
+      1000
     );
 
 
@@ -2139,7 +2607,28 @@ async function processRecordedAudio(
     ) {
 
       setTimeout(
-        () => {
+        async () => {
+
+          if (
+            !active ||
+            processing ||
+            assistantSpeaking
+          ) {
+
+            return;
+          }
+
+
+          /*
+           * Nach jeder Antwort kurz
+           * Raumpegel neu messen.
+           *
+           * Wenn TV, Lüfter usw.
+           * lauter/leiser geworden sind,
+           * passt JARVIS sich an.
+           */
+          await calibrateAmbientNoise();
+
 
           if (
             active &&
@@ -2220,8 +2709,16 @@ async function startJarvis() {
       false;
 
 
+    ambientNoiseLevel =
+      0.01;
+
+
+    dynamicVoiceThreshold =
+      MIN_VOICE_THRESHOLD;
+
+
     /*
-     * Mikrofon holen.
+     * Mikrofon.
      */
     micStream =
       await navigator
@@ -2229,12 +2726,21 @@ async function startJarvis() {
         .getUserMedia({
           audio: {
 
+            /*
+             * Browserfilter aktiv.
+             */
             echoCancellation:
               true,
 
             noiseSuppression:
               true,
 
+            /*
+             * Sehr wichtig:
+             *
+             * AGC kann leise Raumgeräusche
+             * künstlich hochziehen.
+             */
             autoGainControl:
               false,
 
@@ -2302,9 +2808,24 @@ async function startJarvis() {
     }
 
 
+    /*
+     * Erst nach der Begrüßung
+     * den echten Raumpegel messen.
+     */
     await sleep(
       LISTENING_RESUME_DELAY_MS
     );
+
+
+    await calibrateAmbientNoise();
+
+
+    if (
+      !active
+    ) {
+
+      return;
+    }
 
 
     startRecordingTurn();
@@ -2391,11 +2912,23 @@ async function stopJarvis() {
     null;
 
 
+  voiceDetected =
+    false;
+
+
+  voiceCandidateStartedAt =
+    0;
+
+
+  discardCurrentRecording =
+    false;
+
+
   stopSilenceMonitor();
 
 
   /*
-   * Recorder stoppen.
+   * Recorder.
    */
   if (
     mediaRecorder &&
@@ -2424,7 +2957,7 @@ async function stopJarvis() {
 
 
   /*
-   * Requests abbrechen.
+   * Requests.
    */
   if (
     transcriptionController
@@ -2493,8 +3026,8 @@ async function stopJarvis() {
 
 
   /*
-   * remoteAudio ist nicht mehr
-   * Bestandteil der Voice-Pipeline.
+   * remoteAudio gehört nicht
+   * zur Voice-Pipeline.
    */
   if (
     remoteAudio
@@ -2563,11 +3096,6 @@ if (
   remoteAudio
 ) {
 
-  /*
-   * Sicherstellen:
-   * OpenAI-Audio kann nie versehentlich
-   * abgespielt werden.
-   */
   remoteAudio.muted =
     true;
 
