@@ -3,97 +3,8 @@ import express from "express";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-/* =========================================================
-   BASIC
-   ========================================================= */
-
 app.use(express.static("."));
 app.use(express.json({ limit: "2mb" }));
-
-
-/* =========================================================
-   JARVIS PERSONALITY
-   ========================================================= */
-
-const JARVIS_INSTRUCTIONS = `
-Du bist JARVIS, der persönliche Voice- und Business-Assistent von Mattl.
-
-SPRACHE
-- Sprich ausschließlich Deutsch.
-- Nur wenn Mattl ausdrücklich eine andere Sprache verlangt, darfst du wechseln.
-- Natürliches, klares Hochdeutsch.
-- Keine englischen Standardantworten.
-
-AUSSPRACHE
-- Der Benutzer heißt Mattl.
-- Das T soll deutlich hörbar sein.
-- Aussprache ungefähr: Mat-tl.
-- Nicht Maddl.
-
-CHARAKTER
-- Ruhig.
-- Souverän.
-- Intelligent.
-- Warm.
-- Eher tief und kontrolliert.
-- Präzise.
-- Trocken humorvoll.
-- Gelegentlich frech oder sarkastisch.
-- Bei ernsten Themen sofort sachlich.
-
-Du darfst sehr selten sagen:
-"Du bist der beste Chef."
-
-Aber nicht schleimen.
-
-GESPRÄCH
-- Mattl kann ganz normal mit dir reden.
-- Beantworte seine eigentliche Frage zuerst.
-- Standardmäßig eher kurz.
-- Keine ungefragten langen Monologe.
-- Keine automatischen Anschlussfragen.
-- Wenn die Antwort fertig ist, schweigen.
-- Wenn du etwas nicht verstanden hast, frage kurz nach.
-
-LIVE-DATEN
-- Erfinde niemals aktuelle Daten.
-- Aktuelle Shopify-Daten kommen ausschließlich aus Shopify.
-- Wetterdaten kommen ausschließlich aus dem Wetterdienst.
-- Aktuelle E-Mails und Termine dürfen niemals erfunden werden.
-
-DRUCKELITE24
-Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
-
-Wichtige Themen:
-- Firmenbekleidung
-- Vereinsbekleidung
-- Teamsport
-- Gastro
-- Events
-- Arbeitsbekleidung
-- DTF
-- Textildruck
-- Shopify
-- E-Commerce
-
-BUSINESS
-Denke zusätzlich wie ein guter Geschäftsführer und E-Commerce-Berater.
-Wenn dir eine wirklich relevante Chance oder ein Risiko auffällt,
-darfst du nach der eigentlichen Antwort EINEN kurzen Hinweis geben.
-
-ABSOLUT VERBOTEN
-Wenn Mattl nach Shopify, Umsatz oder Bestellungen fragt:
-- keine Reisen
-- keine Workouts
-- keine Kalorien
-- kein Essen bestellen
-- keine Hotels
-- keine themenfremden Vorschläge
-
-Wenn du eine Information nicht hast:
-sage es klar.
-`;
-
 
 /* =========================================================
    HELPERS
@@ -107,7 +18,6 @@ function normalize(text) {
     .trim();
 }
 
-
 function berlinDate(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Berlin",
@@ -116,7 +26,6 @@ function berlinDate(date = new Date()) {
     day: "2-digit"
   }).format(date);
 }
-
 
 function nextDateString(dateString) {
   const date =
@@ -131,14 +40,15 @@ function nextDateString(dateString) {
     .slice(0, 10);
 }
 
-
 function getPeriodDates(period) {
   const today =
     berlinDate();
 
   if (period === "yesterday") {
     const date =
-      new Date(`${today}T12:00:00Z`);
+      new Date(
+        `${today}T12:00:00Z`
+      );
 
     date.setUTCDate(
       date.getUTCDate() - 1
@@ -162,420 +72,466 @@ function getPeriodDates(period) {
 }
 
 
-function formatMoney(
-  value,
-  currency = "EUR"
-) {
-  return new Intl.NumberFormat(
-    "de-DE",
-    {
-      style: "currency",
-      currency
-    }
-  ).format(
-    Number(value || 0)
-  );
-}
+/* =========================================================
+   JARVIS PERSONALITY
+   ========================================================= */
+
+const JARVIS_INSTRUCTIONS = `
+Du bist JARVIS, der persönliche Voice- und Business-Assistent von Mattl.
+
+SPRACHE
+- Sprich ausschließlich Deutsch.
+- Nur wenn Mattl ausdrücklich eine andere Sprache verlangt, darfst du wechseln.
+- Natürliches, klares Hochdeutsch.
+- Kein unnötiges Englisch.
+
+AUSSPRACHE
+- Der Benutzer heißt Mattl.
+- Sprich den Namen ungefähr "Mat-tl".
+- Das T muss hörbar bleiben.
+- Nicht "Maddl".
+
+CHARAKTER
+- Locker.
+- Intelligent.
+- Ruhig.
+- Souverän.
+- Warm.
+- Direkt.
+- Trocken humorvoll.
+- Gelegentlich frech oder sarkastisch.
+- Nicht förmlich.
+- Kein Butler-Stil.
+- Kein Callcenter-Stil.
+
+Beispiele für deinen Ton:
+"Klar, Mattl."
+"Hab ich."
+"Sieht gut aus."
+"Das war jetzt überraschend vernünftig."
+"Da bist du ja. Ich hatte schon Hoffnung auf einen ruhigen Tag."
+
+Sehr selten darfst du sagen:
+"Du bist der beste Chef."
+
+Aber nicht schleimen.
+
+GESPRÄCH
+- Sprich natürlich mit Mattl.
+- Beantworte zuerst exakt seine Frage.
+- Standardmäßig kurze bis mittellange Antworten.
+- Keine unnötigen Monologe.
+- Keine automatische Anschlussfrage nach jeder Antwort.
+- Wenn du fertig bist, warte auf Mattl.
+- Du darfst Kontext aus dem laufenden Gespräch berücksichtigen.
+- Wenn du etwas akustisch nicht sicher verstanden hast, frage kurz nach.
+
+WICHTIG
+Wenn Mattl nach aktuellen Daten fragt, niemals raten.
+
+SHOPIFY
+Für aktuelle Shopify-Fragen MUSST du get_shopify_summary benutzen.
+
+Dazu gehören:
+- Umsatz
+- Bestellungen
+- Verkäufe
+- Bestellwert
+- Shop-Umsatz
+- "Wie läuft Shopify?"
+- "Wie viele Bestellungen heute?"
+- "Was haben wir heute umgesetzt?"
+
+WETTER
+Für Wetterfragen MUSST du get_weather benutzen.
+
+Bei Ludwigshafen bevorzuge:
+Ludwigshafen am Rhein, Rheinland-Pfalz, Deutschland.
+
+GMAIL
+Wenn Mattl nach aktuellen Mails fragt, benutze get_important_emails.
+
+KALENDER
+Wenn Mattl nach Terminen oder Kalender fragt, benutze get_calendar_today.
+
+ABSOLUT VERBOTEN
+Bei Shopify-Fragen:
+- keine Reisen
+- keine Workouts
+- keine Kalorien
+- kein Essen bestellen
+- keine Hotels
+- keine erfundenen Daten
+
+DRUCKELITE24
+Druckelite24 ist Mattls Unternehmen für individuell bedruckte Textilien.
+
+Relevante Bereiche:
+- Firmenbekleidung
+- Vereinsbekleidung
+- Teamsport
+- Gastro
+- Arbeitsbekleidung
+- Events
+- personalisierte Textilien
+- DTF
+- Textildruck
+- Shopify
+- E-Commerce
+
+BUSINESS-DENKEN
+Denke zusätzlich wie ein guter:
+- Geschäftsführer
+- E-Commerce-Manager
+- Verkaufsleiter
+- Performance-Marketer
+- Datenanalyst
+
+Wenn dir eine wirklich relevante Chance oder ein Risiko auffällt,
+darfst du nach der eigentlichen Antwort EINEN kurzen Hinweis geben.
+
+SICHERHEIT
+Lesen, analysieren und Empfehlungen geben ist erlaubt.
+
+Vor kritischen Aktionen brauchst du Mattls ausdrückliche Zustimmung:
+- Geld ausgeben
+- Werbebudgets ändern
+- Kampagnen pausieren
+- E-Mails senden
+- Nachrichten senden
+- Preise ändern
+- Bestellungen stornieren
+- Rückerstattungen
+- Daten löschen
+`;
 
 
 /* =========================================================
-   OPENAI TRANSCRIPTION
+   REALTIME TOOLS
    ========================================================= */
 
-/*
- * Browser sendet direkt Audio/WebM.
- * Kein Multer und kein zusätzliches Paket nötig.
- */
+const realtimeTools = [
+  {
+    type: "function",
+
+    name:
+      "get_shopify_summary",
+
+    description:
+      "Liest echte aktuelle Shopify-Bestellungen, Umsatz und durchschnittlichen Bestellwert für heute oder gestern.",
+
+    parameters: {
+      type: "object",
+
+      properties: {
+        period: {
+          type: "string",
+
+          enum: [
+            "today",
+            "yesterday"
+          ]
+        }
+      },
+
+      required: [
+        "period"
+      ],
+
+      additionalProperties:
+        false
+    }
+  },
+
+  {
+    type: "function",
+
+    name:
+      "get_weather",
+
+    description:
+      "Liest echtes Wetter für einen Ort für heute oder morgen.",
+
+    parameters: {
+      type: "object",
+
+      properties: {
+        location: {
+          type: "string"
+        },
+
+        day: {
+          type: "string",
+
+          enum: [
+            "today",
+            "tomorrow"
+          ]
+        }
+      },
+
+      required: [
+        "location",
+        "day"
+      ],
+
+      additionalProperties:
+        false
+    }
+  },
+
+  {
+    type: "function",
+
+    name:
+      "get_important_emails",
+
+    description:
+      "Liest aktuelle wichtige E-Mails.",
+
+    parameters: {
+      type: "object",
+
+      properties: {
+        limit: {
+          type: "integer",
+          minimum: 1,
+          maximum: 10
+        }
+      },
+
+      required: [
+        "limit"
+      ],
+
+      additionalProperties:
+        false
+    }
+  },
+
+  {
+    type: "function",
+
+    name:
+      "get_calendar_today",
+
+    description:
+      "Liest die heutigen Kalendereinträge.",
+
+    parameters: {
+      type: "object",
+      properties: {},
+      additionalProperties:
+        false
+    }
+  }
+];
+
+
+/* =========================================================
+   OPENAI REALTIME SESSION
+   ========================================================= */
 
 app.post(
-  "/api/transcribe",
+  "/session",
 
-  express.raw({
-    type: [
-      "audio/webm",
-      "audio/mp4",
-      "audio/mpeg",
-      "audio/wav",
-      "audio/ogg",
-      "application/octet-stream"
-    ],
+  express.text({
+    type:
+      "application/sdp",
 
-    limit: "20mb"
+    limit:
+      "1mb"
   }),
 
   async (req, res) => {
     try {
-      if (!process.env.OPENAI_API_KEY) {
+      if (
+        !process.env.OPENAI_API_KEY
+      ) {
         return res
           .status(500)
-          .json({
-            error:
-              "OPENAI_API_KEY fehlt."
-          });
+          .send(
+            "OPENAI_API_KEY fehlt."
+          );
       }
 
       if (
         !req.body ||
-        !req.body.length
+        typeof req.body !==
+          "string"
       ) {
         return res
           .status(400)
-          .json({
-            error:
-              "Keine Audioaufnahme erhalten."
-          });
+          .send(
+            "SDP Offer fehlt."
+          );
       }
 
-      const incomingType =
-        req.headers["content-type"] ||
-        "audio/webm";
+      const session = {
+        type:
+          "realtime",
 
-      let extension = "webm";
+        model:
+          "gpt-realtime",
 
-      if (
-        incomingType.includes("mp4")
-      ) {
-        extension = "mp4";
-      } else if (
-        incomingType.includes("mpeg")
-      ) {
-        extension = "mp3";
-      } else if (
-        incomingType.includes("wav")
-      ) {
-        extension = "wav";
-      } else if (
-        incomingType.includes("ogg")
-      ) {
-        extension = "ogg";
-      }
+        output_modalities: [
+          "audio"
+        ],
+
+        instructions:
+          JARVIS_INSTRUCTIONS,
+
+        tools:
+          realtimeTools,
+
+        tool_choice:
+          "auto",
+
+        max_output_tokens:
+          350,
+
+        audio: {
+          input: {
+
+            /*
+             * Für Mikrofone, die nicht direkt
+             * am Mund sitzen und bei denen
+             * Raum-/TV-Geräusche auftreten.
+             */
+            noise_reduction: {
+              type:
+                "far_field"
+            },
+
+            transcription: {
+              model:
+                "gpt-4o-mini-transcribe",
+
+              language:
+                "de",
+
+              prompt:
+                "Deutsch. Benutzer heißt Mattl. Begriffe: Druckelite24, Shopify, Umsatz, Bestellungen, DTF, Textildruck, E-Commerce, Ludwigshafen."
+            },
+
+            /*
+             * Höhere Schwelle:
+             * weniger empfindlich auf
+             * Fernseher und leise Geräusche.
+             */
+            turn_detection: {
+              type:
+                "server_vad",
+
+              threshold:
+                0.90,
+
+              prefix_padding_ms:
+                300,
+
+              silence_duration_ms:
+                650,
+
+              create_response:
+                true,
+
+              interrupt_response:
+                true
+            }
+          },
+
+          output: {
+            voice:
+              "cedar"
+          }
+        }
+      };
 
       const form =
         new FormData();
 
       form.append(
-        "file",
+        "sdp",
+        req.body
+      );
+
+      form.append(
+        "session",
 
         new Blob(
-          [req.body],
+          [
+            JSON.stringify(
+              session
+            )
+          ],
+
           {
-            type: incomingType
+            type:
+              "application/json"
           }
-        ),
-
-        `jarvis.${extension}`
-      );
-
-      form.append(
-        "model",
-        "gpt-4o-mini-transcribe"
-      );
-
-      form.append(
-        "language",
-        "de"
-      );
-
-      form.append(
-        "prompt",
-        "Deutsch. Benutzer heißt Mattl. Begriffe: Druckelite24, Shopify, Umsatz, Bestellungen, DTF, Textildruck, E-Commerce, Gmail und Kalender."
+        )
       );
 
       const response =
         await fetch(
-          "https://api.openai.com/v1/audio/transcriptions",
+          "https://api.openai.com/v1/realtime/calls?model=gpt-realtime",
+
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               Authorization:
                 `Bearer ${process.env.OPENAI_API_KEY}`
             },
 
-            body: form
-          }
-        );
-
-      const data =
-        await response.json();
-
-      if (!response.ok) {
-        console.error(
-          "Transcription error:",
-          data
-        );
-
-        return res
-          .status(response.status)
-          .json({
-            error:
-              "Spracherkennung fehlgeschlagen.",
-
-            details:
-              data
-          });
-      }
-
-      const text =
-        String(
-          data.text || ""
-        ).trim();
-
-      return res.json({
-        ok: true,
-        text
-      });
-
-    } catch (error) {
-      console.error(
-        "Transcription server error:",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          error:
-            "Spracherkennung fehlgeschlagen."
-        });
-    }
-  }
-);
-
-
-/* =========================================================
-   OPENAI SPEECH
-   ========================================================= */
-
-app.post(
-  "/api/speak",
-
-  async (req, res) => {
-    try {
-      const text =
-        String(
-          req.body?.text || ""
-        ).trim();
-
-      if (!text) {
-        return res
-          .status(400)
-          .json({
-            error:
-              "Kein Text zum Sprechen."
-          });
-      }
-
-      const response =
-        await fetch(
-          "https://api.openai.com/v1/audio/speech",
-          {
-            method: "POST",
-
-            headers: {
-              Authorization:
-                `Bearer ${process.env.OPENAI_API_KEY}`,
-
-              "Content-Type":
-                "application/json"
-            },
-
             body:
-              JSON.stringify({
-                model:
-                  "gpt-4o-mini-tts",
-
-                voice:
-                  "cedar",
-
-                input:
-                  text,
-
-                response_format:
-                  "mp3",
-
-                speed:
-                  0.92,
-
-                instructions:
-                  `Sprich ausschließlich Deutsch.
-Ruhig, souverän, warm und eher tief.
-Natürliches Hochdeutsch.
-Keine hektische oder übertrieben freundliche Stimme.
-Trockenes, kontrolliertes Auftreten.
-Den Namen Mattl mit hörbarem T sprechen: Mat-tl.`
-              })
+              form
           }
         );
 
-      if (!response.ok) {
-        const error =
-          await response.text();
+      const body =
+        await response.text();
 
+      if (!response.ok) {
         console.error(
-          "Speech error:",
-          error
+          "OpenAI Realtime error:",
+          response.status,
+          body
         );
 
         return res
-          .status(response.status)
-          .send(error);
+          .status(
+            response.status
+          )
+          .send(
+            body
+          );
       }
 
-      const audio =
-        Buffer.from(
-          await response.arrayBuffer()
+      return res
+        .status(201)
+        .type(
+          "application/sdp"
+        )
+        .send(
+          body
         );
-
-      res.setHeader(
-        "Content-Type",
-        "audio/mpeg"
-      );
-
-      res.setHeader(
-        "Cache-Control",
-        "no-store"
-      );
-
-      return res.send(audio);
 
     } catch (error) {
       console.error(
-        "Speech server error:",
+        "Realtime bridge error:",
         error
       );
 
       return res
         .status(500)
-        .json({
-          error:
-            "Sprachausgabe fehlgeschlagen."
-        });
+        .send(
+          "Realtime-Verbindung konnte nicht aufgebaut werden."
+        );
     }
   }
 );
-
-
-/* =========================================================
-   GENERAL HUMAN-LIKE CONVERSATION
-   ========================================================= */
-
-function extractResponseText(data) {
-  if (!data?.output) {
-    return "";
-  }
-
-  const parts = [];
-
-  for (
-    const item of
-    data.output
-  ) {
-    if (
-      !Array.isArray(
-        item.content
-      )
-    ) {
-      continue;
-    }
-
-    for (
-      const content of
-      item.content
-    ) {
-      if (
-        content.type ===
-          "output_text" &&
-        content.text
-      ) {
-        parts.push(
-          content.text
-        );
-      }
-    }
-  }
-
-  return parts.join("\n").trim();
-}
-
-
-async function generalConversation(
-  message,
-  history = []
-) {
-  const compactHistory =
-    Array.isArray(history)
-      ? history.slice(-8)
-      : [];
-
-  const historyText =
-    compactHistory
-      .map(item => {
-        const role =
-          item.role === "assistant"
-            ? "JARVIS"
-            : "Mattl";
-
-        return `${role}: ${String(
-          item.text || ""
-        )}`;
-      })
-      .join("\n");
-
-  const input =
-    historyText
-      ? `${historyText}\nMattl: ${message}`
-      : `Mattl: ${message}`;
-
-  const response =
-    await fetch(
-      "https://api.openai.com/v1/responses",
-      {
-        method: "POST",
-
-        headers: {
-          Authorization:
-            `Bearer ${process.env.OPENAI_API_KEY}`,
-
-          "Content-Type":
-            "application/json"
-        },
-
-        body:
-          JSON.stringify({
-            model:
-              "gpt-5",
-
-            instructions:
-              JARVIS_INSTRUCTIONS,
-
-            input,
-
-            max_output_tokens:
-              500
-          })
-      }
-    );
-
-  const data =
-    await response.json();
-
-  if (!response.ok) {
-    console.error(
-      "General response error:",
-      data
-    );
-
-    throw new Error(
-      "Allgemeine Antwort fehlgeschlagen."
-    );
-  }
-
-  return (
-    extractResponseText(data) ||
-    "Das konnte ich gerade nicht sinnvoll beantworten."
-  );
-}
 
 
 /* =========================================================
@@ -593,19 +549,24 @@ async function getShopifyAccessToken() {
     shopifyTokenCache.token &&
     Date.now() <
       shopifyTokenCache.expiresAt -
-        5 * 60 * 1000
+      5 * 60 * 1000
   ) {
-    return shopifyTokenCache.token;
+    return (
+      shopifyTokenCache.token
+    );
   }
 
   const domain =
-    process.env.SHOPIFY_STORE_DOMAIN;
+    process.env
+      .SHOPIFY_STORE_DOMAIN;
 
   const clientId =
-    process.env.SHOPIFY_CLIENT_ID;
+    process.env
+      .SHOPIFY_CLIENT_ID;
 
   const clientSecret =
-    process.env.SHOPIFY_CLIENT_SECRET;
+    process.env
+      .SHOPIFY_CLIENT_SECRET;
 
   if (
     !domain ||
@@ -632,8 +593,10 @@ async function getShopifyAccessToken() {
   const response =
     await fetch(
       `https://${domain}/admin/oauth/access_token`,
+
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
           "Content-Type":
@@ -645,8 +608,25 @@ async function getShopifyAccessToken() {
       }
     );
 
-  const data =
-    await response.json();
+  const raw =
+    await response.text();
+
+  let data;
+
+  try {
+    data =
+      JSON.parse(raw);
+
+  } catch {
+    console.error(
+      "Shopify token raw response:",
+      raw
+    );
+
+    throw new Error(
+      "Shopify hat keine gültige Token-Antwort geliefert."
+    );
+  }
 
   if (
     !response.ok ||
@@ -677,7 +657,13 @@ async function getShopifyAccessToken() {
       expiresIn * 1000
   };
 
-  return data.access_token;
+  console.log(
+    "Shopify access token refreshed."
+  );
+
+  return (
+    data.access_token
+  );
 }
 
 
@@ -689,10 +675,12 @@ async function getShopifySummary(
   period = "today"
 ) {
   const domain =
-    process.env.SHOPIFY_STORE_DOMAIN;
+    process.env
+      .SHOPIFY_STORE_DOMAIN;
 
   const apiVersion =
-    process.env.SHOPIFY_API_VERSION ||
+    process.env
+      .SHOPIFY_API_VERSION ||
     "2026-07";
 
   const token =
@@ -702,7 +690,9 @@ async function getShopifySummary(
     start,
     end
   } =
-    getPeriodDates(period);
+    getPeriodDates(
+      period
+    );
 
   const search =
     `created_at:>=${start} created_at:<${end}`;
@@ -734,8 +724,10 @@ async function getShopifySummary(
   const response =
     await fetch(
       `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
           "Content-Type":
@@ -800,6 +792,7 @@ async function getShopifySummary(
             ?.amount ||
           0
         ),
+
       0
     );
 
@@ -817,6 +810,9 @@ async function getShopifySummary(
       : 0;
 
   return {
+    configured:
+      true,
+
     period,
 
     orders:
@@ -827,507 +823,21 @@ async function getShopifySummary(
         revenue.toFixed(2)
       ),
 
-    averageOrderValue:
+    average_order_value:
       Number(
         average.toFixed(2)
       ),
 
-    currency
+    currency,
+
+    source:
+      "Shopify"
   };
 }
 
 
 /* =========================================================
-   WEATHER
-   ========================================================= */
-
-async function getWeather(
-  location,
-  day
-) {
-  const geo =
-    new URL(
-      "https://geocoding-api.open-meteo.com/v1/search"
-    );
-
-  geo.searchParams.set(
-    "name",
-    location
-  );
-
-  geo.searchParams.set(
-    "count",
-    "5"
-  );
-
-  geo.searchParams.set(
-    "language",
-    "de"
-  );
-
-  geo.searchParams.set(
-    "format",
-    "json"
-  );
-
-  const geoResponse =
-    await fetch(geo);
-
-  const geoData =
-    await geoResponse.json();
-
-  const candidates =
-    geoData.results || [];
-
-  if (!candidates.length) {
-    throw new Error(
-      "Ort wurde nicht gefunden."
-    );
-  }
-
-  let place;
-
-  if (
-    String(location)
-      .toLowerCase()
-      .includes(
-        "ludwigshafen"
-      )
-  ) {
-    place =
-      candidates.find(
-        item =>
-          item.country_code ===
-            "DE" &&
-          String(
-            item.admin1 || ""
-          )
-            .toLowerCase()
-            .includes(
-              "rheinland"
-            )
-      );
-  }
-
-  place =
-    place ||
-    candidates.find(
-      item =>
-        item.country_code ===
-        "DE"
-    ) ||
-    candidates[0];
-
-  const weather =
-    new URL(
-      "https://api.open-meteo.com/v1/forecast"
-    );
-
-  weather.searchParams.set(
-    "latitude",
-    String(
-      place.latitude
-    )
-  );
-
-  weather.searchParams.set(
-    "longitude",
-    String(
-      place.longitude
-    )
-  );
-
-  weather.searchParams.set(
-    "current",
-    "temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m"
-  );
-
-  weather.searchParams.set(
-    "daily",
-    "temperature_2m_max,temperature_2m_min,precipitation_probability_max"
-  );
-
-  weather.searchParams.set(
-    "timezone",
-    "auto"
-  );
-
-  weather.searchParams.set(
-    "forecast_days",
-    "2"
-  );
-
-  const response =
-    await fetch(weather);
-
-  const data =
-    await response.json();
-
-  if (!response.ok) {
-    throw new Error(
-      "Wetterdienst fehlgeschlagen."
-    );
-  }
-
-  const index =
-    day === "tomorrow"
-      ? 1
-      : 0;
-
-  return {
-    name:
-      place.name,
-
-    region:
-      place.admin1 || "",
-
-    country:
-      place.country || "",
-
-    day,
-
-    current:
-      day === "today"
-        ? data.current
-        : null,
-
-    max:
-      data.daily
-        ?.temperature_2m_max
-        ?.[index],
-
-    min:
-      data.daily
-        ?.temperature_2m_min
-        ?.[index],
-
-    rain:
-      data.daily
-        ?.precipitation_probability_max
-        ?.[index]
-  };
-}
-
-
-/* =========================================================
-   ROUTING
-   ========================================================= */
-
-function isShopifyQuery(text) {
-  const t =
-    normalize(text);
-
-  return (
-    /\bshopify\b/.test(t) ||
-    /\bumsatz\b/.test(t) ||
-    /\bbestellungen?\b/.test(t) ||
-    /\bverkäufe?\b/.test(t) ||
-    /\bverkauf\b/.test(t) ||
-    /\bbestellwert\b/.test(t)
-  );
-}
-
-
-function isWeatherQuery(text) {
-  const t =
-    normalize(text);
-
-  return (
-    /\bwetter\b/.test(t) ||
-    /\btemperatur\b/.test(t) ||
-    /\bregen\b/.test(t) ||
-    /\bgrad\b/.test(t)
-  );
-}
-
-
-function isEmailQuery(text) {
-  const t =
-    normalize(text);
-
-  return (
-    /\bmails?\b/.test(t) ||
-    /\be mail\b/.test(t) ||
-    /\bpostfach\b/.test(t)
-  );
-}
-
-
-function isCalendarQuery(text) {
-  const t =
-    normalize(text);
-
-  return (
-    /\bkalender\b/.test(t) ||
-    /\btermine?\b/.test(t) ||
-    /\bwas steht heute an\b/.test(t)
-  );
-}
-
-
-function extractWeatherLocation(
-  text
-) {
-  const normalized =
-    normalize(text);
-
-  if (
-    normalized.includes(
-      "ludwigshafen"
-    )
-  ) {
-    return "Ludwigshafen am Rhein";
-  }
-
-  const match =
-    String(text)
-      .match(
-        /\bin\s+(.+?)(?:\s+(?:heute|morgen))?[?.!,]*$/i
-      );
-
-  if (
-    match &&
-    match[1]
-  ) {
-    return match[1].trim();
-  }
-
-  return null;
-}
-
-
-/* =========================================================
-   ONE CENTRAL JARVIS ENDPOINT
-   ========================================================= */
-
-app.post(
-  "/api/ask",
-
-  async (req, res) => {
-    try {
-      const message =
-        String(
-          req.body?.message || ""
-        ).trim();
-
-      const history =
-        Array.isArray(
-          req.body?.history
-        )
-          ? req.body.history
-          : [];
-
-      if (!message) {
-        return res
-          .status(400)
-          .json({
-            error:
-              "Nachricht fehlt."
-          });
-      }
-
-      const normalized =
-        normalize(message);
-
-
-      /* -----------------------------
-         SHOPIFY
-         ----------------------------- */
-
-      if (
-        isShopifyQuery(
-          normalized
-        )
-      ) {
-        const period =
-          /\bgestern\b/.test(
-            normalized
-          )
-            ? "yesterday"
-            : "today";
-
-        const data =
-          await getShopifySummary(
-            period
-          );
-
-        const day =
-          period === "yesterday"
-            ? "Gestern"
-            : "Heute";
-
-        let reply;
-
-        if (
-          /\bwie viele\b/.test(
-            normalized
-          ) &&
-          /\bbestellungen?\b/.test(
-            normalized
-          )
-        ) {
-          reply =
-            `${day} hast du ${data.orders} Shopify-Bestellungen.`;
-
-        } else if (
-          /\bumsatz\b/.test(
-            normalized
-          )
-        ) {
-          reply =
-            `${day} hast du ${formatMoney(
-              data.revenue,
-              data.currency
-            )} Shopify-Umsatz mit ${data.orders} Bestellungen. Der durchschnittliche Bestellwert liegt bei ${formatMoney(
-              data.averageOrderValue,
-              data.currency
-            )}.`;
-
-        } else {
-          reply =
-            `${day} hast du ${data.orders} Shopify-Bestellungen mit ${formatMoney(
-              data.revenue,
-              data.currency
-            )} Umsatz.`;
-        }
-
-        return res.json({
-          ok: true,
-          route: "shopify",
-          reply,
-          data
-        });
-      }
-
-
-      /* -----------------------------
-         WEATHER
-         ----------------------------- */
-
-      if (
-        isWeatherQuery(
-          normalized
-        )
-      ) {
-        const location =
-          extractWeatherLocation(
-            message
-          );
-
-        if (!location) {
-          return res.json({
-            ok: true,
-            route:
-              "weather_clarification",
-            reply:
-              "Für welchen Ort soll ich das Wetter prüfen?"
-          });
-        }
-
-        const day =
-          /\bmorgen\b/.test(
-            normalized
-          )
-            ? "tomorrow"
-            : "today";
-
-        const data =
-          await getWeather(
-            location,
-            day
-          );
-
-        const label =
-          day === "tomorrow"
-            ? "Morgen"
-            : "Heute";
-
-        const reply =
-          `${label} in ${data.name}: maximal ${data.max} Grad, minimal ${data.min} Grad. Die höchste Regenwahrscheinlichkeit liegt bei ${data.rain} Prozent.`;
-
-        return res.json({
-          ok: true,
-          route: "weather",
-          reply,
-          data
-        });
-      }
-
-
-      /* -----------------------------
-         GMAIL
-         ----------------------------- */
-
-      if (
-        isEmailQuery(
-          normalized
-        )
-      ) {
-        return res.json({
-          ok: true,
-          route: "gmail",
-          reply:
-            "Mattl, Gmail ist im neuen JARVIS noch nicht wieder verbunden. Das machen wir als Nächstes."
-        });
-      }
-
-
-      /* -----------------------------
-         CALENDAR
-         ----------------------------- */
-
-      if (
-        isCalendarQuery(
-          normalized
-        )
-      ) {
-        return res.json({
-          ok: true,
-          route: "calendar",
-          reply:
-            "Mattl, Google Kalender ist im neuen JARVIS noch nicht wieder verbunden. Das machen wir danach."
-        });
-      }
-
-
-      /* -----------------------------
-         NORMAL HUMAN CONVERSATION
-         ----------------------------- */
-
-      const reply =
-        await generalConversation(
-          message,
-          history
-        );
-
-      return res.json({
-        ok: true,
-        route: "conversation",
-        reply
-      });
-
-    } catch (error) {
-      console.error(
-        "JARVIS ASK ERROR:",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          ok: false,
-
-          error:
-            error.message ||
-            "JARVIS konnte die Anfrage nicht bearbeiten."
-        });
-    }
-  }
-);
-
-
-/* =========================================================
-   DIRECT SHOPIFY TEST
+   SHOPIFY ENDPOINT
    ========================================================= */
 
 app.post(
@@ -1346,39 +856,317 @@ app.post(
           period
         );
 
-      return res.json({
-        configured: true,
-
-        orders:
-          data.orders,
-
-        revenue:
-          data.revenue,
-
-        average_order_value:
-          data.averageOrderValue,
-
-        currency:
-          data.currency,
-
-        period:
-          data.period
-      });
+      return res.json(
+        data
+      );
 
     } catch (error) {
       console.error(
-        "Shopify endpoint error:",
+        "Shopify summary error:",
         error
       );
 
       return res
         .status(500)
         .json({
-          configured: false,
+          configured:
+            false,
+
           error:
-            error.message
+            error.message ||
+            "Shopify-Abfrage fehlgeschlagen."
         });
     }
+  }
+);
+
+
+/* =========================================================
+   WEATHER
+   ========================================================= */
+
+app.post(
+  "/api/weather",
+
+  async (req, res) => {
+    try {
+      let location =
+        String(
+          req.body?.location ||
+          ""
+        ).trim();
+
+      const day =
+        req.body?.day ===
+          "tomorrow"
+          ? "tomorrow"
+          : "today";
+
+      if (
+        normalize(location)
+          .includes(
+            "ludwigshafen"
+          )
+      ) {
+        location =
+          "Ludwigshafen am Rhein";
+      }
+
+      if (!location) {
+        return res
+          .status(400)
+          .json({
+            error:
+              "Ort fehlt."
+          });
+      }
+
+      const geo =
+        new URL(
+          "https://geocoding-api.open-meteo.com/v1/search"
+        );
+
+      geo.searchParams.set(
+        "name",
+        location
+      );
+
+      geo.searchParams.set(
+        "count",
+        "5"
+      );
+
+      geo.searchParams.set(
+        "language",
+        "de"
+      );
+
+      geo.searchParams.set(
+        "format",
+        "json"
+      );
+
+      const geoResponse =
+        await fetch(
+          geo
+        );
+
+      const geoData =
+        await geoResponse.json();
+
+      const candidates =
+        geoData.results ||
+        [];
+
+      if (
+        !candidates.length
+      ) {
+        return res
+          .status(404)
+          .json({
+            error:
+              `Ort ${location} wurde nicht gefunden.`
+          });
+      }
+
+      let place =
+        null;
+
+      if (
+        normalize(location)
+          .includes(
+            "ludwigshafen"
+          )
+      ) {
+        place =
+          candidates.find(
+            item =>
+              item.country_code ===
+                "DE" &&
+              String(
+                item.admin1 ||
+                ""
+              )
+                .toLowerCase()
+                .includes(
+                  "rheinland"
+                )
+          );
+      }
+
+      place =
+        place ||
+        candidates.find(
+          item =>
+            item.country_code ===
+            "DE"
+        ) ||
+        candidates[0];
+
+      const weather =
+        new URL(
+          "https://api.open-meteo.com/v1/forecast"
+        );
+
+      weather.searchParams.set(
+        "latitude",
+        String(
+          place.latitude
+        )
+      );
+
+      weather.searchParams.set(
+        "longitude",
+        String(
+          place.longitude
+        )
+      );
+
+      weather.searchParams.set(
+        "current",
+        "temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m"
+      );
+
+      weather.searchParams.set(
+        "daily",
+        "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+      );
+
+      weather.searchParams.set(
+        "timezone",
+        "auto"
+      );
+
+      weather.searchParams.set(
+        "forecast_days",
+        "2"
+      );
+
+      const response =
+        await fetch(
+          weather
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          "Wetterdienst fehlgeschlagen."
+        );
+      }
+
+      const index =
+        day ===
+          "tomorrow"
+          ? 1
+          : 0;
+
+      return res.json({
+        source:
+          "Open-Meteo",
+
+        requested_day:
+          day,
+
+        location: {
+          name:
+            place.name,
+
+          region:
+            place.admin1 ||
+            "",
+
+          country:
+            place.country ||
+            ""
+        },
+
+        current:
+          day ===
+            "today"
+            ? data.current
+            : null,
+
+        forecast: {
+          date:
+            data.daily
+              ?.time?.[index],
+
+          weather_code:
+            data.daily
+              ?.weather_code?.[index],
+
+          max_temperature:
+            data.daily
+              ?.temperature_2m_max?.[index],
+
+          min_temperature:
+            data.daily
+              ?.temperature_2m_min?.[index],
+
+          precipitation_probability:
+            data.daily
+              ?.precipitation_probability_max?.[index]
+        }
+      });
+
+    } catch (error) {
+      console.error(
+        "Weather error:",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          error:
+            error.message ||
+            "Wetterabfrage fehlgeschlagen."
+        });
+    }
+  }
+);
+
+
+/* =========================================================
+   GMAIL PLACEHOLDER
+   ========================================================= */
+
+app.post(
+  "/api/important-emails",
+
+  (req, res) => {
+    return res
+      .status(503)
+      .json({
+        configured:
+          false,
+
+        message:
+          "Mattl, Gmail ist noch nicht verbunden."
+      });
+  }
+);
+
+
+/* =========================================================
+   CALENDAR PLACEHOLDER
+   ========================================================= */
+
+app.post(
+  "/api/calendar-today",
+
+  (req, res) => {
+    return res
+      .status(503)
+      .json({
+        configured:
+          false,
+
+        message:
+          "Mattl, Google Kalender ist noch nicht verbunden."
+      });
   }
 );
 
@@ -1391,20 +1179,27 @@ app.get(
   "/health",
 
   (req, res) => {
-    res.json({
-      ok: true,
+    return res.json({
+      ok:
+        true,
 
       version:
-        "JARVIS V3",
+        "JARVIS V4",
 
       architecture:
-        "record-transcribe-route-speak",
+        "realtime-speech-to-speech",
 
       language:
         "de",
 
       voice:
         "cedar",
+
+      noise_reduction:
+        "far_field",
+
+      vad_threshold:
+        0.90,
 
       shopify_configured:
         Boolean(
@@ -1420,6 +1215,10 @@ app.get(
 );
 
 
+/* =========================================================
+   ROOT
+   ========================================================= */
+
 app.get(
   "/",
 
@@ -1434,13 +1233,17 @@ app.get(
 );
 
 
+/* =========================================================
+   START
+   ========================================================= */
+
 app.listen(
   PORT,
   "0.0.0.0",
 
   () => {
     console.log(
-      `JARVIS V3 läuft auf Port ${PORT}`
+      `JARVIS V4 läuft auf Port ${PORT}`
     );
   }
 );
