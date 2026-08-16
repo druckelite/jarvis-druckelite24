@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#030406" />
   <meta name="description" content="Druckelite24 JARVIS Business Voice Assistant" />
   <title>Druckelite24 · JARVIS</title>
-  <link rel="stylesheet" href="styles.css?v=10" />
+  <link rel="stylesheet" href="styles.css?v=11" />
 </head>
 <body data-jarvis-state="offline">
 
@@ -48,25 +48,41 @@
           <div class="kpi">
             <div class="kpi-label">UMSATZ HEUTE</div>
             <div class="stat-value" id="statRevenue">—</div>
-            <div class="kpi-trend">↗ LIVE · HEUTE</div><div class="mini-line"></div>
+            <div class="kpi-trend">↗ LIVE · HEUTE</div><svg class="sparkline" viewBox="0 0 220 54" preserveAspectRatio="none" aria-hidden="true">
+         <defs><linearGradient id="sparkFill1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e70779" stop-opacity=".28"/><stop offset="100%" stop-color="#e70779" stop-opacity="0"/></linearGradient></defs>
+         <path class="spark-area" fill="url(#sparkFill1)" d="M0,45 L18,39 L32,42 L49,31 L65,35 L80,25 L96,30 L111,20 L126,26 L143,14 L160,23 L179,11 L198,18 L220,5 L220,54 L0,54 Z"/>
+         <path class="spark-path" d="M0,45 L18,39 L32,42 L49,31 L65,35 L80,25 L96,30 L111,20 L126,26 L143,14 L160,23 L179,11 L198,18 L220,5"/>
+       </svg>
           </div>
           <div class="kpi">
             <div class="kpi-label">BESTELLUNGEN HEUTE</div>
             <div class="stat-value" id="statOrders">—</div>
-            <div class="kpi-trend">↗ LIVE · HEUTE</div><div class="mini-line"></div>
+            <div class="kpi-trend">↗ LIVE · HEUTE</div><svg class="sparkline" viewBox="0 0 220 54" preserveAspectRatio="none" aria-hidden="true">
+         <defs><linearGradient id="sparkFill2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e70779" stop-opacity=".24"/><stop offset="100%" stop-color="#e70779" stop-opacity="0"/></linearGradient></defs>
+         <path class="spark-area" fill="url(#sparkFill2)" d="M0,46 L16,44 L30,35 L44,39 L58,29 L74,33 L88,24 L103,28 L118,18 L135,23 L150,15 L165,20 L180,10 L198,16 L220,6 L220,54 L0,54 Z"/>
+         <path class="spark-path" d="M0,46 L16,44 L30,35 L44,39 L58,29 L74,33 L88,24 L103,28 L118,18 L135,23 L150,15 L165,20 L180,10 L198,16 L220,6"/>
+       </svg>
           </div>
           <div class="kpi">
             <div class="kpi-label">DURCHSCHN. BESTELLWERT</div>
             <div class="stat-value stat-small" id="statAov">—</div>
-            <div class="kpi-trend">↗ AKTUELL</div><div class="mini-line"></div>
+            <div class="kpi-trend">↗ AKTUELL</div><svg class="sparkline" viewBox="0 0 220 54" preserveAspectRatio="none" aria-hidden="true">
+         <defs><linearGradient id="sparkFill3" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e70779" stop-opacity=".24"/><stop offset="100%" stop-color="#e70779" stop-opacity="0"/></linearGradient></defs>
+         <path class="spark-area" fill="url(#sparkFill3)" d="M0,43 L18,41 L35,36 L53,39 L70,31 L88,33 L106,27 L123,29 L140,20 L158,23 L176,16 L194,22 L220,8 L220,54 L0,54 Z"/>
+         <path class="spark-path" d="M0,43 L18,41 L35,36 L53,39 L70,31 L88,33 L106,27 L123,29 L140,20 L158,23 L176,16 L194,22 L220,8"/>
+       </svg>
           </div>
           <div class="kpi">
             <div class="kpi-label">GESTERN</div>
             <div class="stat-value stat-small" id="statYesterday">—</div>
-            <div class="kpi-trend">VERGLEICH</div><div class="mini-line"></div>
+            <div class="kpi-trend">VERGLEICH</div><svg class="sparkline" viewBox="0 0 220 54" preserveAspectRatio="none" aria-hidden="true">
+         <defs><linearGradient id="sparkFill4" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e70779" stop-opacity=".24"/><stop offset="100%" stop-color="#e70779" stop-opacity="0"/></linearGradient></defs>
+         <path class="spark-area" fill="url(#sparkFill4)" d="M0,46 L15,41 L31,44 L48,33 L64,37 L82,29 L98,34 L116,21 L132,26 L148,18 L165,29 L181,16 L198,22 L220,7 L220,54 L0,54 Z"/>
+         <path class="spark-path" d="M0,46 L15,41 L31,44 L48,33 L64,37 L82,29 L98,34 L116,21 L132,26 L148,18 L165,29 L181,16 L198,22 L220,7"/>
+       </svg>
           </div>
         </div>
-        <div class="chart-wrap">
+        <div class="chart-wrap compat-chart">
           <div class="chart-label">UMSATZ · LETZTE 7 TAGE</div>
           <canvas class="week-chart" id="weekChart" width="360" height="48"></canvas>
         </div>
@@ -97,37 +113,69 @@
 
       <section class="side-stack">
 
+        <section class="panel whatsapp-panel">
+          <div class="panel-head whatsapp-head">
+            <span>◉ WHATSAPP</span>
+            <span class="wa-live">● BEREIT</span>
+          </div>
+
+          <div class="wa-summary">
+            <div class="wa-logo">◉</div>
+            <div>
+              <div class="wa-title">WhatsApp Business</div>
+              <div class="wa-subtitle">LETZTE 5 NACHRICHTEN</div>
+            </div>
+            <div class="wa-count">5</div>
+          </div>
+
+          <div class="wa-list" id="whatsappList">
+            <div class="wa-row">
+              <div class="wa-avatar">01</div>
+              <div class="wa-copy"><b>Neue Kundenanfrage</b><span>WhatsApp-Konversation wird hier angezeigt.</span></div>
+              <time>—</time>
+            </div>
+            <div class="wa-row">
+              <div class="wa-avatar">02</div>
+              <div class="wa-copy"><b>Angebot & Rückfrage</b><span>Letzte Nachricht des Kunden erscheint hier.</span></div>
+              <time>—</time>
+            </div>
+            <div class="wa-row">
+              <div class="wa-avatar">03</div>
+              <div class="wa-copy"><b>Offene Unterhaltung</b><span>Wichtige Chats werden hervorgehoben.</span></div>
+              <time>—</time>
+            </div>
+            <div class="wa-row">
+              <div class="wa-avatar">04</div>
+              <div class="wa-copy"><b>Produktfrage</b><span>Kundenanfragen zu Textilien und Druck.</span></div>
+              <time>—</time>
+            </div>
+            <div class="wa-row">
+              <div class="wa-avatar">05</div>
+              <div class="wa-copy"><b>Bestellstatus</b><span>Statusfragen erscheinen direkt im Dashboard.</span></div>
+              <time>—</time>
+            </div>
+          </div>
+        </section>
+
         <section class="panel local-news-panel">
           <div class="panel-head">
             <span>◉ NACHRICHTEN · LUDWIGSHAFEN</span>
-            <span class="panel-link">ALLE ANZEIGEN</span>
+            <span class="panel-link">AKTUELL</span>
           </div>
           <div class="news-list">
             <div class="news-row">
-              <div class="news-thumb n1"></div>
-              <div class="news-copy">
-                <b>Ludwigshafen aktuell</b>
-                <span>Lokale Meldungen und wichtige Entwicklungen aus der Region.</span>
-                <time>HEUTE</time>
-              </div>
+              <div class="news-thumb news-a"></div>
+              <div class="news-copy"><b>Ludwigshafen aktuell</b><span>Lokale Meldungen und Entwicklungen aus der Region.</span><time>HEUTE</time></div>
               <i></i>
             </div>
             <div class="news-row">
-              <div class="news-thumb n2"></div>
-              <div class="news-copy">
-                <b>Wirtschaft & Unternehmen</b>
-                <span>Relevante Meldungen für Firmen und Selbstständige.</span>
-                <time>AKTUELL</time>
-              </div>
+              <div class="news-thumb news-b"></div>
+              <div class="news-copy"><b>Wirtschaft & Unternehmen</b><span>Relevante Meldungen für Firmen und Selbstständige.</span><time>AKTUELL</time></div>
               <i></i>
             </div>
             <div class="news-row">
-              <div class="news-thumb n3"></div>
-              <div class="news-copy">
-                <b>Verkehr & Region</b>
-                <span>Wichtige Hinweise aus Ludwigshafen und Umgebung.</span>
-                <time>REGION</time>
-              </div>
+              <div class="news-thumb news-c"></div>
+              <div class="news-copy"><b>Verkehr & Region</b><span>Wichtige Hinweise aus Ludwigshafen und Umgebung.</span><time>REGION</time></div>
               <i></i>
             </div>
           </div>
@@ -140,64 +188,50 @@
           </div>
           <div class="weather-body">
             <div class="wx-location">Ludwigshafen am Rhein</div>
-            <div class="wx-hero">
+            <div class="wx-main">
               <div class="wx-icon">🌤️</div>
               <div>
                 <div class="wx-temp" id="wxTemp">—°</div>
                 <div class="wx-desc" id="wxDesc">…</div>
               </div>
             </div>
-            <div class="wx-stats">
-              <div><b id="wxMax">—°</b><span>MAX</span></div>
-              <div><b id="wxMin">—°</b><span>MIN</span></div>
-              <div><b id="wxRain">—%</b><span>REGEN</span></div>
-              <div><b id="wxWind">—</b><span>WIND</span></div>
+            <div class="wx-grid">
+              <div class="wx-cell"><span id="wxMax">—°</span><label>MAX</label></div>
+              <div class="wx-cell"><span id="wxMin">—°</span><label>MIN</label></div>
+              <div class="wx-cell"><span id="wxRain">—%</span><label>REGEN</label></div>
+              <div class="wx-cell"><span id="wxWind">—</span><label>WIND</label></div>
             </div>
-            <div class="wx-week">
-              <div><span>MO</span><i>☁️</i></div>
-              <div><span>DI</span><i>🌤️</i></div>
-              <div><span>MI</span><i>☀️</i></div>
-              <div><span>DO</span><i>🌤️</i></div>
-              <div><span>FR</span><i>☀️</i></div>
+            <div class="wx-days">
+              <div><b>MO</b><i>☁️</i></div>
+              <div><b>DI</b><i>🌤️</i></div>
+              <div><b>MI</b><i>☀️</i></div>
+              <div><b>DO</b><i>🌤️</i></div>
+              <div><b>FR</b><i>☀️</i></div>
             </div>
           </div>
           <span id="sysWx" class="compat">…</span>
         </section>
 
-        <section class="tools-grid">
-          <div class="tool-card"><div class="tool-icon">∞</div><b>META ADS</b><span>3 Kampagnen aktiv</span></div>
-          <div class="tool-card whatsapp-tool"><div class="tool-icon">◉</div><b>WHATSAPP</b><span>6 ungelesene Chats</span></div>
-          <div class="tool-card"><div class="tool-icon">▣</div><b>KALENDER</b><span>Heute: 3 Termine</span></div>
-          <div class="tool-card"><div class="tool-icon">♢</div><b>ERINNERUNGEN</b><span>4 offene Erinnerungen</span></div>
-          <div class="tool-card"><div class="tool-icon">☑</div><b>AUFGABEN</b><span>7 Aufgaben offen</span></div>
-          <div class="tool-card"><div class="tool-icon">⌁</div><b>PRODUKTION</b><span>Auslastung: 78%</span></div>
-          <div class="tool-card"><div class="tool-icon">♙</div><b>KUNDENANFRAGEN</b><span>5 neue Anfragen</span></div>
-          <div class="tool-card"><div class="tool-icon">👕</div><b>TEAMSPORT</b><span>24 Teams aktiv</span></div>
-          <div class="tool-card"><div class="tool-icon">♢</div><b>BENACHRICHTIGUNGEN</b><span>7 neue Updates</span></div>
-        </section>
+      </section>
 
-      </section>
-<section class="quick-command-panel">
-        <div class="quick-label"><span>⚡</span><b>SCHNELLBEFEHLE</b></div>
-        <button class="quick-command">✉ <span>Zeig mir neue Mails</span></button>
-        <button class="quick-command">▥ <span>Wie ist der Umsatz heute?</span></button>
-        <button id="toggle" class="voice-button" type="button" aria-label="JARVIS starten oder stoppen"></button>
-        <button class="quick-command">▤ <span>Gib mir mein Briefing</span></button>
-        <button class="quick-command">➤ <span>Erstelle eine Antwort</span></button>
-      </section>
-<section class="jarvis-status-panel">
-        <div class="status-orb"><span>▥</span></div>
-        <div class="status-main">
-          <div class="status-title">JARVIS STATUS</div>
-          <div class="status-online">● ONLINE</div>
-          <div class="status-listen">ZUHÖREN AKTIVIERT</div>
-          <div class="status-wave"></div>
-          <div class="voice-log" id="log">BEREIT FÜR DEINE ANWEISUNGEN</div>
-          <div class="core-state">JARVIS · <span id="hudState">STANDBY</span></div>
+      <section class="command-dock">
+        <button class="dock-command"><span>✉</span><b>Zeig mir neue Mails</b></button>
+        <button class="dock-command"><span>▥</span><b>Wie ist der Umsatz heute?</b></button>
+
+        <div class="dock-core">
+          <div class="dock-wave wave-left"></div>
+          <button id="toggle" class="voice-button" type="button" aria-label="JARVIS starten oder stoppen"></button>
+          <div class="dock-status">
+            <div class="voice-log" id="log">JARVIS ist bereit.</div>
+            <div class="core-state">JARVIS · <span id="hudState">STANDBY</span></div>
+          </div>
+          <div class="dock-wave wave-right"></div>
         </div>
-      </section>
 
-    </main>
+        <button class="dock-command"><span>▤</span><b>Gib mir mein Briefing</b></button>
+        <button class="dock-command"><span>➤</span><b>Erstelle eine Antwort</b></button>
+      </section>
+</main>
 
     <section class="panel" id="draftPanel">
       <div class="panel-head"><span>ENTWURF</span><span class="panel-dot ok"></span></div>
