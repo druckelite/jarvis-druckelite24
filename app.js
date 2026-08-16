@@ -2,7 +2,7 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V10.1 · OPENAI REALTIME TEXT + ELEVENLABS STREAMING
+   V10.2 · OPENAI REALTIME TEXT + ELEVENLABS STREAMING + DEBUG
    ========================================================= */
 
 
@@ -29,6 +29,92 @@ const remoteAudio =
   document.querySelector(
     "#remoteAudio"
   );
+
+
+/* =========================================================
+   DEBUG HUD
+   ========================================================= */
+
+const debugHud =
+  document.createElement(
+    "div"
+  );
+
+debugHud.id =
+  "jarvisDebugHud";
+
+debugHud.style.position =
+  "fixed";
+
+debugHud.style.right =
+  "15px";
+
+debugHud.style.bottom =
+  "15px";
+
+debugHud.style.zIndex =
+  "99999";
+
+debugHud.style.background =
+  "rgba(0,0,0,0.88)";
+
+debugHud.style.color =
+  "#00ff88";
+
+debugHud.style.padding =
+  "12px 15px";
+
+debugHud.style.fontFamily =
+  "monospace";
+
+debugHud.style.fontSize =
+  "13px";
+
+debugHud.style.lineHeight =
+  "1.6";
+
+debugHud.style.border =
+  "1px solid #00ff88";
+
+debugHud.style.borderRadius =
+  "8px";
+
+debugHud.style.minWidth =
+  "280px";
+
+debugHud.innerHTML = `
+  <strong>JARVIS DEBUG</strong><br>
+  OpenAI: <span id="dbgOpenAI">❌</span><br>
+  ElevenLabs: <span id="dbgEleven">❌</span><br>
+  OpenAI Text: <span id="dbgText">❌</span><br>
+  ElevenLabs Audio: <span id="dbgAudio">❌</span><br>
+  Wiedergabe: <span id="dbgPlayback">❌</span><br>
+  Letztes Event: <span id="dbgEvent">-</span>
+`;
+
+document.body.appendChild(
+  debugHud
+);
+
+
+function debugSet(
+  id,
+  value
+) {
+
+  const el =
+    document.getElementById(
+      id
+    );
+
+  if (
+    el
+  ) {
+
+    el.textContent =
+      value;
+  }
+}
 
 
 /* =========================================================
@@ -458,8 +544,6 @@ function getGreeting() {
   const hour =
     getBerlinHour();
 
-  // Mattl, Meister und Chef häufig.
-  // Daddy bewusst selten.
   const name =
     pickRandom([
       "Mattl",
@@ -487,7 +571,6 @@ function getGreeting() {
     ]);
   }
 
-
   if (
     hour >= 11 &&
     hour < 18
@@ -498,11 +581,10 @@ function getGreeting() {
       `Da ist er ja, ${name}. Systeme bereit. Gib mir ein Ziel.`,
       `${name}, willkommen zurück in der Kommandozentrale. Wo brennt es diesmal?`,
       `JARVIS meldet sich dienstbereit, ${name}. Zeit, ein bisschen Unordnung in Produktivität zu verwandeln.`,
-      `${name}, alles bereit. Sag mir, wen oder was wir heute noch auseinandernehmen.`,
+      `${name}, alles bereit. Sag mir, was wir heute noch auseinandernehmen.`,
       `Willkommen zurück, ${name}. Maschinen wach, JARVIS wach. Das kann nur interessant werden.`
     ]);
   }
-
 
   if (
     hour >= 18 &&
@@ -518,7 +600,6 @@ function getGreeting() {
       `${name}, Systeme aktiv. Wenn heute noch etwas eskaliert, sind wir wenigstens vorbereitet.`
     ]);
   }
-
 
   return pickRandom([
     `${name} … beeindruckend. Andere schlafen. Wir bauen weiter.`,
@@ -1170,6 +1251,17 @@ async function playNextElevenAudio() {
   );
 
 
+  debugSet(
+    "dbgPlayback",
+    "⏳"
+  );
+
+  debugSet(
+    "dbgEvent",
+    "Audio wird vorbereitet"
+  );
+
+
   const blob =
     base64ToBlob(
       next,
@@ -1286,6 +1378,17 @@ async function playNextElevenAudio() {
       );
 
 
+      debugSet(
+        "dbgPlayback",
+        "❌"
+      );
+
+      debugSet(
+        "dbgEvent",
+        "Audio Wiedergabe Fehler"
+      );
+
+
       elevenAudioPlaying =
         false;
 
@@ -1303,6 +1406,18 @@ async function playNextElevenAudio() {
     await currentElevenAudio
       .play();
 
+
+    debugSet(
+      "dbgPlayback",
+      "✅"
+    );
+
+    debugSet(
+      "dbgEvent",
+      "Audio spielt"
+    );
+
+
   } catch (
     error
   ) {
@@ -1310,6 +1425,17 @@ async function playNextElevenAudio() {
     console.warn(
       "ElevenLabs Audio autoplay:",
       error
+    );
+
+
+    debugSet(
+      "dbgPlayback",
+      "❌"
+    );
+
+    debugSet(
+      "dbgEvent",
+      "Browser blockiert Audio"
     );
 
 
@@ -1339,6 +1465,12 @@ function disconnectElevenLabs() {
 
   elevenClosing =
     true;
+
+
+  debugSet(
+    "dbgEleven",
+    "❌"
+  );
 
 
   if (
@@ -1372,6 +1504,12 @@ function disconnectElevenLabs() {
 async function connectElevenLabs() {
 
   disconnectElevenLabs();
+
+
+  debugSet(
+    "dbgEvent",
+    "ElevenLabs Token wird geladen"
+  );
 
 
   const config =
@@ -1413,10 +1551,6 @@ async function connectElevenLabs() {
     "mp3_44100_128"
   );
 
-
-  /* =======================================================
-     WICHTIGE V10.1 KORREKTUR
-     ======================================================= */
 
   url.searchParams.set(
     "single_use_token",
@@ -1476,6 +1610,12 @@ async function connectElevenLabs() {
               } catch {}
 
 
+              debugSet(
+                "dbgEvent",
+                "ElevenLabs Timeout"
+              );
+
+
               reject(
                 new Error(
                   "ElevenLabs WebSocket Timeout."
@@ -1510,6 +1650,17 @@ async function connectElevenLabs() {
 
           elevenReady =
             true;
+
+
+          debugSet(
+            "dbgEleven",
+            "✅"
+          );
+
+          debugSet(
+            "dbgEvent",
+            "ElevenLabs verbunden"
+          );
 
 
           socket.send(
@@ -1584,6 +1735,17 @@ async function connectElevenLabs() {
             data.audio
           ) {
 
+            debugSet(
+              "dbgAudio",
+              "✅"
+            );
+
+            debugSet(
+              "dbgEvent",
+              "ElevenLabs Audio kommt"
+            );
+
+
             elevenAudioQueue.push(
               data.audio
             );
@@ -1600,6 +1762,11 @@ async function connectElevenLabs() {
             console.log(
               "ElevenLabs Antwort fertig."
             );
+
+            debugSet(
+              "dbgEvent",
+              "ElevenLabs Antwort fertig"
+            );
           }
 
 
@@ -1611,6 +1778,14 @@ async function connectElevenLabs() {
               "ElevenLabs Serverfehler:",
               data.error
             );
+
+
+            debugSet(
+              "dbgEvent",
+              `ElevenLabs Fehler: ${String(
+                data.error
+              )}`
+            );
           }
         };
 
@@ -1621,6 +1796,17 @@ async function connectElevenLabs() {
           console.error(
             "ElevenLabs WebSocket Fehler:",
             error
+          );
+
+
+          debugSet(
+            "dbgEleven",
+            "❌"
+          );
+
+          debugSet(
+            "dbgEvent",
+            "ElevenLabs WebSocket Fehler"
           );
 
 
@@ -1653,6 +1839,12 @@ async function connectElevenLabs() {
             false;
 
 
+          debugSet(
+            "dbgEleven",
+            "❌"
+          );
+
+
           if (
             !elevenClosing
           ) {
@@ -1661,6 +1853,12 @@ async function connectElevenLabs() {
               "ElevenLabs WebSocket geschlossen.",
               event.code,
               event.reason
+            );
+
+
+            debugSet(
+              "dbgEvent",
+              `ElevenLabs geschlossen: ${event.code}`
             );
           }
         };
@@ -1702,6 +1900,13 @@ function sendTextToElevenLabs(
       "ElevenLabs nicht bereit."
     );
 
+
+    debugSet(
+      "dbgEvent",
+      "ElevenLabs nicht bereit"
+    );
+
+
     return;
   }
 
@@ -1727,6 +1932,12 @@ function sendTextToElevenLabs(
     console.error(
       "ElevenLabs Text Sendefehler:",
       error
+    );
+
+
+    debugSet(
+      "dbgEvent",
+      "ElevenLabs Text Sendefehler"
     );
   }
 }
@@ -1761,6 +1972,12 @@ function flushElevenLabs() {
     console.warn(
       "ElevenLabs Flush:",
       error
+    );
+
+
+    debugSet(
+      "dbgEvent",
+      "ElevenLabs Flush Fehler"
     );
   }
 }
@@ -1876,6 +2093,12 @@ async function executeRealtimeTool(
 
   setMicrophoneEnabled(
     false
+  );
+
+
+  debugSet(
+    "dbgEvent",
+    `Tool: ${toolName}`
   );
 
 
@@ -2086,6 +2309,16 @@ function handleRealtimeEvent(
         "Realtime Session erstellt."
       );
 
+      debugSet(
+        "dbgOpenAI",
+        "✅"
+      );
+
+      debugSet(
+        "dbgEvent",
+        "OpenAI Session erstellt"
+      );
+
       break;
 
 
@@ -2118,6 +2351,12 @@ function handleRealtimeEvent(
         "Ich höre zu …"
       );
 
+
+      debugSet(
+        "dbgEvent",
+        "Sprache erkannt"
+      );
+
       break;
 
 
@@ -2143,6 +2382,12 @@ function handleRealtimeEvent(
 
       setMicrophoneEnabled(
         false
+      );
+
+
+      debugSet(
+        "dbgEvent",
+        "Sprache beendet"
       );
 
       break;
@@ -2176,6 +2421,12 @@ function handleRealtimeEvent(
         "JARVIS denkt …"
       );
 
+
+      debugSet(
+        "dbgEvent",
+        "OpenAI erzeugt Antwort"
+      );
+
       break;
 
 
@@ -2193,6 +2444,17 @@ function handleRealtimeEvent(
 
         currentResponseText +=
           delta;
+
+
+        debugSet(
+          "dbgText",
+          "✅"
+        );
+
+        debugSet(
+          "dbgEvent",
+          "OpenAI Text kommt"
+        );
 
 
         sendTextToElevenLabs(
@@ -2217,6 +2479,12 @@ function handleRealtimeEvent(
 
 
       flushElevenLabs();
+
+
+      debugSet(
+        "dbgEvent",
+        "OpenAI Text fertig"
+      );
 
       break;
 
@@ -2252,6 +2520,12 @@ function handleRealtimeEvent(
 
         setLog(
           "Live-Daten werden geladen …"
+        );
+
+
+        debugSet(
+          "dbgEvent",
+          "Tool wird verarbeitet"
         );
 
 
@@ -2329,6 +2603,15 @@ function handleRealtimeEvent(
         false;
 
 
+      debugSet(
+        "dbgEvent",
+        `OpenAI Fehler: ${
+          event.error?.message ||
+          "unbekannt"
+        }`
+      );
+
+
       setLog(
         event.error?.message ||
         "Realtime Fehler."
@@ -2390,10 +2673,6 @@ async function connectRealtime() {
     pc;
 
 
-  /* ---------------------------------------------------------
-     MICROPHONE TRACK
-     --------------------------------------------------------- */
-
   if (
     !micStream
   ) {
@@ -2423,10 +2702,6 @@ async function connectRealtime() {
   );
 
 
-  /* ---------------------------------------------------------
-     DATA CHANNEL
-     --------------------------------------------------------- */
-
   const dc =
     pc.createDataChannel(
       "oai-events"
@@ -2447,6 +2722,16 @@ async function connectRealtime() {
 
       realtimeConnected =
         true;
+
+      debugSet(
+        "dbgOpenAI",
+        "✅"
+      );
+
+      debugSet(
+        "dbgEvent",
+        "OpenAI verbunden"
+      );
     }
   );
 
@@ -2461,6 +2746,11 @@ async function connectRealtime() {
 
       realtimeConnected =
         false;
+
+      debugSet(
+        "dbgOpenAI",
+        "❌"
+      );
     }
   );
 
@@ -2472,6 +2762,16 @@ async function connectRealtime() {
       console.error(
         "OpenAI DataChannel Fehler:",
         error
+      );
+
+      debugSet(
+        "dbgOpenAI",
+        "❌"
+      );
+
+      debugSet(
+        "dbgEvent",
+        "OpenAI DataChannel Fehler"
       );
     }
   );
@@ -2501,10 +2801,6 @@ async function connectRealtime() {
   );
 
 
-  /* ---------------------------------------------------------
-     CREATE OFFER
-     --------------------------------------------------------- */
-
   const offer =
     await pc.createOffer();
 
@@ -2513,10 +2809,6 @@ async function connectRealtime() {
     offer
   );
 
-
-  /* ---------------------------------------------------------
-     OPENAI SESSION
-     --------------------------------------------------------- */
 
   const response =
     await fetch(
@@ -2546,6 +2838,11 @@ async function connectRealtime() {
     !response.ok
   ) {
 
+    debugSet(
+      "dbgEvent",
+      "OpenAI Session Fehler"
+    );
+
     throw new Error(
       answerSdp ||
       "OpenAI Realtime Verbindung fehlgeschlagen."
@@ -2568,10 +2865,6 @@ async function connectRealtime() {
     answer
   );
 
-
-  /* ---------------------------------------------------------
-     WAIT DATA CHANNEL
-     --------------------------------------------------------- */
 
   const start =
     Date.now();
@@ -2605,6 +2898,17 @@ async function connectRealtime() {
     true;
 
 
+  debugSet(
+    "dbgOpenAI",
+    "✅"
+  );
+
+  debugSet(
+    "dbgEvent",
+    "OpenAI Realtime verbunden"
+  );
+
+
   console.log(
     "OpenAI Realtime verbunden."
   );
@@ -2619,6 +2923,12 @@ function disconnectRealtime() {
 
   realtimeConnected =
     false;
+
+
+  debugSet(
+    "dbgOpenAI",
+    "❌"
+  );
 
 
   if (
@@ -2696,6 +3006,12 @@ function cancelCurrentResponse() {
     setMicrophoneEnabled(
       true
     );
+
+
+    debugSet(
+      "dbgEvent",
+      "Antwort abgebrochen"
+    );
   }
 }
 
@@ -2727,6 +3043,12 @@ function requestExactSpeech(
     dataChannel.readyState !==
       "open"
   ) {
+
+    debugSet(
+      "dbgEvent",
+      "Direkt an ElevenLabs"
+    );
+
 
     speakTextWithElevenLabs(
       clean
@@ -2793,6 +3115,12 @@ async function speakGreeting() {
 
   setLog(
     "JARVIS startet …"
+  );
+
+
+  debugSet(
+    "dbgEvent",
+    "Begrüßung wird vorbereitet"
   );
 
 
@@ -3121,6 +3449,12 @@ function handleUserInterruption() {
   );
 
 
+  debugSet(
+    "dbgEvent",
+    "JARVIS wurde unterbrochen"
+  );
+
+
   cancelCurrentResponse();
 
 
@@ -3207,6 +3541,37 @@ async function startJarvis() {
     false;
 
 
+  debugSet(
+    "dbgOpenAI",
+    "❌"
+  );
+
+  debugSet(
+    "dbgEleven",
+    "❌"
+  );
+
+  debugSet(
+    "dbgText",
+    "❌"
+  );
+
+  debugSet(
+    "dbgAudio",
+    "❌"
+  );
+
+  debugSet(
+    "dbgPlayback",
+    "❌"
+  );
+
+  debugSet(
+    "dbgEvent",
+    "JARVIS startet"
+  );
+
+
   setButtonActive(
     true
   );
@@ -3229,31 +3594,35 @@ async function startJarvis() {
 
   try {
 
-    /* Intro direkt aus dem Klick-Kontext starten */
-
     const introPromise =
       startIntro();
 
 
-    /* Mikrofon */
-
     await createMicrophoneStream();
 
-
-    /* ElevenLabs */
 
     setLog(
       "ElevenLabs wird verbunden …"
     );
 
 
+    debugSet(
+      "dbgEvent",
+      "ElevenLabs wird verbunden"
+    );
+
+
     await connectElevenLabs();
 
 
-    /* OpenAI */
-
     setLog(
       "OpenAI Realtime wird verbunden …"
+    );
+
+
+    debugSet(
+      "dbgEvent",
+      "OpenAI wird verbunden"
     );
 
 
@@ -3274,6 +3643,12 @@ async function startJarvis() {
 
     setJarvisState(
       "online"
+    );
+
+
+    debugSet(
+      "dbgEvent",
+      "JARVIS Online"
     );
 
 
@@ -3301,6 +3676,15 @@ async function startJarvis() {
     setLog(
       error.message ||
       "JARVIS konnte nicht gestartet werden."
+    );
+
+
+    debugSet(
+      "dbgEvent",
+      `STARTFEHLER: ${
+        error.message ||
+        "unbekannt"
+      }`
     );
 
 
@@ -3401,6 +3785,12 @@ async function stopJarvis(
     setLog(
       "JARVIS ist offline."
     );
+
+
+    debugSet(
+      "dbgEvent",
+      "JARVIS Offline"
+    );
   }
 
 
@@ -3491,6 +3881,12 @@ setLog(
 );
 
 
+debugSet(
+  "dbgEvent",
+  "Bereit"
+);
+
+
 /* =========================================================
    VERSION
    ========================================================= */
@@ -3501,7 +3897,7 @@ console.log(
 
 
 console.log(
-  "JARVIS APP V10.1 · OPENAI REALTIME + ELEVENLABS"
+  "JARVIS APP V10.2 DEBUG · OPENAI REALTIME + ELEVENLABS"
 );
 
 
@@ -3522,6 +3918,11 @@ console.log(
 
 console.log(
   "Inactivity Timeout: 180 Sekunden"
+);
+
+
+console.log(
+  "Debug HUD: aktiv"
 );
 
 
