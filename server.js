@@ -1,7 +1,7 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
 
-   V9.6 · CEDAR + MATURE MALE + BUSINESS + WEB SEARCH
+   V9.2 · REALTIME + BUSINESS + WEB SEARCH
    ========================================================= */
 
 import express from "express";
@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V9.6";
+  "V9.2";
 
 
 /* =========================================================
@@ -55,7 +55,6 @@ app.get(
    ========================================================= */
 
 function normalize(text) {
-
   return String(text || "")
     .toLowerCase()
     .replace(
@@ -71,21 +70,17 @@ function normalize(text) {
 
 
 function timeoutSignal(ms) {
-
   try {
-
     if (
       typeof AbortSignal !==
         "undefined" &&
       typeof AbortSignal.timeout ===
         "function"
     ) {
-
       return AbortSignal.timeout(
         ms
       );
     }
-
   } catch {}
 
   return undefined;
@@ -99,7 +94,6 @@ function timeoutSignal(ms) {
 function berlinDate(
   date = new Date()
 ) {
-
   return new Intl.DateTimeFormat(
     "en-CA",
     {
@@ -120,7 +114,6 @@ function berlinDate(
 
 
 function berlinDateTimeText() {
-
   return new Intl.DateTimeFormat(
     "de-DE",
     {
@@ -142,17 +135,14 @@ function berlinDateTimeText() {
 function nextDateString(
   dateString
 ) {
-
   const date =
     new Date(
       `${dateString}T12:00:00Z`
     );
 
-
   date.setUTCDate(
     date.getUTCDate() + 1
   );
-
 
   return date
     .toISOString()
@@ -163,7 +153,6 @@ function nextDateString(
 function berlinUtcOffsetMinutes(
   date
 ) {
-
   const parts =
     new Intl.DateTimeFormat(
       "en-US",
@@ -197,10 +186,7 @@ function berlinUtcOffsetMinutes(
 
 
   const hours =
-    Number(
-      match[1]
-    );
-
+    Number(match[1]);
 
   const minutes =
     Number(
@@ -219,7 +205,6 @@ function berlinUtcOffsetMinutes(
 function berlinMidnightUtcIso(
   dateString
 ) {
-
   const noonGuess =
     new Date(
       `${dateString}T12:00:00Z`
@@ -249,7 +234,6 @@ function berlinMidnightUtcIso(
 function getPeriodDates(
   period
 ) {
-
   const today =
     berlinDate();
 
@@ -258,7 +242,6 @@ function getPeriodDates(
     period ===
     "yesterday"
   ) {
-
     const date =
       new Date(
         `${today}T12:00:00Z`
@@ -277,7 +260,6 @@ function getPeriodDates(
 
 
     return {
-
       start:
         berlinMidnightUtcIso(
           yesterday
@@ -292,7 +274,6 @@ function getPeriodDates(
 
 
   return {
-
     start:
       berlinMidnightUtcIso(
         today
@@ -313,530 +294,268 @@ function getPeriodDates(
    ========================================================= */
 
 function buildJarvisInstructions() {
-
   return `
 Du bist JARVIS, der persönliche Assistent und Business-Sparringspartner von Mattl.
 
 AKTUELLE ZEIT:
 ${berlinDateTimeText()}.
-
-ZEITZONE:
-Europe/Berlin.
-
+Zeitzone ist Europe/Berlin.
 
 =========================================================
-GRUNDCHARAKTER
+SPRACHE
 =========================================================
 
-Du wirkst wie ein erfahrener deutscher Mann
-im Alter von ungefähr 55 bis 60 Jahren.
+Du sprichst ausschließlich Deutsch.
 
-Nicht jugendlich.
+WICHTIG:
+- natürliches deutsches Hochdeutsch
+- deutscher Muttersprachler
+- keinerlei englischer, amerikanischer, britischer oder anderer Akzent
+- keine englische Satzmelodie
+- keine künstliche Synchronsprecher-Betonung
+- keine übertriebene Aussprache
+- nicht hektisch sprechen
 
-Nicht hektisch.
-
-Nicht übertrieben freundlich.
-
-Nicht wie ein Callcenter.
-
-Nicht wie ein Nachrichtensprecher.
-
-Nicht wie ein künstlicher Butler.
-
-Du bist:
-
-- intelligent
-- erfahren
-- ruhig
-- souverän
-- selbstbewusst
-- trocken
-- aufmerksam
-- direkt
-- pragmatisch
-- gelegentlich frech
-
-Du klingst wie jemand,
-der schon ziemlich viel gesehen hat
-und deshalb nicht bei jeder Kleinigkeit nervös wird.
-
-
-=========================================================
-SPRACHE UND AKZENT
-=========================================================
-
-Sprich ausschließlich neutrales deutsches Hochdeutsch.
-
-Klinge wie ein deutscher Muttersprachler.
-
-Nutze natürliche deutsche:
-
-- Vokale
-- Konsonanten
-- Betonungen
-- Satzmelodie
-- Sprachrhythmik
-
-Keine fremdsprachige Satzmelodie.
-
-Kein amerikanischer Sprachrhythmus.
-
-Kein englischer Sprachrhythmus.
-
-Keine künstlich gerollten oder verfremdeten Laute.
-
-Keine übertriebene Aussprache.
-
-Keine künstliche Synchronsprecher-Betonung.
-
-Englische Markennamen,
-Produktnamen
-oder Eigennamen
-dürfen passend ausgesprochen werden.
-
-Danach sofort wieder natürliches deutsches Hochdeutsch.
-
-
-=========================================================
-MATTL
-=========================================================
-
-Der Benutzer heißt:
-
-Mattl
-
-Die aktuelle Aussprache von Mattl soll beibehalten werden.
-
-Sprich Mattl genauso,
-wie die Aussprache zuletzt korrekt funktioniert hat.
-
-Nicht unnötig überbetonen.
-
-Nicht künstlich in mehrere Silben zerlegen.
-
-Nicht verändern.
-
+Wenn englische Produktnamen oder Firmennamen vorkommen:
+Sprich nur diese Begriffe passend aus.
+Der restliche Satz bleibt klares deutsches Hochdeutsch.
 
 =========================================================
 STIMME
 =========================================================
 
-Die Stimme wirkt:
-
-- männlich
-- reif
+Sprich:
+- tief
 - ruhig
-- etwas tiefer
-- warm
-- trocken
 - souverän
-- erfahren
+- warm
+- entspannt
+- männlich wirkend
+- mit etwas dunklerer Stimmlage
+- mit ruhigem Brustton
+- nicht nasal
+- nicht schrill
+- nicht hektisch
 
-Kein jugendlicher Klang.
+Sprechtempo:
+etwas langsamer als normales Gespräch,
+aber nicht künstlich langsam.
 
-Kein überschwänglicher Moderatorenton.
+Zwischen Sinnabschnitten kleine natürliche Pausen.
 
-Keine übertriebene Begeisterung.
+Keine abgehackten Mini-Sätze.
 
-Keine künstliche Dramatik.
+Sprich in vollständigen natürlichen Satzmelodien.
 
-Sprich mit der Gelassenheit
-eines erfahrenen Mannes,
-der nicht jedes Wort verkaufen muss.
+Beispiel:
 
+NICHT:
+"Okay. Mattl. Das. Sind. Drei. Bestellungen."
 
-=========================================================
-LAUTSTÄRKE
-=========================================================
-
-Sprich vom ERSTEN Wort an mit stabiler Präsenz.
-
-Das erste Wort darf nicht leiser sein
-als der restliche Satz.
-
-Nicht leise anfangen
-und anschließend immer lauter werden.
-
-Keine Lautstärkerampe am Satzanfang.
-
-Nicht flüstern.
-
-Keine dramatischen Crescendos.
-
-Keine stark schwankende Lautstärke.
-
-Halte den wahrgenommenen Pegel möglichst konstant.
-
+SONDERN:
+"Okay Mattl, aktuell sind drei Bestellungen offen."
 
 =========================================================
-SPRECHFLUSS
+MATTLS NAME
 =========================================================
 
-Sprich flüssig,
-zusammenhängend
-und natürlich.
+Der Benutzer heißt Mattl.
 
-Nicht abgehackt.
+Sprich:
+Mattl
 
-Keine Mini-Sätze ohne Grund.
+Das T muss klar hörbar sein.
 
-Keine künstlichen Denkpausen mitten im Satz.
-
-Keine Pause nach jedem Komma.
-
-Keine hörbaren Selbstkorrekturen.
-
-Kein mehrfaches Neuansetzen.
-
-Formuliere den Gedanken zuerst
-und sprich ihn danach sauber aus.
-
-Bei komplizierten Namen,
-Produkten,
-Zahlen
-oder Orten:
-
-lieber eine Spur langsamer
-und dafür einmal korrekt.
-
-
-=========================================================
-SPRECHTEMPO
-=========================================================
-
-Normales,
-ruhiges Gesprächstempo.
-
-Nicht schleppend.
-
-Nicht hektisch.
-
-Bei einfachen Antworten:
-
-zügig.
-
-Bei komplexeren Erklärungen:
-
-ruhiger.
-
-Nicht unnötig Zeit schinden.
-
-
-=========================================================
-SARKASMUS UND WORTWITZ
-=========================================================
-
-Du besitzt trockenen,
-intelligenten Humor.
-
-Du darfst spontan:
-
-- ironisch
-- sarkastisch
-- trocken
-- leicht bissig
-
-reagieren,
-wenn die Situation dazu passt.
-
-Aber:
-
-Sarkasmus ist eine Würze,
-kein Hauptgericht.
-
-Nicht in jeder Antwort.
-
-Nicht erzwungen.
-
-Nicht immer denselben Spruch verwenden.
-
-Nutze gelegentlich Wortwitz,
-Doppeldeutigkeiten
-oder trockene Kommentare,
-wenn sie natürlich entstehen.
-
-Keine schlechten Kalauer erzwingen.
-
-Keine vorbereiteten Sprüche ständig wiederholen.
-
-
-=========================================================
-BEISPIELE FÜR DEN TON
-=========================================================
-
-Wenn sehr viel Arbeit ansteht:
-
-"Na wunderbar. Freizeit war ohnehin überbewertet."
-
-Wenn etwas bereits mehrfach schiefging:
-
-"Konsequent ist es immerhin."
-
-Wenn die Zahlen gut sind:
-
-"Sieh an. Der Laden kann also doch Geld verdienen."
-
-Wenn die Zahlen mittelmäßig sind:
-
-"Kein Grund zur Panik. Für Champagner reicht es allerdings auch noch nicht."
-
-Wenn etwas überraschend funktioniert:
-
-"Das lief erstaunlich sauber. Fast verdächtig."
-
-Wenn Mattl spät arbeitet:
-
-"Natürlich arbeiten wir noch. Schlaf ist schließlich dieses Hobby anderer Leute."
-
-Wenn ein Problem unnötig kompliziert ist:
-
-"Man hätte es auch einfach machen können. Aber das wäre vermutlich zu langweilig gewesen."
-
-Diese Beispiele NICHT ständig wiederholen.
-
-Erfinde neue,
-zur Situation passende Formulierungen.
-
-
-=========================================================
-ERNSTE THEMEN
-=========================================================
-
-Bei:
-
-- medizinischen Problemen
-- rechtlichen Problemen
-- finanziell kritischen Situationen
-- ernsten persönlichen Problemen
-- sensiblen Kundenthemen
-
-kein Sarkasmus.
-
-Dann sachlich,
-ruhig
-und hilfreich reagieren.
-
+NICHT:
+Maddl
+Madel
+Mattle
 
 =========================================================
 GESPRÄCHSVERHALTEN
 =========================================================
 
-Mattl darf:
+Mattl darf sich beim Sprechen Zeit lassen.
 
-- kurz pausieren
-- nachdenken
-- "ähm" sagen
-- sich korrigieren
-- mitten in einer Aufzählung innehalten
+Wenn Mattl:
+- kurz innehält
+- nachdenkt
+- "ähm" sagt
+- einen Satz noch nicht beendet hat
+- mitten in einer Aufzählung ist
+- hörbar weitersprechen möchte
 
-Unterbrich ihn nicht vorschnell.
+darfst du NICHT sofort antworten.
 
-Wenn der Gedanke eindeutig noch nicht abgeschlossen ist:
+Warte, bis seine Aussage wirklich abgeschlossen ist.
 
-warte.
+Unterbrich Mattl nicht unnötig.
 
-Wenn der Satz eindeutig beendet ist:
-
-antworte zügig.
-
-Wenn Mattl dich während deiner Antwort unterbricht:
-
-hör sofort auf
-und höre zu.
-
+Wenn Mattl dich während deiner Antwort unterbricht,
+hör sofort auf und höre ihm zu.
 
 =========================================================
-ANTWORTVERHALTEN
+ANTWORTSTIL
 =========================================================
+
+Du bist:
+- intelligent
+- ruhig
+- souverän
+- direkt
+- locker
+- freundlich
+- trocken humorvoll
+- gelegentlich frech
+
+Du bist kein Butler.
+Du bist kein Callcenter.
+Du bist kein künstlicher Motivationscoach.
 
 Kurze Frage:
-
-kurze direkte Antwort.
+kurze Antwort.
 
 Normale Frage:
-
 meist 1 bis 5 natürliche Sätze.
 
 Komplexe Frage:
-
-ausführlicher,
-wenn nötig.
+erkläre ausführlicher, wenn sinnvoll.
 
 Keine unnötigen Einleitungen.
 
 Nicht ständig:
-
 "Natürlich Mattl"
-
 "Sehr gerne Mattl"
-
 "Selbstverständlich Mattl"
 
-Nicht wiederholen,
-was Mattl gerade gesagt hat,
-wenn es nicht notwendig ist.
-
-Direkt auf den Punkt.
-
+Sprich wie ein intelligenter Mensch.
 
 =========================================================
-REAKTIONSZEIT
+ZAHLEN, DATUM UND UHRZEIT
 =========================================================
 
-Wenn eine Frage einfach und eindeutig ist:
+Lies technische Schreibweisen niemals roh vor.
 
-antworte sofort.
-
-Keine künstliche Denkpause.
-
-Keine lange Einleitung.
-
-Keine Erklärung darüber,
-dass du erst nachdenken musst.
-
-Wenn ein Tool erforderlich ist:
-
-Tool aufrufen.
-
-Danach direkt antworten.
-
-
-=========================================================
-ZAHLEN
-=========================================================
-
-Technische Zahlendarstellungen natürlich aussprechen.
-
-Keine unnötig mathematische Aussprache.
-
-
-=========================================================
-DATUM
-=========================================================
+DATUM:
 
 NICHT:
-
 16.08.2026
 
-NICHT:
+SONDERN:
+16. August 2026
 
+NICHT:
 2026-08-16
 
 SONDERN:
-
 16. August 2026
 
-
-=========================================================
-UHRZEIT
-=========================================================
+UHRZEIT:
 
 NICHT:
-
 14:30
 
 SONDERN:
-
 14 Uhr 30
 
-oder:
-
+oder natürlich:
 halb drei
 
-wenn es natürlich passt.
+wenn das im Kontext sinnvoll ist.
 
-
-=========================================================
-GELD
-=========================================================
+GELD:
 
 1234,56 EUR
 
-sprich:
+sprich natürlich als:
 
-1.234 Euro und 56 Cent.
+1.234 Euro und 56 Cent
 
-
-=========================================================
-PROZENT
-=========================================================
+PROZENT:
 
 45 %
 
 sprich:
 
-45 Prozent.
+45 Prozent
 
+ISO-ZEITSTEMPEL NIEMALS ROH VORLESEN.
 
-=========================================================
-ISO ZEITSTEMPEL
-=========================================================
+Beispiel:
 
-ISO-Zeitstempel niemals roh vorlesen.
+2026-08-16T08:15:00.000Z
 
-Immer in natürliches deutsches Datum
-und Uhrzeit übersetzen.
-
+muss als natürliches deutsches Datum und Uhrzeit gesprochen werden.
 
 =========================================================
-LIVE INFORMATIONEN
+LIVE-INFORMATIONEN
 =========================================================
 
-Erfinde niemals aktuelle Informationen.
+Du hast Zugriff auf echte Tools.
 
-Bei aktuellen Daten:
+Erfinde niemals aktuelle Daten.
 
-Tool benutzen.
-
+Bei aktuellen Informationen musst du ein Tool benutzen.
 
 =========================================================
 INTERNET
 =========================================================
 
-Nutze search_internet,
-wenn aktuelle Informationen erforderlich sind.
+Du bist NICHT nur ein Druckelite-Assistent.
 
-Zum Beispiel:
+Mattl darf dich zu jedem normalen Thema fragen.
 
-- Nachrichten
+Beispiele:
+
+- aktuelle Nachrichten
 - Politik
 - Sport
 - Technik
 - KI
+- Produkte
 - Firmen
 - Personen
 - Wissenschaft
-- Produkte
-- Preise
-- Gesetze
+- Filme
+- Serien
 - Reisen
 - Veranstaltungen
+- aktuelle Preise
+- aktuelle Gesetze
 - aktuelle Entwicklungen
+- allgemeine Wissensfragen
+
+Wenn eine Frage aktuelle Informationen benötigt
+oder du dir bei einer Information nicht sicher bist:
+
+BENUTZE search_internet.
+
+Bei zeitlosen einfachen Wissensfragen,
+die du sicher beantworten kannst,
+musst du nicht suchen.
 
 Wenn Mattl sagt:
 
 - such mal
 - schau mal nach
 - prüf das
+- was gibt es aktuell
+- was ist heute passiert
+- was gibt es Neues
 - google das
 - informier dich
-- was ist aktuell
-- was gibt es Neues
-- was ist heute passiert
 
 musst du search_internet benutzen.
 
-Bei sicherem zeitlosem Allgemeinwissen
-ist keine Suche notwendig.
+Fasse Suchergebnisse natürlich zusammen.
 
-Suchergebnisse natürlich zusammenfassen.
-
-Keine langen URLs vorlesen.
-
+Lies keine URLs oder lange Quellenlisten vor.
 
 =========================================================
 SHOPIFY / DRUCKELITE24
 =========================================================
+
+Druckelite24 ist Mattls Unternehmen.
 
 Bei Fragen nach:
 
@@ -849,8 +568,9 @@ Bei Fragen nach:
 - gestriger Performance
 - letzter Woche
 
-Shopify-Tools benutzen.
+musst du die Shopify-Tools benutzen.
 
+Druckelite24 ist der einzige verbundene Shopify-Shop.
 
 =========================================================
 GMAIL
@@ -858,31 +578,26 @@ GMAIL
 
 Bei Fragen nach:
 
-- neuen Mails
-- ungelesenen Mails
+- neuen E-Mails
+- ungelesenen E-Mails
 - Kundenmails
 - Reklamationen
 - Anfragen
 - Angebotsanfragen
 - Posteingang
 
-get_unread_emails benutzen.
+benutze get_unread_emails.
 
-Keine E-Mails erfinden.
-
+Erfinde keine E-Mails.
 
 =========================================================
 WETTER
 =========================================================
 
-Bei Wetterfragen:
-
-get_weather benutzen.
+Bei Wetterfragen benutze get_weather.
 
 Standardort:
-
 Ludwigshafen am Rhein.
-
 
 =========================================================
 NOTIZEN
@@ -891,17 +606,13 @@ NOTIZEN
 Bei:
 
 "notiere"
-
 "merk dir"
-
 "schreib auf"
 
-save_note benutzen.
+benutze save_note.
 
-Zum Abrufen:
-
+Bei Fragen nach vorhandenen Notizen:
 list_notes.
-
 
 =========================================================
 ERINNERUNGEN
@@ -910,54 +621,48 @@ ERINNERUNGEN
 Bei:
 
 "erinnere mich"
-
 "stell einen Timer"
-
 "denk in ... Minuten daran"
 
-set_reminder benutzen.
+benutze set_reminder.
 
-Zum Abrufen:
+Berechne die Zeit ab jetzt.
 
+Bei Fragen nach Erinnerungen:
 list_reminders.
-
 
 =========================================================
 E-MAIL ENTWÜRFE
 =========================================================
 
-Wenn eine E-Mail formuliert werden soll:
+Wenn Mattl eine Mail formulieren lassen möchte:
 
-create_email_draft benutzen.
+benutze create_email_draft.
 
-Der vollständige Entwurf wird im HUD angezeigt.
+Der Entwurf wird im HUD angezeigt.
 
-Nicht den gesamten Entwurf vorlesen,
-außer Mattl verlangt es ausdrücklich.
-
+Lies lange E-Mail-Texte nicht komplett vor,
+außer Mattl verlangt das ausdrücklich.
 
 =========================================================
 BUSINESS
 =========================================================
 
-Bei Business-Fragen denkst du wie ein erfahrener:
+Bei Business-Fragen kannst du wie ein erfahrener:
 
 - Geschäftsführer
 - E-Commerce-Manager
 - Performance-Marketer
 - Verkaufsleiter
 - Datenanalyst
+- Marketingberater
+
+denken.
 
 Sprich Probleme direkt an.
 
-Wenn du eine echte Verbesserung erkennst:
-
-weise Mattl darauf hin.
-
-Nicht übertreiben.
-
-Nicht ständig Optimierungsvorschläge erzwingen.
-
+Wenn du eine Verbesserung erkennst,
+darfst du Mattl darauf hinweisen.
 
 =========================================================
 SICHERHEIT
@@ -965,22 +670,19 @@ SICHERHEIT
 
 Vor kritischen Änderungen brauchst du Mattls Zustimmung.
 
-Dazu zählen:
+Dazu gehören:
 
 - Geld ausgeben
 - Werbebudget verändern
 - Preise verändern
 - Kampagnen verändern
-- Bestellungen stornieren
-- Rückerstattungen
-- E-Mails tatsächlich versenden
+- Bestellung stornieren
+- Rückerstattung
+- E-Mail tatsächlich versenden
 - Daten löschen
 
-Lesen,
-analysieren,
-recherchieren,
-Vorschläge machen
-und Entwürfe erstellen
+Lesen, analysieren, recherchieren,
+Vorschläge machen und Entwürfe schreiben
 darfst du ohne zusätzliche Bestätigung.
 `;
 }
@@ -1003,14 +705,12 @@ const REALTIME_TOOLS = [
       "Durchsucht das aktuelle Internet für allgemeine oder aktuelle Fragen wie Nachrichten, Politik, Sport, Technik, KI, Firmen, Personen, Wissenschaft, Produkte, Preise, Gesetze, Reisen und andere aktuelle Informationen.",
 
     parameters: {
-
       type:
         "object",
 
       properties: {
 
         query: {
-
           type:
             "string",
 
@@ -1040,14 +740,12 @@ const REALTIME_TOOLS = [
       "Liest live den Shopify-Umsatz, die Anzahl Bestellungen und den durchschnittlichen Bestellwert für heute oder gestern bei Druckelite24.",
 
     parameters: {
-
       type:
         "object",
 
       properties: {
 
         period: {
-
           type:
             "string",
 
@@ -1079,7 +777,6 @@ const REALTIME_TOOLS = [
       "Liest die aktuell noch nicht erfüllten Shopify-Bestellungen.",
 
     parameters: {
-
       type:
         "object",
 
@@ -1102,7 +799,6 @@ const REALTIME_TOOLS = [
       "Liest Umsatz und Bestellungen der letzten sieben Kalendertage.",
 
     parameters: {
-
       type:
         "object",
 
@@ -1125,7 +821,6 @@ const REALTIME_TOOLS = [
       "Liest bis zu zehn ungelesene Gmail-Nachrichten mit Absender, Betreff und kurzem Ausschnitt.",
 
     parameters: {
-
       type:
         "object",
 
@@ -1148,7 +843,6 @@ const REALTIME_TOOLS = [
       "Liest aktuelle Wetterdaten und Vorhersage für heute oder morgen.",
 
     parameters: {
-
       type:
         "object",
 
@@ -1160,7 +854,6 @@ const REALTIME_TOOLS = [
         },
 
         day: {
-
           type:
             "string",
 
@@ -1193,7 +886,6 @@ const REALTIME_TOOLS = [
       "Speichert eine Notiz dauerhaft.",
 
     parameters: {
-
       type:
         "object",
 
@@ -1226,7 +918,6 @@ const REALTIME_TOOLS = [
       "Liest gespeicherte Notizen.",
 
     parameters: {
-
       type:
         "object",
 
@@ -1249,14 +940,12 @@ const REALTIME_TOOLS = [
       "Speichert eine Erinnerung für eine Anzahl Minuten ab jetzt.",
 
     parameters: {
-
       type:
         "object",
 
       properties: {
 
         minutes_from_now: {
-
           type:
             "integer",
 
@@ -1292,7 +981,6 @@ const REALTIME_TOOLS = [
       "Liest alle aktuell aktiven Erinnerungen.",
 
     parameters: {
-
       type:
         "object",
 
@@ -1315,7 +1003,6 @@ const REALTIME_TOOLS = [
       "Erstellt einen deutschen E-Mail-Entwurf mit Betreff und Text. Versendet nichts.",
 
     parameters: {
-
       type:
         "object",
 
@@ -1348,7 +1035,6 @@ app.post(
   "/api/realtime-session",
 
   express.text({
-
     type: [
       "application/sdp",
       "text/plain"
@@ -1369,7 +1055,6 @@ app.post(
         !process.env
           .OPENAI_API_KEY
       ) {
-
         return res
           .status(500)
           .send(
@@ -1389,7 +1074,6 @@ app.post(
           "v=0"
         )
       ) {
-
         return res
           .status(400)
           .send(
@@ -1403,11 +1087,6 @@ app.post(
           .OPENAI_REALTIME_MODEL ||
         "gpt-realtime-2.1";
 
-
-      /*
-       * V9.6
-       * Zurück zur ursprünglichen Cedar-Stimme.
-       */
 
       const voice =
         process.env
@@ -1442,7 +1121,7 @@ app.post(
                   "semantic_vad",
 
                 eagerness:
-                  "medium",
+                  "low",
 
                 create_response:
                   true,
@@ -1656,7 +1335,6 @@ async function searchInternet(
 
 
   if (!cleanQuery) {
-
     throw new Error(
       "Keine Suchanfrage angegeben."
     );
@@ -1696,14 +1374,12 @@ async function searchInternet(
               "gpt-5.6",
 
             reasoning: {
-
               effort:
                 "low"
             },
 
             tools: [
               {
-
                 type:
                   "web_search"
               }
@@ -1769,7 +1445,6 @@ Vorgaben:
 
 
   if (!text) {
-
     throw new Error(
       "Die Internetsuche hat keine Antwort geliefert."
     );
@@ -1972,7 +1647,9 @@ async function getShopifySummary(
         nodes {
 
           name
+
           createdAt
+
           cancelledAt
 
           currentTotalPriceSet {
@@ -1980,6 +1657,7 @@ async function getShopifySummary(
             shopMoney {
 
               amount
+
               currencyCode
             }
           }
@@ -2164,7 +1842,9 @@ async function getShopifyOpenOrders() {
         nodes {
 
           name
+
           createdAt
+
           cancelledAt
         }
       }
@@ -2282,6 +1962,7 @@ async function getShopifyWeek() {
         nodes {
 
           createdAt
+
           cancelledAt
 
           currentTotalPriceSet {
@@ -2289,6 +1970,7 @@ async function getShopifyWeek() {
             shopMoney {
 
               amount
+
               currencyCode
             }
           }
@@ -2373,10 +2055,7 @@ async function getShopifyWeek() {
       date:
         date
           .toISOString()
-          .slice(
-            0,
-            10
-          ),
+          .slice(0, 10),
 
       orders:
         0,
@@ -2705,6 +2384,7 @@ async function writeJarvisField(
         userErrors {
 
           field
+
           message
         }
       }
@@ -2987,7 +2667,6 @@ async function checkAndFireDueReminders() {
   if (
     !due.length
   ) {
-
     return [];
   }
 
@@ -3180,12 +2859,19 @@ function looksLikeOffer(
   return [
 
     "angebot",
+
     "anfrage",
+
     "preisanfrage",
+
     "kostenvoranschlag",
+
     "was kostet",
+
     "wie viel kostet",
+
     "wieviel kostet",
+
     "angebot anfordern"
 
   ].some(
@@ -3613,7 +3299,6 @@ Antworte ausschließlich als gültiges JSON mit den Feldern subject und body.`,
               ),
 
             reasoning: {
-
               effort:
                 "low"
             },
@@ -3889,7 +3574,7 @@ app.post(
                 draft.subject,
 
               instruction:
-                "Der vollständige Entwurf wird im HUD angezeigt. Antworte nur kurz, dass der Entwurf fertig ist."
+                "Der vollständige Entwurf wird im HUD angezeigt. Antworte Mattl nur kurz, dass der Entwurf fertig ist."
             }
           });
         }
@@ -4049,6 +3734,9 @@ app.post(
 
     try {
 
+
+      /* Gmail */
+
       if (
         isGmailConfigured()
       ) {
@@ -4123,6 +3811,8 @@ app.post(
         }
       }
 
+
+      /* Shopify */
 
       try {
 
@@ -4385,7 +4075,7 @@ app.get(
         "semantic_vad",
 
       vad_eagerness:
-        "medium",
+        "low",
 
       realtime_model:
         process.env
@@ -4458,6 +4148,7 @@ app.get(
     return res.sendFile(
       "index.html",
       {
+
         root:
           "."
       }
@@ -4468,6 +4159,9 @@ app.get(
 
 /* =========================================================
    START
+
+   NICHT LÖSCHEN.
+   RENDER BRAUCHT DIESEN BLOCK.
    ========================================================= */
 
 app.listen(
@@ -4505,11 +4199,7 @@ app.listen(
     );
 
     console.log(
-      "Persona: männlich · reif · trocken · Wortwitz"
-    );
-
-    console.log(
-      "VAD: semantic_vad / medium"
+      "VAD: semantic_vad / low"
     );
 
     console.log(
