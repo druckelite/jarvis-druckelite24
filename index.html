@@ -3,16 +3,17 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#030306" />
-  <meta name="description" content="Druckelite24 JARVIS Business Command Interface" />
-  <title>Druckelite24 · JARVIS</title>
-  <link rel="stylesheet" href="styles.css?v=14" />
+  <meta name="theme-color" content="#020208" />
+  <title>Druckelite24 · JARVIS NEXUS</title>
+  <link rel="stylesheet" href="styles.css?v=15" />
 </head>
 <body data-jarvis-state="offline">
 
-  <div class="aurora aurora-a"></div>
-  <div class="aurora aurora-b"></div>
-  <div class="scan-noise"></div>
+  <div class="space-bg"></div>
+  <div class="starfield stars-a"></div>
+  <div class="starfield stars-b"></div>
+  <div class="nebula nebula-left"></div>
+  <div class="nebula nebula-right"></div>
 
   <div class="boot-overlay" id="bootOverlay">
     <img class="boot-logo" src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252" alt="Druckelite24" />
@@ -20,196 +21,227 @@
     <div class="boot-bar"><div class="boot-bar-fill" id="bootBarFill"></div></div>
   </div>
 
-  <div class="shell">
+  <div class="nexus-shell">
 
-    <header class="hud-header">
-      <div class="hud-brand">
+    <header class="nexus-header">
+      <div class="brand-zone">
         <img src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252" alt="Druckelite24" />
       </div>
 
-      <div class="hud-center-title">
-        <div class="jarvis-title">JARVIS</div>
-        <div class="jarvis-subline">OPERATIONS CORE · DRUCKELITE24.DE</div>
+      <div class="nexus-branding">
+        <div class="nexus-title">JARVIS <span>NEXUS</span></div>
+        <div class="nexus-sub">AUTONOMOUS BUSINESS COMMAND SYSTEM</div>
       </div>
 
-      <div class="hud-meta">
-        <div>
-          <div class="hud-time" id="hudBigTime">--:--:--</div>
-          <div class="hud-date"><span id="hudDay">--</span>. <span id="hudMonth">—</span></div>
-        </div>
-        <div class="status-chip" id="status">Offline</div>
+      <div class="nexus-clock">
+        <div id="hudBigTime">--:--:--</div>
+        <span><b id="hudDay">--</b>. <b id="hudMonth">—</b></span>
+        <div id="status" class="nexus-status">Offline</div>
       </div>
     </header>
 
-    <div class="ticker">
+    <div class="data-ribbon">
       <div class="ticker-track">
-        <span class="tick-group" id="tickA">DRUCKELITE24 · JARVIS · SYSTEM ONLINE</span>
-        <span class="tick-group" id="tickB">DRUCKELITE24 · JARVIS · SYSTEM ONLINE</span>
+        <span class="tick-group" id="tickA">DRUCKELITE24 · JARVIS · NEXUS ONLINE</span>
+        <span class="tick-group" id="tickB">DRUCKELITE24 · JARVIS · NEXUS ONLINE</span>
       </div>
     </div>
 
-    <section class="mobile-command">
-      <div class="mobile-command-copy">
-        <span>JARVIS VOICE CORE</span>
+    <section class="mobile-launch">
+      <div class="mobile-launch-copy">
+        <span>NEXUS VOICE CORE</span>
         <b id="mobileVoiceTitle">JARVIS STARTEN</b>
         <small id="mobileVoiceState">STANDBY</small>
       </div>
-      <button id="toggleMobile" class="mobile-core-btn" type="button" aria-label="JARVIS starten oder stoppen"></button>
+      <button id="toggleMobile" class="mobile-launch-btn" type="button"></button>
     </section>
 
-    <main class="command-layout">
+    <main class="nexus-grid">
 
-      <section class="hero-console">
-        <div class="hero-top">
-          <div class="hero-kicker">COMMAND CENTER</div>
-          <div class="hero-health">SYSTEM HEALTH <b>98%</b></div>
-        </div>
+      <section class="nexus-core">
+        <div class="core-orbit orbit-1"></div>
+        <div class="core-orbit orbit-2"></div>
+        <div class="core-orbit orbit-3"></div>
+        <div class="core-orbit orbit-4"></div>
 
-        <div class="orbital-core" id="voicePanel">
-          <div class="orbital-ring ring-1"></div>
-          <div class="orbital-ring ring-2"></div>
-          <div class="orbital-ring ring-3"></div>
-          <div class="orbital-ring ring-4"></div>
+        <div class="core-crosshair x1"></div>
+        <div class="core-crosshair x2"></div>
 
-          <div class="neural-core">
-            <div class="neural-logo-mark">DE</div>
-            <div class="neural-title">DRUCKELITE24</div>
-            <div class="neural-sub">AI OPERATIONS ENGINE</div>
+        <div class="core-reactor">
+          <div class="reactor-inner">
+            <span>J</span>
+            <small>JARVIS</small>
           </div>
-
-          <div class="orbital-node n1"><span>SHOPIFY</span><b>LIVE</b></div>
-          <div class="orbital-node n2"><span>MAIL</span><b>READY</b></div>
-          <div class="orbital-node n3"><span>ADS</span><b>SYNC</b></div>
-          <div class="orbital-node n4"><span>WHATSAPP</span><b>READY</b></div>
-          <div class="orbital-node n5"><span>WEATHER</span><b>LIVE</b></div>
-          <div class="orbital-node n6"><span>AI CORE</span><b>ONLINE</b></div>
-
-          <div class="hero-pulse"></div>
         </div>
 
-        <div class="hero-status-grid">
-          <div class="hero-stat"><span>SYSTEM</span><b>ONLINE</b></div>
-          <div class="hero-stat"><span>VERBINDUNG</span><b>STABIL</b></div>
-          <div class="hero-stat"><span>DATENFLUSS</span><b>AKTIV</b></div>
-          <div class="hero-stat"><span>UPDATE</span><b id="hudClock">LIVE</b></div>
+        <div class="core-satellite sat-shop">SHOPIFY <b>LIVE</b></div>
+        <div class="core-satellite sat-mail">MAIL <b>READY</b></div>
+        <div class="core-satellite sat-wa">WHATSAPP <b>READY</b></div>
+        <div class="core-satellite sat-ai">AI CORE <b>ONLINE</b></div>
+
+        <div class="core-readout left-readout">
+          <div><span>SYSTEM STATUS</span><b>ONLINE</b></div>
+          <div><span>VERBINDUNG</span><b>STABIL</b></div>
+          <div><span>DATENFLUSS</span><b>AKTIV</b></div>
+        </div>
+
+        <div class="core-readout right-readout">
+          <div><span>PERFORMANCE</span><b>98%</b></div>
+          <div><span>AUSLASTUNG</span><b>63%</b></div>
+          <div><span>UPDATE</span><b id="hudClock">LIVE</b></div>
+        </div>
+
+        <div class="core-floor">
+          <div class="floor-ring f1"></div>
+          <div class="floor-ring f2"></div>
+          <div class="floor-ring f3"></div>
         </div>
       </section>
 
-      <section class="intel-rail">
+      <section class="module-cluster cluster-left">
 
-        <article class="intel-card revenue-card">
-          <div class="intel-head"><span>SHOPIFY LIVE</span><i>● LIVE</i></div>
-          <div class="revenue-main">
-            <div>
-              <small>UMSATZ HEUTE</small>
-              <b id="statRevenue">—</b>
-              <em>↗ HEUTE</em>
-            </div>
-            <div>
-              <small>BESTELLUNGEN</small>
-              <b id="statOrders">—</b>
-              <em>↗ LIVE</em>
-            </div>
+        <article class="module module-shopify">
+          <div class="module-top">
+            <span>SHOPIFY PULSE</span>
+            <b>● LIVE</b>
           </div>
-          <svg class="revenue-graph" viewBox="0 0 420 90" preserveAspectRatio="none">
-            <defs><linearGradient id="revFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e70779" stop-opacity=".30"/><stop offset="100%" stop-color="#e70779" stop-opacity="0"/></linearGradient></defs>
-            <path class="rev-area" fill="url(#revFill)" d="M0,75 L28,68 L56,70 L84,56 L112,61 L140,48 L168,52 L196,35 L224,43 L252,29 L280,37 L308,21 L336,31 L364,18 L392,24 L420,7 L420,90 L0,90 Z"/>
-            <path class="rev-line" d="M0,75 L28,68 L56,70 L84,56 L112,61 L140,48 L168,52 L196,35 L224,43 L252,29 L280,37 L308,21 L336,31 L364,18 L392,24 L420,7"/>
+
+          <div class="shop-hero">
+            <div><span>UMSATZ HEUTE</span><b id="statRevenue">—</b></div>
+            <div><span>BESTELLUNGEN</span><b id="statOrders">—</b></div>
+          </div>
+
+          <svg class="big-pulse-chart" viewBox="0 0 500 130" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="pulseFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ff2d9a" stop-opacity=".34"/>
+                <stop offset="100%" stop-color="#ff2d9a" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <path class="pulse-area" fill="url(#pulseFill)" d="M0,105 L25,98 L50,101 L75,88 L100,92 L125,76 L150,82 L175,65 L200,72 L225,54 L250,61 L275,43 L300,51 L325,36 L350,45 L375,28 L400,37 L425,18 L450,28 L475,13 L500,5 L500,130 L0,130 Z"/>
+            <path class="pulse-line" d="M0,105 L25,98 L50,101 L75,88 L100,92 L125,76 L150,82 L175,65 L200,72 L225,54 L250,61 L275,43 L300,51 L325,36 L350,45 L375,28 L400,37 L425,18 L450,28 L475,13 L500,5"/>
           </svg>
-          <div class="mini-metrics">
+
+          <div class="shop-mini">
             <div><span>Ø BESTELLWERT</span><b id="statAov">—</b></div>
             <div><span>GESTERN</span><b id="statYesterday">—</b></div>
           </div>
+
           <canvas id="weekChart" class="compat" width="360" height="48"></canvas>
           <span id="shopUpdated" class="compat">…</span>
           <span id="shopDot" class="compat"></span>
           <span id="sysShop" class="compat">…</span>
         </article>
 
-        <article class="intel-card mail-card">
-          <div class="intel-head"><span>MAIL COMMAND</span><i>5</i></div>
-          <div class="email-list" id="inboxList">
-            <div class="email-row"><div class="avatar">TS</div><div class="email-copy"><b>Mail-System vorbereitet</b><span>Letzte Posteingangs-Mail erscheint hier.</span></div><time>—</time></div>
-            <div class="email-row"><div class="avatar">MK</div><div class="email-copy"><b>Gelesen + ungelesen</b><span>Posteingang wird vollständig berücksichtigt.</span></div><time>—</time></div>
-            <div class="email-row"><div class="avatar">JP</div><div class="email-copy"><b>Mail-Kontext</b><span>Antworten und Entwürfe vorgesehen.</span></div><time>—</time></div>
-            <div class="email-row"><div class="avatar">AC</div><div class="email-copy"><b>Kundenanfragen</b><span>Wichtige Anfragen werden priorisiert.</span></div><time>—</time></div>
-            <div class="email-row"><div class="avatar">LH</div><div class="email-copy"><b>5-Minuten-Prüfung</b><span>Automatische Prüfung wird angebunden.</span></div><time>—</time></div>
+        <article class="module module-mail">
+          <div class="module-top">
+            <span>MAILSTREAM</span>
+            <b>5</b>
           </div>
-          <button class="intel-action">POSTEINGANG ÖFFNEN</button>
+
+          <div id="inboxList" class="mail-stream">
+            <div class="mail-item"><i>TS</i><div><b>Mail-System vorbereitet</b><span>Letzte Mail erscheint hier.</span></div><time>—</time></div>
+            <div class="mail-item"><i>MK</i><div><b>Gelesen + ungelesen</b><span>Posteingang wird vollständig berücksichtigt.</span></div><time>—</time></div>
+            <div class="mail-item"><i>JP</i><div><b>Mail-Kontext</b><span>Antworten und Entwürfe vorgesehen.</span></div><time>—</time></div>
+            <div class="mail-item"><i>AC</i><div><b>Kundenanfragen</b><span>Priorisierung wichtiger Anfragen.</span></div><time>—</time></div>
+            <div class="mail-item"><i>LH</i><div><b>5-Minuten-Prüfung</b><span>Automatische Mail-Prüfung wird angebunden.</span></div><time>—</time></div>
+          </div>
         </article>
 
       </section>
 
-      <section class="signal-rail">
+      <section class="module-cluster cluster-right">
 
-        <article class="signal-card whatsapp-card">
-          <div class="signal-head"><span>WHATSAPP</span><b>● BEREIT</b></div>
-          <div class="wa-focus">
-            <div class="wa-core">◉</div>
-            <div><b>5 letzte Chats</b><span>Platzhalter bis zur Live-Anbindung</span></div>
+        <article class="module module-whatsapp">
+          <div class="module-top wa-top">
+            <span>WHATSAPP GRID</span>
+            <b>● BEREIT</b>
           </div>
-          <div class="wa-list">
-            <div class="wa-row"><i>01</i><div><b>Neue Kundenanfrage</b><span>Letzte Nachricht des Kunden</span></div><time>—</time></div>
-            <div class="wa-row"><i>02</i><div><b>Angebot & Rückfrage</b><span>Offene Anfrage</span></div><time>—</time></div>
-            <div class="wa-row"><i>03</i><div><b>Produktfrage</b><span>Textilien & Druck</span></div><time>—</time></div>
-            <div class="wa-row"><i>04</i><div><b>Bestellstatus</b><span>Statusnachfrage</span></div><time>—</time></div>
-            <div class="wa-row"><i>05</i><div><b>Offener Chat</b><span>Wichtige Unterhaltung</span></div><time>—</time></div>
+
+          <div class="wa-hub">
+            <div class="wa-logo">◉</div>
+            <div><b>5 letzte Chats</b><span>Platzhalter bis zur Live-Verknüpfung</span></div>
+          </div>
+
+          <div class="wa-messages">
+            <div><i>01</i><b>Neue Kundenanfrage</b><span>—</span></div>
+            <div><i>02</i><b>Angebot & Rückfrage</b><span>—</span></div>
+            <div><i>03</i><b>Produktfrage</b><span>—</span></div>
+            <div><i>04</i><b>Bestellstatus</b><span>—</span></div>
+            <div><i>05</i><b>Offener Chat</b><span>—</span></div>
           </div>
         </article>
 
-        <div class="signal-lower">
-          <article class="signal-card weather-card">
-            <div class="signal-head"><span>WETTER</span><b class="panel-dot" id="wxDot"></b></div>
-            <div class="weather-body">
+        <div class="mini-grid">
+
+          <article class="module mini-module weather-mini">
+            <div class="module-top"><span>WETTER</span><b id="wxDot" class="dot"></b></div>
+            <div class="weather-focus">
               <small>Ludwigshafen am Rhein</small>
-              <div class="weather-main"><div>🌤️</div><b id="wxTemp">—°</b></div>
-              <div class="weather-desc" id="wxDesc">…</div>
-              <div class="weather-grid">
-                <div><b id="wxMax">—°</b><span>MAX</span></div>
-                <div><b id="wxMin">—°</b><span>MIN</span></div>
-                <div><b id="wxRain">—%</b><span>REGEN</span></div>
-                <div><b id="wxWind">—</b><span>WIND</span></div>
-              </div>
+              <div><span>🌤️</span><b id="wxTemp">—°</b></div>
+              <em id="wxDesc">…</em>
+            </div>
+            <div class="weather-row">
+              <div><b id="wxMax">—°</b><span>MAX</span></div>
+              <div><b id="wxMin">—°</b><span>MIN</span></div>
+              <div><b id="wxRain">—%</b><span>REGEN</span></div>
+              <div><b id="wxWind">—</b><span>WIND</span></div>
             </div>
             <span id="sysWx" class="compat">…</span>
           </article>
 
-          <article class="signal-card news-card">
-            <div class="signal-head"><span>LUDWIGSHAFEN</span><b>NEWS</b></div>
-            <div class="news-stack">
-              <div><b>Lokal aktuell</b><span>Regionale Meldungen und Hinweise.</span></div>
-              <div><b>Wirtschaft</b><span>Unternehmen & regionale Entwicklung.</span></div>
-              <div><b>Verkehr</b><span>Wichtige Hinweise aus der Region.</span></div>
+          <article class="module mini-module news-mini">
+            <div class="module-top"><span>LUDWIGSHAFEN</span><b>NEWS</b></div>
+            <div class="news-orbit">
+              <div><b>Lokal</b><span>Aktuelle Meldungen aus der Region</span></div>
+              <div><b>Wirtschaft</b><span>Unternehmen & Entwicklung</span></div>
+              <div><b>Verkehr</b><span>Hinweise & Lage</span></div>
             </div>
           </article>
+
+          <article class="module mini-module ai-mini">
+            <div class="module-top"><span>AI INSIGHTS</span><b>LIVE</b></div>
+            <div class="ai-insight">
+              <strong>03</strong>
+              <span>mögliche Optimierungen erkannt</span>
+            </div>
+          </article>
+
+          <article class="module mini-module production-mini">
+            <div class="module-top"><span>PRODUKTION</span><b>78%</b></div>
+            <div class="production-bars">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+          </article>
+
         </div>
 
       </section>
 
-      <section class="command-strip">
-        <button class="quick-command"><span>✉</span><b>NEUE MAILS</b></button>
-        <button class="quick-command"><span>▥</span><b>UMSATZ HEUTE</b></button>
+      <section class="nexus-command-deck">
+        <button class="deck-btn"><span>✉</span><b>MAILS</b></button>
+        <button class="deck-btn"><span>▥</span><b>UMSATZ</b></button>
 
-        <div class="voice-command-center">
-          <div class="voice-energy energy-left"></div>
-          <div class="voice-orbit">
-            <button id="toggle" class="voice-btn" type="button" aria-label="JARVIS starten oder stoppen"></button>
+        <div class="deck-core">
+          <div class="deck-wave wave-left"></div>
+          <div class="deck-orbit">
+            <button id="toggle" class="deck-mic" type="button"></button>
           </div>
-          <div class="voice-command-copy">
-            <div id="log" class="voice-log">JARVIS ist bereit.</div>
-            <div class="core-state">VOICE CORE · <span id="hudState">STANDBY</span></div>
+          <div class="deck-copy">
+            <div id="log" class="deck-log">JARVIS ist bereit.</div>
+            <div class="deck-state">NEXUS VOICE · <span id="hudState">STANDBY</span></div>
           </div>
-          <div class="voice-energy energy-right"></div>
+          <div class="deck-wave wave-right"></div>
         </div>
 
-        <button class="quick-command"><span>▤</span><b>MEIN BRIEFING</b></button>
-        <button class="quick-command"><span>➤</span><b>ANTWORT ERSTELLEN</b></button>
+        <button class="deck-btn"><span>▤</span><b>BRIEFING</b></button>
+        <button class="deck-btn"><span>➤</span><b>ANTWORT</b></button>
       </section>
 
     </main>
 
-    <section class="intel-card draft-panel" id="draftPanel">
-      <div class="intel-head"><span>ENTWURF</span><i>READY</i></div>
+    <section id="draftPanel" class="module draft-panel">
+      <div class="module-top"><span>ENTWURF</span><b>READY</b></div>
       <div class="draft-inner">
         <div id="draftSubject"></div>
         <div id="draftBody"></div>
@@ -692,36 +724,34 @@
   </script>
 
   <script>
-    (function(){
-      const desktopToggle = document.getElementById("toggle");
-      const mobileToggle = document.getElementById("toggleMobile");
-      const title = document.getElementById("mobileVoiceTitle");
-      const state = document.getElementById("mobileVoiceState");
+  (function(){
+    const d = document.getElementById("toggle");
+    const m = document.getElementById("toggleMobile");
+    const title = document.getElementById("mobileVoiceTitle");
+    const state = document.getElementById("mobileVoiceState");
 
-      if (mobileToggle && desktopToggle) {
-        mobileToggle.addEventListener("click", function(){ desktopToggle.click(); });
-      }
+    if (m && d) m.addEventListener("click", () => d.click());
 
-      const states = {
-        offline:["JARVIS STARTEN","STANDBY"],
-        connecting:["VERBINDUNG","BOOT"],
-        listening:["JARVIS HÖRT ZU","ZUHÖREN"],
-        hearing:["SPRACHE ERKANNT","INPUT"],
-        thinking:["JARVIS ANALYSIERT","DENKEN"],
-        speaking:["JARVIS ANTWORTET","SPRECHEN"]
-      };
+    const map = {
+      offline:["JARVIS STARTEN","STANDBY"],
+      connecting:["VERBINDUNG","BOOT"],
+      listening:["JARVIS HÖRT ZU","ZUHÖREN"],
+      hearing:["SPRACHE ERKANNT","INPUT"],
+      thinking:["JARVIS ANALYSIERT","DENKEN"],
+      speaking:["JARVIS ANTWORTET","SPRECHEN"]
+    };
 
-      function sync(){
-        const key = document.body.dataset.jarvisState || "offline";
-        const values = states[key] || states.offline;
-        if (title) title.textContent = values[0];
-        if (state) state.textContent = values[1];
-        document.body.dataset.mobileVoiceState = key;
-      }
+    function sync(){
+      const s = document.body.dataset.jarvisState || "offline";
+      const v = map[s] || map.offline;
+      if (title) title.textContent = v[0];
+      if (state) state.textContent = v[1];
+      document.body.dataset.mobileVoiceState = s;
+    }
 
-      sync();
-      new MutationObserver(sync).observe(document.body,{attributes:true,attributeFilter:["data-jarvis-state"]});
-    })();
+    sync();
+    new MutationObserver(sync).observe(document.body,{attributes:true,attributeFilter:["data-jarvis-state"]});
+  })();
   </script>
 
   <script src="app.js?v=22"></script>
