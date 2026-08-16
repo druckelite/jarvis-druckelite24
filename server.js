@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V10.1-ELEVENLABS-GMAIL-DASHBOARD";
+  "V10.1-ELEVENLABS-GMAIL-CONTEXT";
 
 
 /* =========================================================
@@ -448,11 +448,24 @@ E-MAIL:
 Wenn Mattl ungelesene Mails wissen möchte:
 → get_unread_emails
 
-Wenn Mattl eine E-Mail formulieren möchte:
+Wenn Mattl sagt „lies die Mail“, „lies die letzte Mail“, „was will der Kunde?“ oder nach einer Mail von einer Person fragt:
+→ get_email_message
+Nutze message_id, wenn die aktuell ausgewählte Mail bekannt ist. Sonst sender_query oder search_query.
+
+Wenn Mattl auf die aktuelle/ausgewählte Mail antworten möchte:
+→ create_email_reply_draft
+Das erstellt einen echten Gmail-Entwurf, sendet aber NICHT.
+
+Wenn Mattl eine neue allgemeine E-Mail formulieren möchte:
 → create_email_draft
 
+E-MAIL SENDEN:
+Eine E-Mail darf ausschließlich dann gesendet werden, wenn Mattl unmittelbar und ausdrücklich „senden“, „abschicken“ oder „versenden“ sagt.
+Dann → send_email_draft.
+Ohne diesen ausdrücklichen Sende-Befehl darf send_email_draft NIEMALS verwendet werden.
+Nach einem Entwurf fragst du kurz, ob er ihn senden möchte.
+
 Der E-Mail-Entwurf wird im HUD angezeigt.
-Sag danach nur kurz, dass der Entwurf fertig ist.
 
 NOTIZEN:
 Wenn Mattl sagt:
@@ -623,6 +636,121 @@ const REALTIME_TOOLS = [
         "object",
 
       properties: {},
+
+      additionalProperties:
+        false
+    }
+  },
+
+
+  {
+    type:
+      "function",
+
+    name:
+      "get_email_message",
+
+    description:
+      "Liest eine vollständige Gmail-Nachricht. Kann die aktuell ausgewählte Mail per message_id, die letzte Mail oder eine Mail anhand Absender/Suchbegriff finden.",
+
+    parameters: {
+      type:
+        "object",
+
+      properties: {
+        message_id: {
+          type:
+            "string"
+        },
+        sender_query: {
+          type:
+            "string"
+        },
+        search_query: {
+          type:
+            "string"
+        },
+        scope: {
+          type:
+            "string",
+          enum: [
+            "inbox",
+            "all"
+          ]
+        }
+      },
+
+      additionalProperties:
+        false
+    }
+  },
+
+
+  {
+    type:
+      "function",
+
+    name:
+      "create_email_reply_draft",
+
+    description:
+      "Erstellt für eine vorhandene Gmail-Nachricht einen echten Antwortentwurf in Gmail. Sendet nichts.",
+
+    parameters: {
+      type:
+        "object",
+
+      properties: {
+        message_id: {
+          type:
+            "string"
+        },
+        instruction: {
+          type:
+            "string"
+        }
+      },
+
+      required: [
+        "instruction"
+      ],
+
+      additionalProperties:
+        false
+    }
+  },
+
+
+  {
+    type:
+      "function",
+
+    name:
+      "send_email_draft",
+
+    description:
+      "Sendet einen bereits erstellten Gmail-Entwurf. DARF NUR nach einem unmittelbaren ausdrücklichen Befehl von Mattl wie 'senden', 'abschicken' oder 'versenden' verwendet werden.",
+
+    parameters: {
+      type:
+        "object",
+
+      properties: {
+        draft_id: {
+          type:
+            "string"
+        },
+        confirmation_text: {
+          type:
+            "string",
+          description:
+            "Mattls unmittelbarer ausdrücklicher Sende-Befehl, z.B. 'senden'."
+        }
+      },
+
+      required: [
+        "confirmation_text"
+      ],
 
       additionalProperties:
         false
@@ -3143,6 +3271,750 @@ async function getLatestInboxEmails() {
 
 
 /* =========================================================
+   GMAIL · MAIL-KONTEXT / VOLLANSICHT / ANTWORTEN
+   ========================================================= */
+
+function decodeGmailBase64Url(value) {
+
+  if (!value) {
+    return "";
+  }
+
+
+  const normalized =
+    String(value)
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
+
+  const padding =
+    "=".repeat(
+      (4 - normalized.length % 4) % 4
+    );
+
+
+  return Buffer
+    .from(
+      normalized + padding,
+      "base64"
+    )
+    .toString("utf8");
+}
+
+
+function encodeGmailBase64Url(value) {
+
+  return Buffer
+    .from(
+      String(value || ""),
+      "utf8"
+    )
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+
+function stripHtmlToText(value) {
+
+  return String(value || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+
+function getGmailHeader(headers, name) {
+
+  return (
+    headers || []
+  ).find(
+    header =>
+      String(header?.name || "")
+        .toLowerCase() ===
+      String(name || "")
+        .toLowerCase()
+  )?.value || "";
+}
+
+
+function collectGmailBodies(part, result) {
+
+  if (!part) {
+    return;
+  }
+
+
+  const mimeType =
+    String(part.mimeType || "")
+      .toLowerCase();
+
+
+  const data =
+    part.body?.data;
+
+
+  if (data) {
+
+    const decoded =
+      decodeGmailBase64Url(data);
+
+
+    if (
+      mimeType === "text/plain"
+    ) {
+      result.plain.push(decoded);
+    }
+    else if (
+      mimeType === "text/html"
+    ) {
+      result.html.push(decoded);
+    }
+  }
+
+
+  for (
+    const child of
+    part.parts || []
+  ) {
+    collectGmailBodies(
+      child,
+      result
+    );
+  }
+}
+
+
+async function getGmailMessageById(messageId) {
+
+  const id =
+    String(messageId || "")
+      .trim();
+
+
+  if (!id) {
+    throw new Error(
+      "Keine Gmail-Message-ID angegeben."
+    );
+  }
+
+
+  const token =
+    await getGmailAccessToken();
+
+
+  const response =
+    await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=full`,
+      {
+        headers: {
+          Authorization:
+            `Bearer ${token}`
+        },
+        signal:
+          timeoutSignal(
+            15000
+          )
+      }
+    );
+
+
+  const data =
+    await response.json();
+
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error?.message ||
+      "E-Mail konnte nicht gelesen werden."
+    );
+  }
+
+
+  const headers =
+    data.payload?.headers || [];
+
+
+  const bodies = {
+    plain: [],
+    html: []
+  };
+
+
+  collectGmailBodies(
+    data.payload,
+    bodies
+  );
+
+
+  let body =
+    bodies.plain
+      .filter(Boolean)
+      .join("\n\n")
+      .trim();
+
+
+  if (!body) {
+    body =
+      stripHtmlToText(
+        bodies.html
+          .filter(Boolean)
+          .join("\n\n")
+      );
+  }
+
+
+  if (!body) {
+    body =
+      String(
+        data.snippet ||
+        ""
+      ).trim();
+  }
+
+
+  return {
+    id:
+      data.id,
+    threadId:
+      data.threadId ||
+      null,
+    labelIds:
+      data.labelIds ||
+      [],
+    unread:
+      Array.isArray(data.labelIds) &&
+      data.labelIds.includes("UNREAD"),
+    from:
+      getGmailHeader(
+        headers,
+        "From"
+      ) || "unbekannt",
+    replyTo:
+      getGmailHeader(
+        headers,
+        "Reply-To"
+      ) || "",
+    to:
+      getGmailHeader(
+        headers,
+        "To"
+      ) || "",
+    subject:
+      getGmailHeader(
+        headers,
+        "Subject"
+      ) || "(kein Betreff)",
+    date:
+      getGmailHeader(
+        headers,
+        "Date"
+      ) || null,
+    messageIdHeader:
+      getGmailHeader(
+        headers,
+        "Message-ID"
+      ) ||
+      getGmailHeader(
+        headers,
+        "Message-Id"
+      ) ||
+      "",
+    references:
+      getGmailHeader(
+        headers,
+        "References"
+      ) || "",
+    snippet:
+      data.snippet ||
+      "",
+    body:
+      body.slice(0, 30000)
+  };
+}
+
+
+async function findGmailMessage({
+  message_id = "",
+  sender_query = "",
+  search_query = "",
+  scope = "inbox"
+} = {}) {
+
+  if (
+    String(message_id || "")
+      .trim()
+  ) {
+    return getGmailMessageById(
+      message_id
+    );
+  }
+
+
+  const token =
+    await getGmailAccessToken();
+
+
+  const queryParts = [];
+
+
+  if (
+    scope !== "all"
+  ) {
+    queryParts.push(
+      "in:inbox"
+    );
+  }
+
+
+  const sender =
+    String(sender_query || "")
+      .trim();
+
+
+  if (sender) {
+    queryParts.push(
+      `from:${sender}`
+    );
+  }
+
+
+  const freeQuery =
+    String(search_query || "")
+      .trim();
+
+
+  if (freeQuery) {
+    queryParts.push(
+      freeQuery
+    );
+  }
+
+
+  const q =
+    queryParts.join(" ") ||
+    "in:inbox";
+
+
+  const listUrl =
+    new URL(
+      "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+    );
+
+
+  listUrl.searchParams.set(
+    "q",
+    q
+  );
+
+
+  listUrl.searchParams.set(
+    "maxResults",
+    "1"
+  );
+
+
+  const response =
+    await fetch(
+      listUrl,
+      {
+        headers: {
+          Authorization:
+            `Bearer ${token}`
+        },
+        signal:
+          timeoutSignal(
+            12000
+          )
+      }
+    );
+
+
+  const data =
+    await response.json();
+
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error?.message ||
+      "E-Mail-Suche fehlgeschlagen."
+    );
+  }
+
+
+  const id =
+    data.messages?.[0]?.id;
+
+
+  if (!id) {
+    throw new Error(
+      "Keine passende E-Mail gefunden."
+    );
+  }
+
+
+  return getGmailMessageById(id);
+}
+
+
+function extractEmailAddress(value) {
+
+  const text =
+    String(value || "")
+      .trim();
+
+
+  const angle =
+    text.match(/<([^>]+)>/);
+
+
+  return (
+    angle?.[1] ||
+    text
+  ).trim();
+}
+
+
+function ensureReplySubject(subject) {
+
+  const clean =
+    String(subject || "")
+      .trim();
+
+
+  if (
+    /^re:/i.test(clean)
+  ) {
+    return clean;
+  }
+
+
+  return `Re: ${clean || "Ihre Nachricht"}`;
+}
+
+
+async function createGmailReplyDraft(
+  messageId,
+  instruction
+) {
+
+  const original =
+    await getGmailMessageById(
+      messageId
+    );
+
+
+  const recipient =
+    extractEmailAddress(
+      original.replyTo ||
+      original.from
+    );
+
+
+  if (!recipient) {
+    throw new Error(
+      "Empfänger der Antwort konnte nicht ermittelt werden."
+    );
+  }
+
+
+  const response =
+    await fetch(
+      "https://api.openai.com/v1/responses",
+      {
+        method:
+          "POST",
+        headers: {
+          Authorization:
+            `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type":
+            "application/json"
+        },
+        body:
+          JSON.stringify({
+            model:
+              process.env
+                .OPENAI_TEXT_MODEL ||
+              "gpt-5.6-terra",
+            instructions:
+              `Formuliere eine professionelle, natürliche deutsche Antwort-E-Mail für Druckelite24.\n` +
+              `Antworte nur als gültiges JSON mit dem Feld body.\n` +
+              `Keine erfundenen Fakten, Preise, Zusagen oder Liefertermine.\n` +
+              `Wenn die Anweisung des Nutzers etwas nicht vorgibt, bleibe neutral und knapp.`,
+            input:
+              `Kundenmail:\nAbsender: ${original.from}\nBetreff: ${original.subject}\nInhalt:\n${original.body}\n\n` +
+              `Anweisung von Mattl:\n${String(instruction || "Bitte professionell antworten.")}`,
+            reasoning: {
+              effort:
+                "low"
+            },
+            text: {
+              format: {
+                type:
+                  "json_schema",
+                name:
+                  "gmail_reply_draft",
+                strict:
+                  true,
+                schema: {
+                  type:
+                    "object",
+                  properties: {
+                    body: {
+                      type:
+                        "string"
+                    }
+                  },
+                  required: [
+                    "body"
+                  ],
+                  additionalProperties:
+                    false
+                }
+              }
+            },
+            store:
+              false
+          }),
+        signal:
+          timeoutSignal(
+            30000
+          )
+      }
+    );
+
+
+  const aiData =
+    await response.json();
+
+
+  if (!response.ok) {
+    throw new Error(
+      aiData?.error?.message ||
+      "Antwortentwurf konnte nicht erstellt werden."
+    );
+  }
+
+
+  const parsed =
+    JSON.parse(
+      extractResponseText(
+        aiData
+      )
+    );
+
+
+  const subject =
+    ensureReplySubject(
+      original.subject
+    );
+
+
+  const replyBody =
+    String(parsed.body || "")
+      .trim();
+
+
+  const headers = [
+    `To: ${recipient}`,
+    `Subject: ${subject}`,
+    "MIME-Version: 1.0",
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: 8bit"
+  ];
+
+
+  if (
+    original.messageIdHeader
+  ) {
+    headers.push(
+      `In-Reply-To: ${original.messageIdHeader}`
+    );
+
+
+    const references =
+      `${original.references || ""} ${original.messageIdHeader}`
+        .trim();
+
+
+    headers.push(
+      `References: ${references}`
+    );
+  }
+
+
+  const raw =
+    encodeGmailBase64Url(
+      `${headers.join("\r\n")}\r\n\r\n${replyBody}`
+    );
+
+
+  const token =
+    await getGmailAccessToken();
+
+
+  const draftResponse =
+    await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
+      {
+        method:
+          "POST",
+        headers: {
+          Authorization:
+            `Bearer ${token}`,
+          "Content-Type":
+            "application/json"
+        },
+        body:
+          JSON.stringify({
+            message: {
+              threadId:
+                original.threadId ||
+                undefined,
+              raw
+            }
+          }),
+        signal:
+          timeoutSignal(
+            15000
+          )
+      }
+    );
+
+
+  const draftData =
+    await draftResponse.json();
+
+
+  if (!draftResponse.ok) {
+    throw new Error(
+      draftData?.error?.message ||
+      "Gmail-Entwurf konnte nicht gespeichert werden."
+    );
+  }
+
+
+  return {
+    gmail_draft_id:
+      draftData.id,
+    message_id:
+      original.id,
+    thread_id:
+      original.threadId,
+    to:
+      recipient,
+    subject,
+    body:
+      replyBody,
+    created_in_gmail:
+      true,
+    sent:
+      false
+  };
+}
+
+
+async function sendGmailDraft(
+  draftId,
+  confirmationText
+) {
+
+  const id =
+    String(draftId || "")
+      .trim();
+
+
+  if (!id) {
+    throw new Error(
+      "Kein Gmail-Entwurf zum Senden ausgewählt."
+    );
+  }
+
+
+  const confirmation =
+    String(confirmationText || "")
+      .trim();
+
+
+  if (
+    !/\b(senden|abschicken|versenden)\b/i.test(
+      confirmation
+    )
+  ) {
+    throw new Error(
+      "Senden abgebrochen: Es fehlt Mattls ausdrücklicher Sende-Befehl."
+    );
+  }
+
+
+  const token =
+    await getGmailAccessToken();
+
+
+  const response =
+    await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/drafts/send",
+      {
+        method:
+          "POST",
+        headers: {
+          Authorization:
+            `Bearer ${token}`,
+          "Content-Type":
+            "application/json"
+        },
+        body:
+          JSON.stringify({
+            id
+          }),
+        signal:
+          timeoutSignal(
+            15000
+          )
+      }
+    );
+
+
+  const data =
+    await response.json();
+
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error?.message ||
+      "E-Mail konnte nicht gesendet werden."
+    );
+  }
+
+
+  return {
+    sent:
+      true,
+    message_id:
+      data.id ||
+      null,
+    thread_id:
+      data.threadId ||
+      null
+  };
+}
+
+
+/* =========================================================
    WEATHER
    ========================================================= */
 
@@ -3600,6 +4472,109 @@ app.post(
           break;
 
 
+        case "get_email_message": {
+
+          const email =
+            await findGmailMessage({
+              message_id:
+                args.message_id ||
+                "",
+              sender_query:
+                args.sender_query ||
+                "",
+              search_query:
+                args.search_query ||
+                "",
+              scope:
+                args.scope === "all"
+                  ? "all"
+                  : "inbox"
+            });
+
+
+          return res.json({
+            ok:
+              true,
+            email,
+            result: {
+              found:
+                true,
+              from:
+                email.from,
+              subject:
+                email.subject,
+              body:
+                email.body,
+              instruction:
+                "Die vollständige Mail ist im HUD geöffnet. Wenn Mattl ausdrücklich 'lies sie vor' sagt, darfst du den Inhalt natürlich vorlesen."
+            }
+          });
+        }
+
+
+        case "create_email_reply_draft": {
+
+          if (
+            !args.message_id
+          ) {
+            throw new Error(
+              "Keine aktuelle Mail ausgewählt."
+            );
+          }
+
+
+          const draft =
+            await createGmailReplyDraft(
+              args.message_id,
+              args.instruction
+            );
+
+
+          return res.json({
+            ok:
+              true,
+            draft,
+            gmail_draft_id:
+              draft.gmail_draft_id,
+            result: {
+              created:
+                true,
+              saved_in_gmail:
+                true,
+              to:
+                draft.to,
+              subject:
+                draft.subject,
+              instruction:
+                "Der Antwortentwurf ist in Gmail gespeichert und im HUD sichtbar. Noch NICHT gesendet. Frage Mattl kurz, ob er ihn senden möchte."
+            }
+          });
+        }
+
+
+        case "send_email_draft": {
+
+          const sent =
+            await sendGmailDraft(
+              args.draft_id,
+              args.confirmation_text
+            );
+
+
+          return res.json({
+            ok:
+              true,
+            sent,
+            result: {
+              sent:
+                true,
+              instruction:
+                "Die E-Mail wurde gesendet. Bestätige das Mattl kurz."
+            }
+          });
+        }
+
+
         case "get_weather":
 
           data =
@@ -3833,6 +4808,43 @@ let lastOpenOrdersNotice = {
 
 const notifiedEmailIds =
   new Set();
+
+
+app.get(
+  "/api/gmail-message/:id",
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+
+      const email =
+        await getGmailMessageById(
+          req.params.id
+        );
+
+
+      return res.json({
+        ok:
+          true,
+        email
+      });
+
+    } catch (error) {
+
+      return res
+        .status(500)
+        .json({
+          ok:
+            false,
+          error:
+            error.message ||
+            "E-Mail konnte nicht geöffnet werden."
+        });
+    }
+  }
+);
 
 
 app.get(
