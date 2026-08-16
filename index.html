@@ -12,7 +12,7 @@
     content="Druckelite24 JARVIS Business Voice Assistant"
   />
   <title>Druckelite24 · JARVIS</title>
-  <link rel="stylesheet" href="styles.css?v=5.1-clean" />
+  <link rel="stylesheet" href="styles.css?v=5.3-modern" />
 </head>
 <body>
 
@@ -86,69 +86,126 @@
       <!-- LINKS: SHOPIFY + MAIL -->
       <section class="zone zone-left">
 
-        <section class="panel shop-panel-clean">
-          <div class="panel-head">
-            <span>SHOPIFY · LIVE</span>
-            <span class="panel-dot" id="shopDot"></span>
+        <section class="panel shop-panel-clean modern-shopify">
+          <div class="panel-head modern-head">
+            <div class="head-brand">
+              <div class="brand-icon shopify-icon">S</div>
+              <div>
+                <span>SHOPIFY LIVE</span>
+                <small>STORE PERFORMANCE</small>
+              </div>
+            </div>
+            <span class="live-chip"><i></i> LIVE</span>
           </div>
 
-          <div class="shop-kpis">
-            <div class="shop-kpi">
-              <div class="stat-value" id="statRevenue">—</div>
-              <div class="stat-label">UMSATZ HEUTE</div>
-            </div>
-            <div class="shop-kpi">
-              <div class="stat-value" id="statOrders">—</div>
-              <div class="stat-label">BESTELLUNGEN</div>
-            </div>
-            <div class="shop-kpi">
-              <div class="stat-value stat-small" id="statAov">—</div>
-              <div class="stat-label">Ø BESTELLWERT</div>
-            </div>
-            <div class="shop-kpi">
-              <div class="stat-value stat-small" id="statYesterday">—</div>
-              <div class="stat-label">GESTERN</div>
+          <div class="modern-shop-grid">
+            <article class="shop-main-card">
+              <div class="shop-main-copy">
+                <span>UMSATZ HEUTE</span>
+                <b id="statRevenue">—</b>
+                <em>↗ Live Entwicklung</em>
+              </div>
+              <svg class="shop-main-chart" viewBox="0 0 460 145" preserveAspectRatio="none" aria-hidden="true">
+                <defs>
+                  <linearGradient id="shopModernFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#ff2f9c" stop-opacity=".40"/>
+                    <stop offset="100%" stop-color="#e70779" stop-opacity="0"/>
+                  </linearGradient>
+                  <filter id="shopModernGlow">
+                    <feGaussianBlur stdDeviation="2.1" result="blur"/>
+                    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                  </filter>
+                </defs>
+                <path fill="url(#shopModernFill)" class="modern-area" d="M0,116 L28,110 L56,114 L84,97 L112,102 L140,88 L168,92 L196,73 L224,79 L252,60 L280,67 L308,48 L336,57 L364,38 L392,46 L420,28 L446,34 L460,15 L460,145 L0,145 Z"/>
+                <path class="modern-line" filter="url(#shopModernGlow)" d="M0,116 L28,110 L56,114 L84,97 L112,102 L140,88 L168,92 L196,73 L224,79 L252,60 L280,67 L308,48 L336,57 L364,38 L392,46 L420,28 L446,34 L460,15"/>
+                <circle cx="196" cy="73" r="3" class="modern-point"/>
+                <circle cx="336" cy="57" r="3" class="modern-point"/>
+                <circle cx="460" cy="15" r="4" class="modern-point"/>
+              </svg>
+              <div class="shop-chart-scan"></div>
+              <canvas class="week-chart live-week-chart" id="weekChart" width="460" height="145"></canvas>
+            </article>
+
+            <div class="shop-kpi-column">
+              <article class="modern-kpi kpi-orders">
+                <div class="kpi-icon">▥</div>
+                <div class="kpi-copy">
+                  <span>BESTELLUNGEN</span>
+                  <b id="statOrders">—</b>
+                  <em>↗ Live</em>
+                </div>
+                <div class="mini-bars">
+                  <i style="--h:28%"></i><i style="--h:42%"></i><i style="--h:36%"></i><i style="--h:54%"></i>
+                  <i style="--h:48%"></i><i style="--h:68%"></i><i style="--h:62%"></i><i style="--h:80%"></i>
+                  <i style="--h:72%"></i><i style="--h:92%"></i>
+                </div>
+              </article>
+
+              <article class="modern-kpi kpi-aov">
+                <div class="kpi-icon">€</div>
+                <div class="kpi-copy">
+                  <span>Ø BESTELLWERT</span>
+                  <b id="statAov">—</b>
+                  <em>Aktuell</em>
+                </div>
+                <svg class="mini-spark" viewBox="0 0 170 45" preserveAspectRatio="none" aria-hidden="true">
+                  <path d="M0,35 L20,31 L40,33 L60,25 L80,28 L100,20 L120,23 L140,15 L160,20 L170,8"/>
+                </svg>
+              </article>
+
+              <article class="modern-kpi kpi-yesterday">
+                <div class="kpi-icon">↔</div>
+                <div class="kpi-copy">
+                  <span>GESTERN</span>
+                  <b id="statYesterday">—</b>
+                  <em>Vergleich</em>
+                </div>
+              </article>
             </div>
           </div>
 
-          <div class="chart-label">UMSATZ · LETZTE 7 TAGE</div>
-          <div class="chart-shell">
-            <canvas class="week-chart" id="weekChart" width="520" height="126"></canvas>
-            <div class="chart-grid-lines"></div>
+          <div class="modern-shop-footer">
+            <span id="shopUpdated">WARTE AUF DATEN …</span>
+            <span class="api-status"><i id="shopDot" class="panel-dot"></i> SHOPIFY API</span>
           </div>
-          <div class="panel-foot" id="shopUpdated">WARTE AUF DATEN …</div>
         </section>
 
-        <section class="panel mail-panel-clean">
-          <div class="panel-head">
-            <span>MAIL · LETZTE 5</span>
-            <span class="panel-dot ok"></span>
+        <section class="panel mail-panel-clean modern-mail">
+          <div class="panel-head modern-head">
+            <div class="head-brand">
+              <div class="brand-icon gmail-icon">M</div>
+              <div>
+                <span>GMAIL · LETZTE 5</span>
+                <small>POSTEINGANG</small>
+              </div>
+            </div>
+            <span class="mail-chip">5</span>
           </div>
 
-          <div class="message-list mail-list" id="inboxList">
-            <div class="message-row">
-              <div class="msg-avatar">01</div>
-              <div class="msg-copy"><b>Letzte Mail</b><span>Wird nach Mail-Anbindung live angezeigt.</span></div>
+          <div class="message-list modern-message-list" id="inboxList">
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar">TS</div>
+              <div class="msg-copy"><b>Mail-System vorbereitet</b><span>Die letzte echte Mail erscheint hier.</span></div>
               <time>—</time>
             </div>
-            <div class="message-row">
-              <div class="msg-avatar">02</div>
-              <div class="msg-copy"><b>Posteingang</b><span>Gelesene und ungelesene Nachrichten.</span></div>
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar">MK</div>
+              <div class="msg-copy"><b>Gelesen + ungelesen</b><span>Alles im Posteingang wird berücksichtigt.</span></div>
               <time>—</time>
             </div>
-            <div class="message-row">
-              <div class="msg-avatar">03</div>
-              <div class="msg-copy"><b>Kundenanfrage</b><span>Absender, Betreff und Vorschau.</span></div>
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar">JP</div>
+              <div class="msg-copy"><b>Mail-Kontext</b><span>Antworten und Entwürfe direkt über JARVIS.</span></div>
               <time>—</time>
             </div>
-            <div class="message-row">
-              <div class="msg-avatar">04</div>
-              <div class="msg-copy"><b>Offene Antwort</b><span>Mail-Kontext für JARVIS vorbereitet.</span></div>
+            <div class="message-row modern-message-row important-mail">
+              <div class="sender-avatar">AC</div>
+              <div class="msg-copy"><b>Kundenanfrage</b><span>Wichtige Kundenmails werden hervorgehoben.</span></div>
               <time>—</time>
             </div>
-            <div class="message-row">
-              <div class="msg-avatar">05</div>
-              <div class="msg-copy"><b>Neue Nachricht</b><span>Die neuesten fünf Mails erscheinen hier.</span></div>
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar">LH</div>
+              <div class="msg-copy"><b>5-Minuten-Prüfung</b><span>Automatische Prüfung wird angeschlossen.</span></div>
               <time>—</time>
             </div>
           </div>
@@ -195,35 +252,41 @@
       <!-- RECHTS: WHATSAPP + WETTER/NEWS -->
       <section class="zone zone-right">
 
-        <section class="panel whatsapp-panel-clean">
-          <div class="panel-head wa-head">
-            <span>WHATSAPP · LETZTE 5</span>
+        <section class="panel whatsapp-panel-clean modern-whatsapp">
+          <div class="panel-head modern-head wa-modern-head">
+            <div class="head-brand">
+              <div class="brand-icon whatsapp-icon">◉</div>
+              <div>
+                <span>WHATSAPP BUSINESS</span>
+                <small>LETZTE 5 CHATS</small>
+              </div>
+            </div>
             <span class="wa-state">● BEREIT</span>
           </div>
 
-          <div class="message-list whatsapp-list">
-            <div class="message-row wa-row-clean">
-              <div class="msg-avatar wa-avatar">01</div>
+          <div class="message-list modern-message-list wa-modern-list">
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar wa-avatar">01</div>
               <div class="msg-copy"><b>Neue Kundenanfrage</b><span>Platzhalter bis zur Live-Verknüpfung.</span></div>
               <time>—</time>
             </div>
-            <div class="message-row wa-row-clean">
-              <div class="msg-avatar wa-avatar">02</div>
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar wa-avatar">02</div>
               <div class="msg-copy"><b>Angebot & Rückfrage</b><span>Letzte Nachricht erscheint hier.</span></div>
               <time>—</time>
             </div>
-            <div class="message-row wa-row-clean">
-              <div class="msg-avatar wa-avatar">03</div>
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar wa-avatar">03</div>
               <div class="msg-copy"><b>Produktfrage</b><span>Textilien, Druck und Veredelung.</span></div>
               <time>—</time>
             </div>
-            <div class="message-row wa-row-clean">
-              <div class="msg-avatar wa-avatar">04</div>
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar wa-avatar">04</div>
               <div class="msg-copy"><b>Bestellstatus</b><span>Statusfragen direkt im Cockpit.</span></div>
               <time>—</time>
             </div>
-            <div class="message-row wa-row-clean">
-              <div class="msg-avatar wa-avatar">05</div>
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar wa-avatar">05</div>
               <div class="msg-copy"><b>Offener Chat</b><span>Wichtige Unterhaltung.</span></div>
               <time>—</time>
             </div>
@@ -232,16 +295,25 @@
 
         <div class="right-bottom-grid">
 
-          <section class="panel weather-panel-clean">
-            <div class="panel-head">
-              <span>WETTER · LU</span>
+          <section class="panel weather-panel-clean modern-weather">
+            <div class="panel-head modern-head">
+              <div class="head-brand">
+                <div class="brand-icon weather-icon">☁</div>
+                <div>
+                  <span>WETTER</span>
+                  <small>LUDWIGSHAFEN</small>
+                </div>
+              </div>
               <span class="panel-dot" id="wxDot"></span>
             </div>
-            <div class="wx-main compact-wx">
-              <div class="wx-temp" id="wxTemp">—°</div>
-              <div class="wx-desc" id="wxDesc">…</div>
+            <div class="weather-modern-main">
+              <div class="weather-emoji">🌤️</div>
+              <div>
+                <div class="wx-temp" id="wxTemp">—°</div>
+                <div class="wx-desc" id="wxDesc">…</div>
+              </div>
             </div>
-            <div class="wx-grid">
+            <div class="wx-grid modern-wx-grid">
               <div class="wx-cell"><span id="wxMax">—°</span><label>MAX</label></div>
               <div class="wx-cell"><span id="wxMin">—°</span><label>MIN</label></div>
               <div class="wx-cell"><span id="wxRain">—%</span><label>REGEN</label></div>
@@ -249,15 +321,30 @@
             </div>
           </section>
 
-          <section class="panel news-panel-clean">
-            <div class="panel-head">
-              <span>NACHRICHTEN · LU</span>
+          <section class="panel news-panel-clean modern-news">
+            <div class="panel-head modern-head">
+              <div class="head-brand">
+                <div class="brand-icon news-icon">N</div>
+                <div>
+                  <span>NACHRICHTEN</span>
+                  <small>LUDWIGSHAFEN & REGION</small>
+                </div>
+              </div>
               <span class="panel-dot ok"></span>
             </div>
-            <div class="news-clean-list">
-              <div><b>LUDWIGSHAFEN AKTUELL</b><span>Lokale Meldungen und Entwicklungen.</span></div>
-              <div><b>WIRTSCHAFT</b><span>Relevantes für Unternehmen.</span></div>
-              <div><b>VERKEHR & REGION</b><span>Hinweise aus Ludwigshafen und Umgebung.</span></div>
+            <div class="news-modern-list">
+              <div class="news-modern-item">
+                <div class="news-thumb thumb-city"></div>
+                <div><b>Ludwigshafen aktuell</b><span>Lokale Meldungen und Entwicklungen.</span><small>HEUTE</small></div>
+              </div>
+              <div class="news-modern-item">
+                <div class="news-thumb thumb-business"></div>
+                <div><b>Wirtschaft & Unternehmen</b><span>Relevantes für Firmen und Selbstständige.</span><small>AKTUELL</small></div>
+              </div>
+              <div class="news-modern-item">
+                <div class="news-thumb thumb-traffic"></div>
+                <div><b>Verkehr & Region</b><span>Hinweise aus Ludwigshafen und Umgebung.</span><small>REGION</small></div>
+              </div>
             </div>
           </section>
 
