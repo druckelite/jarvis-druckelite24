@@ -725,3 +725,275 @@ body[data-jarvis-state="speaking"] .voice-button{animation:mic-pulse .72s ease-i
 .command-dock > .dock-command:nth-of-type(4){grid-column:4}
 
 .core-live-overlay,.core-live-state{display:none!important}
+
+
+/* =========================================================
+   V11.2 DESKTOP-FIX – 100% ZOOM / RIGHT PANEL / SHOPIFY / MIC
+   ========================================================= */
+
+@media (min-width:1121px){
+  html,body{
+    width:100%;
+    height:100%;
+    margin:0;
+    overflow:hidden;
+  }
+
+  .hud{
+    width:calc(100vw - 8px);
+    max-width:none;
+    height:100vh;
+    margin:0 auto;
+    padding:4px 0 5px;
+    overflow:hidden;
+  }
+
+  .topbar{height:58px}
+  .ticker{height:21px;margin:4px 0}
+
+  .command-center{
+    height:calc(100vh - 92px);
+    display:grid;
+    grid-template-columns:minmax(390px,29%) minmax(610px,42%) minmax(470px,29%);
+    grid-template-rows:minmax(0,1fr) 82px;
+    grid-template-areas:
+      "left core right"
+      "dock dock dock";
+    gap:7px;
+  }
+
+  /* Left column becomes its own 2-row stack */
+  .shop-panel{
+    grid-area:left;
+    align-self:start;
+    height:calc((100% - 7px) * .54);
+  }
+  .mail-panel{
+    grid-area:left;
+    align-self:end;
+    height:calc((100% - 7px) * .46);
+  }
+
+  .core-panel{
+    grid-area:core;
+    min-height:0;
+    height:100%;
+  }
+
+  .side-stack{
+    grid-area:right;
+    min-height:0;
+    height:100%;
+    display:grid;
+    grid-template-columns:minmax(0,1.12fr) minmax(185px,.88fr);
+    grid-template-rows:minmax(280px,.56fr) minmax(240px,.44fr);
+    gap:7px;
+  }
+
+  .whatsapp-panel{grid-column:1 / -1;grid-row:1;min-height:0}
+  .local-news-panel{grid-column:1;grid-row:2;min-height:0}
+  .weather-panel{grid-column:2;grid-row:2;min-height:0}
+
+  /* SHOPIFY reference layout */
+  .shop-panel .panel-head{height:34px}
+  .shop-panel .kpi-grid{
+    height:calc(100% - 34px);
+    padding:9px;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:1fr 1fr;
+    gap:8px;
+  }
+  .shop-panel .kpi{
+    position:relative;
+    min-height:0!important;
+    height:auto!important;
+    padding:10px 11px 6px;
+    border-radius:9px;
+    overflow:hidden;
+  }
+  .shop-panel .kpi-label{font-size:8px}
+  .shop-panel .stat-value{font-size:27px;margin-top:6px}
+  .shop-panel .stat-value.stat-small{font-size:25px}
+  .shop-panel .kpi-trend{font-size:7px;margin-top:6px}
+  .shop-spark{
+    position:absolute;
+    left:10px;
+    right:10px;
+    bottom:5px;
+    width:calc(100% - 20px);
+    height:46px;
+    margin:0;
+  }
+  .shop-line{
+    fill:none;
+    stroke:#ff2d9a;
+    stroke-width:1.7;
+    vector-effect:non-scaling-stroke;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+    filter:drop-shadow(0 0 3px rgba(231,7,121,.75));
+    stroke-dasharray:420;
+    stroke-dashoffset:420;
+    animation:shop-draw 1.8s ease forwards,shop-pulse 3.2s ease-in-out 1.8s infinite;
+  }
+  .shop-line.secondary{opacity:.88}
+  .shop-bars rect{
+    fill:rgba(231,7,121,.34);
+    transform-origin:bottom;
+    animation:bar-rise 1.1s ease both;
+  }
+  .shop-area{opacity:.68}
+  .shop-panel .shop-foot,
+  .shop-panel .compat-chart{display:none!important}
+
+  /* Mail proportion */
+  .mail-panel .panel-head{height:34px}
+  .mail-panel .email-list{padding:1px 9px 0}
+  .mail-panel .email-row{min-height:38px}
+  .mail-panel .mail-footer{margin:6px 9px 7px;padding:6px 10px}
+
+  /* RIGHT: keep everything inside visible viewport */
+  .whatsapp-panel .panel-head,
+  .local-news-panel .panel-head,
+  .weather-panel .panel-head{height:34px}
+  .wa-summary{margin:7px 9px 4px;min-height:47px;padding:6px 8px}
+  .wa-logo{width:34px;height:34px;font-size:21px}
+  .wa-list{padding:0 9px 5px}
+  .wa-row{min-height:32px}
+  .wa-copy b{font-size:7.7px}
+  .wa-copy span{font-size:6.2px}
+  .news-list{padding:2px 8px}
+  .news-row{min-height:54px;padding:5px 0;grid-template-columns:42px 1fr 6px}
+  .news-thumb{width:42px;height:37px}
+  .news-copy b{font-size:7.8px}
+  .news-copy span{font-size:6px}
+  .weather-body{padding:7px 8px}
+  .wx-main{margin-top:5px;gap:6px}
+  .wx-icon{font-size:27px}
+  .wx-temp{font-size:33px}
+  .wx-grid{margin-top:6px}
+  .wx-days{margin-top:6px}
+
+  /* Completely new cinematic mic dock */
+  .cinematic-dock{
+    grid-area:dock;
+    position:relative;
+    height:82px;
+    display:grid;
+    grid-template-columns:1fr 430px 1fr;
+    align-items:center;
+    gap:14px;
+    padding:7px 14px;
+    overflow:visible;
+    border:1px solid rgba(255,255,255,.14);
+    border-radius:12px;
+    background:
+      radial-gradient(circle at 50% 50%,rgba(231,7,121,.12),transparent 34%),
+      linear-gradient(180deg,#0a0d11,#05070a);
+    box-shadow:0 0 34px rgba(231,7,121,.08),inset 0 1px 0 rgba(255,255,255,.025);
+  }
+  .dock-left,.dock-right{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+  }
+  .dock-command{
+    height:48px;
+    border:1px solid rgba(255,255,255,.10);
+    border-radius:8px;
+    background:linear-gradient(180deg,#0c1014,#080a0d);
+    color:#edf0f4;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    cursor:pointer;
+  }
+  .dock-command span{color:var(--pink);font-size:15px;filter:drop-shadow(0 0 6px rgba(231,7,121,.7))}
+  .dock-command b{font-size:8px;font-weight:500}
+  .jarvis-mic-core{
+    position:relative;
+    height:68px;
+    display:grid;
+    grid-template-columns:95px 78px 145px 95px;
+    gap:8px;
+    align-items:center;
+    justify-content:center;
+  }
+  .voice-button{
+    position:relative;
+    z-index:5;
+    width:66px!important;
+    height:66px!important;
+    margin:0!important;
+    border-radius:50%;
+    border:1px solid rgba(255,75,169,.95);
+    background:
+      radial-gradient(circle at 50% 35%,#fff4fa 0 3%,#ff9bcf 7%,#ff4fa9 16%,#e70779 30%,#6b0534 52%,#090b0f 74%);
+    box-shadow:
+      0 0 18px rgba(231,7,121,1),
+      0 0 50px rgba(231,7,121,.56),
+      0 0 90px rgba(231,7,121,.16),
+      inset 0 0 20px rgba(255,255,255,.16);
+    cursor:pointer;
+    display:grid;
+    place-items:center;
+    animation:mic-hover 3s ease-in-out infinite;
+  }
+  .voice-button:before{
+    content:"🎙";
+    font-size:23px;
+    filter:grayscale(1) brightness(3.2) drop-shadow(0 0 5px rgba(255,255,255,.9));
+  }
+  .voice-button:after{
+    content:"";
+    position:absolute;
+    inset:-7px;
+    border-radius:50%;
+    border:1px dashed rgba(231,7,121,.58);
+    animation:spin 7s linear infinite;
+  }
+  .mic-ring{
+    position:absolute;
+    left:103px;
+    top:50%;
+    transform:translate(-50%,-50%);
+    border-radius:50%;
+    pointer-events:none;
+  }
+  .mic-ring-outer{
+    width:84px;height:84px;
+    border:1px solid rgba(231,7,121,.24);
+    box-shadow:0 0 20px rgba(231,7,121,.08);
+    animation:ring-pulse 2.8s ease-in-out infinite;
+  }
+  .mic-ring-mid{
+    width:76px;height:76px;
+    border:1px solid rgba(255,75,169,.36);
+    animation:ring-spin 9s linear infinite;
+  }
+  .mic-waveform{
+    height:24px;
+    opacity:.82;
+    background:
+      linear-gradient(165deg,transparent 0 18%,rgba(231,7,121,.95) 19% 25%,transparent 26% 37%,rgba(255,45,154,.92) 38% 45%,transparent 46% 56%,rgba(231,7,121,.85) 57% 64%,transparent 65%);
+    filter:drop-shadow(0 0 5px rgba(231,7,121,.7));
+    animation:wave-breathe 1.5s ease-in-out infinite;
+  }
+  .mic-waveform-right{transform:scaleX(-1)}
+  .mic-status{min-width:0}
+  .voice-log{font:8px var(--mono);color:#e2e5e9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .core-state{margin-top:3px;font:7px var(--mono);letter-spacing:.12em;color:#7e858d}
+  .core-state span{color:var(--pink)}
+
+  .core-live-overlay,.core-live-state{display:none!important}
+}
+
+@keyframes shop-draw{to{stroke-dashoffset:0}}
+@keyframes shop-pulse{0%,100%{opacity:.82}50%{opacity:1;filter:drop-shadow(0 0 6px rgba(231,7,121,.92))}}
+@keyframes bar-rise{from{transform:scaleY(.05);opacity:.2}to{transform:scaleY(1);opacity:1}}
+@keyframes mic-hover{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-2px) scale(1.045)}}
+@keyframes ring-pulse{0%,100%{opacity:.32;transform:translate(-50%,-50%) scale(.96)}50%{opacity:.9;transform:translate(-50%,-50%) scale(1.05)}}
+@keyframes ring-spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
+@keyframes wave-breathe{0%,100%{opacity:.45}50%{opacity:1}}
