@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V10.1-ELEVENLABS-GMAIL-INBOX";
+  "V10.1-ELEVENLABS-GMAIL-DASHBOARD";
 
 
 /* =========================================================
@@ -3016,6 +3016,133 @@ async function getUnreadEmails() {
 
 
 /* =========================================================
+   GMAIL · LETZTE 5 IM POSTEINGANG
+   Gelesen + ungelesen, aber nur Nachrichten, die aktuell noch
+   im Gmail-Posteingang liegen.
+   ========================================================= */
+
+async function getLatestInboxEmails() {
+
+  const token =
+    await getGmailAccessToken();
+
+
+  const listResponse =
+    await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in%3Ainbox&maxResults=5",
+      {
+        headers: {
+          Authorization:
+            `Bearer ${token}`
+        },
+        signal:
+          timeoutSignal(
+            10000
+          )
+      }
+    );
+
+
+  const listData =
+    await listResponse.json();
+
+
+  if (!listResponse.ok) {
+    throw new Error(
+      "Posteingang konnte nicht gelesen werden."
+    );
+  }
+
+
+  const emails = [];
+
+
+  for (
+    const ref of
+    listData.messages || []
+  ) {
+
+    try {
+
+      const response =
+        await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${ref.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`
+            },
+            signal:
+              timeoutSignal(
+                10000
+              )
+          }
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if (!response.ok) {
+        continue;
+      }
+
+
+      const headers =
+        data.payload?.headers || [];
+
+
+      const getHeader =
+        name =>
+          headers.find(
+            header =>
+              String(header.name || "")
+                .toLowerCase() ===
+              String(name || "")
+                .toLowerCase()
+          )?.value || "";
+
+
+      emails.push({
+        id:
+          ref.id,
+        threadId:
+          data.threadId || null,
+        from:
+          getHeader("From") ||
+          "unbekannt",
+        subject:
+          getHeader("Subject") ||
+          "(kein Betreff)",
+        date:
+          getHeader("Date") ||
+          null,
+        internalDate:
+          data.internalDate ||
+          null,
+        snippet:
+          data.snippet ||
+          "",
+        unread:
+          Array.isArray(data.labelIds) &&
+          data.labelIds.includes("UNREAD")
+      });
+
+    } catch (error) {
+      console.warn(
+        "[GMAIL INBOX SINGLE ERROR]",
+        error
+      );
+    }
+  }
+
+
+  return emails;
+}
+
+
+/* =========================================================
    WEATHER
    ========================================================= */
 
@@ -3706,6 +3833,59 @@ let lastOpenOrdersNotice = {
 
 const notifiedEmailIds =
   new Set();
+
+
+app.get(
+  "/api/gmail-inbox",
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+
+      if (
+        !isGmailConfigured()
+      ) {
+        return res
+          .status(503)
+          .json({
+            ok: false,
+            error:
+              "Gmail ist nicht konfiguriert."
+          });
+      }
+
+
+      const emails =
+        await getLatestInboxEmails();
+
+
+      return res.json({
+        ok: true,
+        emails:
+          emails.slice(0, 5)
+      });
+
+    } catch (error) {
+
+      console.warn(
+        "[GMAIL INBOX API ERROR]",
+        error
+      );
+
+
+      return res
+        .status(500)
+        .json({
+          ok: false,
+          error:
+            error.message ||
+            "Posteingang konnte nicht geladen werden."
+        });
+    }
+  }
+);
 
 
 app.post(
