@@ -12,7 +12,7 @@
     content="Druckelite24 JARVIS Business Voice Assistant"
   />
   <title>Druckelite24 · JARVIS</title>
-  <link rel="stylesheet" href="styles.css?v=5-original" />
+  <link rel="stylesheet" href="styles.css?v=5.1-clean" />
 </head>
 <body>
 
@@ -71,76 +71,93 @@
     <!-- =================================================
          3-SPALTEN-COCKPIT
          ================================================= -->
-    <main class="cockpit">
+    
+    <section class="mobile-core-launch">
+      <div>
+        <span>JARVIS CORE</span>
+        <b id="mobileCoreTitle">JARVIS STARTEN</b>
+        <small id="mobileCoreState">STANDBY</small>
+      </div>
+      <button id="toggleMobile" class="mobile-core-button" type="button" aria-label="JARVIS starten oder stoppen"></button>
+    </section>
 
-      <!-- ============ LINKE PANEL-SPALTE ============ -->
-      <aside class="column column-left">
+<main class="cockpit cockpit-clean">
 
-        <!-- SHOP LIVE (echte Shopify-Daten) -->
-        <section class="panel">
+      <!-- LINKS: SHOPIFY + MAIL -->
+      <section class="zone zone-left">
+
+        <section class="panel shop-panel-clean">
           <div class="panel-head">
-            <span>SHOP · LIVE</span>
+            <span>SHOPIFY · LIVE</span>
             <span class="panel-dot" id="shopDot"></span>
           </div>
-          <div class="stat-row">
-            <div class="stat">
-              <div class="stat-value" id="statOrders">—</div>
-              <div class="stat-label">BESTELLUNGEN HEUTE</div>
-            </div>
-            <div class="stat">
+
+          <div class="shop-kpis">
+            <div class="shop-kpi">
               <div class="stat-value" id="statRevenue">—</div>
               <div class="stat-label">UMSATZ HEUTE</div>
             </div>
-          </div>
-          <div class="stat-row">
-            <div class="stat">
+            <div class="shop-kpi">
+              <div class="stat-value" id="statOrders">—</div>
+              <div class="stat-label">BESTELLUNGEN</div>
+            </div>
+            <div class="shop-kpi">
               <div class="stat-value stat-small" id="statAov">—</div>
               <div class="stat-label">Ø BESTELLWERT</div>
             </div>
-            <div class="stat">
+            <div class="shop-kpi">
               <div class="stat-value stat-small" id="statYesterday">—</div>
               <div class="stat-label">GESTERN</div>
             </div>
           </div>
+
           <div class="chart-label">UMSATZ · LETZTE 7 TAGE</div>
-          <canvas class="week-chart" id="weekChart" width="260" height="70"></canvas>
+          <div class="chart-shell">
+            <canvas class="week-chart" id="weekChart" width="520" height="126"></canvas>
+            <div class="chart-grid-lines"></div>
+          </div>
           <div class="panel-foot" id="shopUpdated">WARTE AUF DATEN …</div>
         </section>
 
-        <!-- AUDIO-WELLE -->
-        <section class="panel">
-          <div class="panel-head"><span>AUDIO · SIGNAL</span></div>
-          <canvas class="wave" id="waveCanvas" width="260" height="56"></canvas>
-          <div class="eq" aria-hidden="true">
-            <span></span><span></span><span></span><span></span>
-            <span></span><span></span><span></span><span></span>
-            <span></span><span></span><span></span><span></span>
+        <section class="panel mail-panel-clean">
+          <div class="panel-head">
+            <span>MAIL · LETZTE 5</span>
+            <span class="panel-dot ok"></span>
           </div>
-        </section>
 
-        <!-- PRODUKTION (Textil-Modul) -->
-        <section class="panel">
-          <div class="panel-head"><span>PRODUKTION · TEXTIL</span></div>
-          <div class="tex-module">
-            <svg class="tshirt" viewBox="0 0 100 100" aria-hidden="true">
-              <path d="M32 12 L20 20 L6 34 L16 46 L24 40 L24 90 L76 90 L76 40 L84 46 L94 34 L80 20 L68 12 C64 20 56 24 50 24 C44 24 36 20 32 12 Z"
-                fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" />
-              <rect class="print-zone" x="38" y="38" width="24" height="26" fill="none"
-                stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3" />
-            </svg>
-            <div class="tex-lines">
-              <div class="tex-line"><span>DTF</span><i style="--w:86%"></i></div>
-              <div class="tex-line"><span>FLEX</span><i style="--w:64%"></i></div>
-              <div class="tex-line"><span>STICK</span><i style="--w:48%"></i></div>
-              <div class="tex-line"><span>SIEB</span><i style="--w:72%"></i></div>
+          <div class="message-list mail-list" id="inboxList">
+            <div class="message-row">
+              <div class="msg-avatar">01</div>
+              <div class="msg-copy"><b>Letzte Mail</b><span>Wird nach Mail-Anbindung live angezeigt.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row">
+              <div class="msg-avatar">02</div>
+              <div class="msg-copy"><b>Posteingang</b><span>Gelesene und ungelesene Nachrichten.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row">
+              <div class="msg-avatar">03</div>
+              <div class="msg-copy"><b>Kundenanfrage</b><span>Absender, Betreff und Vorschau.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row">
+              <div class="msg-avatar">04</div>
+              <div class="msg-copy"><b>Offene Antwort</b><span>Mail-Kontext für JARVIS vorbereitet.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row">
+              <div class="msg-avatar">05</div>
+              <div class="msg-copy"><b>Neue Nachricht</b><span>Die neuesten fünf Mails erscheinen hier.</span></div>
+              <time>—</time>
             </div>
           </div>
         </section>
 
-      </aside>
+      </section>
 
 
-      <!-- ============ ZENTRUM: REAKTOR ============ -->
+      <!-- ORIGINALER KERN – FUNKTION UND KLICK BLEIBEN EXAKT -->
       <section class="stage">
         <div class="stage-title">
           <div class="eyebrow">DEIN PERSÖNLICHER ASSISTENT</div>
@@ -175,11 +192,92 @@
       </section>
 
 
-      <!-- ============ RECHTE PANEL-SPALTE ============ -->
-      <aside class="column column-right">
+      <!-- RECHTS: WHATSAPP + WETTER/NEWS -->
+      <section class="zone zone-right">
 
-        <!-- ENTWURF (E-Mails etc.) - erscheint erst, wenn JARVIS einen erstellt hat -->
-        <section class="panel" id="draftPanel" style="display: none;">
+        <section class="panel whatsapp-panel-clean">
+          <div class="panel-head wa-head">
+            <span>WHATSAPP · LETZTE 5</span>
+            <span class="wa-state">● BEREIT</span>
+          </div>
+
+          <div class="message-list whatsapp-list">
+            <div class="message-row wa-row-clean">
+              <div class="msg-avatar wa-avatar">01</div>
+              <div class="msg-copy"><b>Neue Kundenanfrage</b><span>Platzhalter bis zur Live-Verknüpfung.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row wa-row-clean">
+              <div class="msg-avatar wa-avatar">02</div>
+              <div class="msg-copy"><b>Angebot & Rückfrage</b><span>Letzte Nachricht erscheint hier.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row wa-row-clean">
+              <div class="msg-avatar wa-avatar">03</div>
+              <div class="msg-copy"><b>Produktfrage</b><span>Textilien, Druck und Veredelung.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row wa-row-clean">
+              <div class="msg-avatar wa-avatar">04</div>
+              <div class="msg-copy"><b>Bestellstatus</b><span>Statusfragen direkt im Cockpit.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row wa-row-clean">
+              <div class="msg-avatar wa-avatar">05</div>
+              <div class="msg-copy"><b>Offener Chat</b><span>Wichtige Unterhaltung.</span></div>
+              <time>—</time>
+            </div>
+          </div>
+        </section>
+
+        <div class="right-bottom-grid">
+
+          <section class="panel weather-panel-clean">
+            <div class="panel-head">
+              <span>WETTER · LU</span>
+              <span class="panel-dot" id="wxDot"></span>
+            </div>
+            <div class="wx-main compact-wx">
+              <div class="wx-temp" id="wxTemp">—°</div>
+              <div class="wx-desc" id="wxDesc">…</div>
+            </div>
+            <div class="wx-grid">
+              <div class="wx-cell"><span id="wxMax">—°</span><label>MAX</label></div>
+              <div class="wx-cell"><span id="wxMin">—°</span><label>MIN</label></div>
+              <div class="wx-cell"><span id="wxRain">—%</span><label>REGEN</label></div>
+              <div class="wx-cell"><span id="wxWind">—</span><label>WIND</label></div>
+            </div>
+          </section>
+
+          <section class="panel news-panel-clean">
+            <div class="panel-head">
+              <span>NACHRICHTEN · LU</span>
+              <span class="panel-dot ok"></span>
+            </div>
+            <div class="news-clean-list">
+              <div><b>LUDWIGSHAFEN AKTUELL</b><span>Lokale Meldungen und Entwicklungen.</span></div>
+              <div><b>WIRTSCHAFT</b><span>Relevantes für Unternehmen.</span></div>
+              <div><b>VERKEHR & REGION</b><span>Hinweise aus Ludwigshafen und Umgebung.</span></div>
+            </div>
+          </section>
+
+        </div>
+
+        <section class="panel system-strip">
+          <div class="sys-lines compact-sys">
+            <div class="sys-line"><span>SHOPIFY</span><b id="sysShop">…</b></div>
+            <div class="sys-line"><span>WETTER</span><b id="sysWx">…</b></div>
+            <div class="sys-line"><span>MAIL</span><b class="pending">READY</b></div>
+            <div class="sys-line"><span>WHATSAPP</span><b class="pending">READY</b></div>
+          </div>
+          <div class="hidden-gauge-wrap">
+            <div class="gauge" id="gaugeTrend" style="--val:0"><span id="gaugeTrendLabel">TREND</span></div>
+          </div>
+        </section>
+
+      </section>
+
+      <section class="panel" id="draftPanel" style="display: none;">
           <div class="panel-head">
             <span>ENTWURF</span>
             <span class="panel-dot ok"></span>
@@ -202,90 +300,6 @@
           </button>
         </section>
 
-        <!-- WETTER LIVE (echte Daten) -->
-        <section class="panel">
-          <div class="panel-head">
-            <span>WETTER · LUDWIGSHAFEN</span>
-            <span class="panel-dot" id="wxDot"></span>
-          </div>
-          <div class="wx-main">
-            <div class="wx-temp" id="wxTemp">—°</div>
-            <div class="wx-desc" id="wxDesc">…</div>
-          </div>
-          <div class="wx-grid">
-            <div class="wx-cell">
-              <span id="wxMax">—°</span><label>MAX</label>
-            </div>
-            <div class="wx-cell">
-              <span id="wxMin">—°</span><label>MIN</label>
-            </div>
-            <div class="wx-cell">
-              <span id="wxRain">—%</span><label>REGEN</label>
-            </div>
-            <div class="wx-cell">
-              <span id="wxWind">—</span><label>WIND KM/H</label>
-            </div>
-          </div>
-        </section>
-
-        <!-- GMAIL (Platzhalter für Phase 2) -->
-        <section class="panel">
-          <div class="panel-head">
-            <span>GMAIL · POSTEINGANG</span>
-            <span class="panel-dot"></span>
-          </div>
-          <div class="skel-list">
-            <div class="skel-row" style="width: 88%"></div>
-            <div class="skel-row" style="width: 64%"></div>
-            <div class="skel-row" style="width: 76%"></div>
-          </div>
-          <div class="panel-foot">PHASE 2 · WIRD VERBUNDEN</div>
-        </section>
-
-        <!-- NACHRICHTEN (Platzhalter) -->
-        <section class="panel">
-          <div class="panel-head">
-            <span>NACHRICHTEN</span>
-            <span class="panel-dot"></span>
-          </div>
-          <div class="skel-list">
-            <div class="skel-row" style="width: 72%"></div>
-            <div class="skel-row" style="width: 84%"></div>
-          </div>
-          <div class="panel-foot">PHASE 2 · WIRD VERBUNDEN</div>
-        </section>
-
-        <!-- NEWS (Platzhalter) -->
-        <section class="panel">
-          <div class="panel-head">
-            <span>NEWS · BRANCHE</span>
-            <span class="panel-dot"></span>
-          </div>
-          <div class="skel-list">
-            <div class="skel-row" style="width: 92%"></div>
-            <div class="skel-row" style="width: 58%"></div>
-            <div class="skel-row" style="width: 80%"></div>
-          </div>
-          <div class="panel-foot">PHASE 2 · WIRD VERBUNDEN</div>
-        </section>
-
-        <!-- SYSTEM-GAUGES -->
-        <section class="panel">
-          <div class="panel-head"><span>SYSTEM</span></div>
-          <div class="gauge-row">
-            <div class="gauge" id="gaugeTrend" style="--val: 0"><span id="gaugeTrendLabel">TREND</span></div>
-            <div class="gauge" style="--val: 92"><span>LINK</span></div>
-            <div class="gauge" style="--val: 64"><span>CORE</span></div>
-          </div>
-          <div class="sys-lines">
-            <div class="sys-line"><span>SHOPIFY-BRÜCKE</span><b id="sysShop">…</b></div>
-            <div class="sys-line"><span>WETTERDIENST</span><b id="sysWx">…</b></div>
-            <div class="sys-line"><span>GMAIL</span><b class="pending">BALD</b></div>
-            <div class="sys-line"><span>KALENDER</span><b class="pending">BALD</b></div>
-          </div>
-        </section>
-
-      </aside>
     </main>
 
 
@@ -774,6 +788,42 @@
     })();
   </script>
 
-  <script src="app.js?v=22"></script>
+  
+  <script>
+    (function(){
+      const originalCore = document.getElementById("toggle");
+      const mobileCore = document.getElementById("toggleMobile");
+      const mobileTitle = document.getElementById("mobileCoreTitle");
+      const mobileState = document.getElementById("mobileCoreState");
+
+      if (originalCore && mobileCore) {
+        mobileCore.addEventListener("click", function(){ originalCore.click(); });
+      }
+
+      const labels = {
+        offline:["JARVIS STARTEN","STANDBY"],
+        connecting:["VERBINDUNG","BOOT"],
+        listening:["JARVIS HÖRT ZU","ZUHÖREN"],
+        hearing:["SPRACHE ERKANNT","INPUT"],
+        thinking:["JARVIS ANALYSIERT","DENKEN"],
+        speaking:["JARVIS ANTWORTET","SPRECHEN"]
+      };
+
+      function syncMobile(){
+        const s = document.body.dataset.jarvisState || "offline";
+        const p = labels[s] || labels.offline;
+        if (mobileTitle) mobileTitle.textContent = p[0];
+        if (mobileState) mobileState.textContent = p[1];
+      }
+
+      syncMobile();
+      new MutationObserver(syncMobile).observe(document.body, {
+        attributes:true,
+        attributeFilter:["data-jarvis-state"]
+      });
+    })();
+  </script>
+
+<script src="app.js?v=22"></script>
 </body>
 </html>
