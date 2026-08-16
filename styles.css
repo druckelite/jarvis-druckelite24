@@ -3085,3 +3085,18 @@ audio { display: none; }
     border-radius:9px !important;
   }
 }
+
+
+/* =========================================================
+   V5.3.4 — ORIGINAL SHOPIFY LOGO
+   ========================================================= */
+
+.shopify-icon.brand-logo-icon{
+  background:#95BF47 !important;
+  border-color:rgba(149,191,71,.38) !important;
+  box-shadow:0 0 14px rgba(149,191,71,.16);
+}
+
+.shopify-icon.brand-logo-icon img{
+  filter:none;
+}
