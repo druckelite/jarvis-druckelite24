@@ -997,3 +997,612 @@ body[data-jarvis-state="speaking"] .voice-button{animation:mic-pulse .72s ease-i
 @keyframes ring-pulse{0%,100%{opacity:.32;transform:translate(-50%,-50%) scale(.96)}50%{opacity:.9;transform:translate(-50%,-50%) scale(1.05)}}
 @keyframes ring-spin{to{transform:translate(-50%,-50%) rotate(360deg)}}
 @keyframes wave-breathe{0%,100%{opacity:.45}50%{opacity:1}}
+
+
+/* =========================================================
+   V12 — RESPONSIVE COMMAND CENTER
+   Desktop = cinematic command center
+   Mobile  = JARVIS control first, business panels below
+   ========================================================= */
+
+.mobile-voice-control{display:none}
+
+/* ---------- DESKTOP ---------- */
+@media (min-width:1121px){
+  html,body{
+    width:100%;
+    height:100%;
+    overflow:hidden;
+  }
+
+  .hud{
+    width:calc(100vw - 10px);
+    max-width:none;
+    height:100vh;
+    padding:4px 0 5px;
+    overflow:hidden;
+  }
+
+  .topbar{height:58px}
+  .brand-logo{height:18px!important}
+  .ticker{height:21px;margin:4px 0}
+
+  .command-center{
+    height:calc(100vh - 92px);
+    display:grid;
+    grid-template-columns:minmax(380px,28%) minmax(640px,44%) minmax(440px,28%);
+    grid-template-rows:minmax(0,1fr) 78px;
+    grid-template-areas:
+      "left core right"
+      "dock dock dock";
+    gap:7px;
+  }
+
+  .shop-panel{
+    grid-area:left;
+    align-self:start;
+    height:54%;
+    min-height:0;
+  }
+
+  .mail-panel{
+    grid-area:left;
+    align-self:end;
+    height:45%;
+    min-height:0;
+  }
+
+  .core-panel{
+    grid-area:core;
+    height:100%;
+    min-height:0;
+  }
+
+  .side-stack{
+    grid-area:right;
+    height:100%;
+    min-height:0;
+    display:grid;
+    grid-template-columns:minmax(0,1.08fr) minmax(180px,.92fr);
+    grid-template-rows:minmax(270px,.55fr) minmax(235px,.45fr);
+    gap:7px;
+  }
+
+  .whatsapp-panel{grid-column:1/-1;grid-row:1}
+  .local-news-panel{grid-column:1;grid-row:2}
+  .weather-panel{grid-column:2;grid-row:2}
+
+  .panel-head{height:34px}
+
+  /* Shopify like reference */
+  .shop-panel .kpi-grid{
+    height:calc(100% - 34px);
+    padding:9px;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:1fr 1fr;
+    gap:8px;
+  }
+
+  .shop-panel .kpi{
+    position:relative;
+    min-height:0!important;
+    height:auto!important;
+    padding:10px 11px 6px;
+    border-radius:10px;
+    overflow:hidden;
+    background:
+      radial-gradient(circle at 84% 84%,rgba(231,7,121,.10),transparent 48%),
+      linear-gradient(180deg,#0b0e12,#080a0d);
+  }
+
+  .shop-panel .kpi-label{font-size:8px}
+  .shop-panel .stat-value{font-size:28px;margin-top:6px}
+  .shop-panel .stat-value.stat-small{font-size:25px}
+  .shop-panel .kpi-trend{font-size:7px;margin-top:6px}
+
+  .shop-spark{
+    position:absolute;
+    left:10px;
+    right:10px;
+    bottom:6px;
+    width:calc(100% - 20px);
+    height:47px;
+    margin:0;
+  }
+
+  .shop-line{
+    fill:none;
+    stroke:#ff2d9a;
+    stroke-width:1.65;
+    vector-effect:non-scaling-stroke;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+    filter:drop-shadow(0 0 3px rgba(231,7,121,.72));
+  }
+
+  .shop-area{opacity:.64}
+  .shop-bars rect{fill:rgba(231,7,121,.34)}
+  .shop-panel .shop-foot,
+  .shop-panel .compat-chart{display:none!important}
+
+  /* Right side: tighter, no cutoff */
+  .wa-summary{margin:7px 9px 4px;min-height:47px;padding:6px 8px}
+  .wa-logo{width:34px;height:34px}
+  .wa-list{padding:0 9px 5px}
+  .wa-row{min-height:31px}
+
+  .news-list{padding:2px 8px}
+  .news-row{min-height:53px;padding:5px 0}
+  .news-thumb{width:41px;height:36px}
+
+  .weather-body{padding:7px 8px}
+  .wx-icon{font-size:27px}
+  .wx-temp{font-size:33px}
+  .wx-grid{margin-top:6px}
+  .wx-days{margin-top:6px}
+
+  /* Completely new desktop voice core */
+  .cinematic-dock{
+    grid-area:dock;
+    height:78px;
+    display:grid;
+    grid-template-columns:1fr 470px 1fr;
+    gap:14px;
+    align-items:center;
+    padding:6px 12px;
+    border:1px solid rgba(255,255,255,.14);
+    border-radius:12px;
+    background:
+      radial-gradient(circle at 50% 50%,rgba(231,7,121,.11),transparent 34%),
+      linear-gradient(180deg,#0a0d11,#05070a);
+    box-shadow:0 0 36px rgba(231,7,121,.07),inset 0 1px 0 rgba(255,255,255,.025);
+    overflow:visible;
+  }
+
+  .dock-side{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+  }
+
+  .dock-command{
+    height:46px;
+    border:1px solid rgba(255,255,255,.10);
+    border-radius:8px;
+    background:linear-gradient(180deg,#0c1014,#080a0d);
+    color:#edf0f4;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    cursor:pointer;
+  }
+
+  .dock-command span{
+    color:var(--pink);
+    font-size:15px;
+    filter:drop-shadow(0 0 6px rgba(231,7,121,.65));
+  }
+
+  .dock-command b{font-size:8px;font-weight:500}
+
+  .jarvis-desktop-core{
+    position:relative;
+    width:470px;
+    height:68px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .desktop-core-label{
+    position:absolute;
+    top:0;
+    font:7px var(--mono);
+    letter-spacing:.18em;
+    color:#7f858d;
+  }
+
+  .desktop-core-center{
+    position:absolute;
+    left:50%;
+    top:31px;
+    transform:translate(-50%,-50%);
+    width:430px;
+    display:grid;
+    grid-template-columns:145px 76px 145px;
+    gap:8px;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .desktop-orbit{
+    width:76px;
+    height:76px;
+    border-radius:50%;
+    position:relative;
+    display:grid;
+    place-items:center;
+  }
+
+  .desktop-orbit:before,
+  .desktop-orbit:after{
+    content:"";
+    position:absolute;
+    border-radius:50%;
+    pointer-events:none;
+  }
+
+  .desktop-orbit:before{
+    inset:-7px;
+    border:1px solid rgba(231,7,121,.26);
+    box-shadow:0 0 18px rgba(231,7,121,.10);
+    animation:v12-orbit-pulse 2.8s ease-in-out infinite;
+  }
+
+  .desktop-orbit:after{
+    inset:-12px;
+    border:1px dashed rgba(231,7,121,.35);
+    animation:spin 10s linear infinite;
+  }
+
+  .voice-button{
+    width:66px!important;
+    height:66px!important;
+    margin:0!important;
+    border-radius:50%;
+    border:1px solid rgba(255,75,169,.95);
+    background:
+      radial-gradient(circle at 50% 35%,#fff5fb 0 3%,#ff9bcf 7%,#ff4fa9 16%,#e70779 30%,#6b0534 52%,#090b0f 74%);
+    box-shadow:
+      0 0 18px rgba(231,7,121,1),
+      0 0 50px rgba(231,7,121,.56),
+      inset 0 0 20px rgba(255,255,255,.16);
+    display:grid;
+    place-items:center;
+  }
+
+  .voice-button:before{
+    content:"🎙";
+    font-size:23px;
+    filter:grayscale(1) brightness(3.2) drop-shadow(0 0 5px #fff);
+  }
+
+  .desktop-wave{
+    height:24px;
+    opacity:.75;
+    background:
+      linear-gradient(165deg,
+        transparent 0 18%,
+        rgba(231,7,121,.95) 19% 24%,
+        transparent 25% 37%,
+        rgba(255,45,154,.92) 38% 45%,
+        transparent 46% 56%,
+        rgba(231,7,121,.85) 57% 64%,
+        transparent 65%);
+    filter:drop-shadow(0 0 5px rgba(231,7,121,.70));
+    animation:v12-wave 1.6s ease-in-out infinite;
+  }
+
+  .desktop-wave-right{transform:scaleX(-1)}
+
+  .desktop-core-status{
+    position:absolute;
+    top:47px;
+    text-align:center;
+  }
+
+  .voice-log{font:8px var(--mono);color:#e2e5e9}
+  .core-state{margin-top:2px;font:7px var(--mono);letter-spacing:.12em;color:#7f858d}
+  .core-state span{color:var(--pink)}
+}
+
+/* ---------- TABLET ---------- */
+@media (min-width:761px) and (max-width:1120px){
+  body{overflow:auto}
+  .hud{width:calc(100vw - 8px)}
+  .command-center{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    grid-template-areas:
+      "core core"
+      "shop mail"
+      "side side"
+      "dock dock";
+    gap:8px;
+  }
+  .core-panel{min-height:560px}
+  .side-stack{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:320px 260px;
+  }
+  .whatsapp-panel{grid-column:1/-1}
+  .local-news-panel{grid-column:1}
+  .weather-panel{grid-column:2}
+  .cinematic-dock{grid-template-columns:1fr 390px 1fr}
+}
+
+/* ---------- IPHONE / MOBILE ---------- */
+@media (max-width:760px){
+  html,body{
+    width:100%;
+    min-height:100%;
+    overflow-x:hidden;
+    overflow-y:auto;
+  }
+
+  body{
+    background:#030406;
+    padding-bottom:18px;
+  }
+
+  .hud{
+    width:100%;
+    max-width:none;
+    padding:0 6px 12px;
+  }
+
+  .topbar{
+    height:52px;
+    border-radius:0 0 12px 12px;
+    padding:0 10px;
+    grid-template-columns:1fr auto;
+    position:sticky;
+    top:0;
+    z-index:110;
+    backdrop-filter:blur(12px);
+  }
+
+  .brand-logo{height:16px!important}
+  .top-center{display:none}
+  .top-datetime{display:none}
+  .status-pill{font-size:7px;padding:6px 9px 6px 22px}
+  .ticker{display:none}
+
+  /* Start control directly at top */
+  .mobile-voice-control{
+    display:block;
+    position:sticky;
+    top:56px;
+    z-index:100;
+    margin:6px 0 8px;
+    padding:10px 12px 12px;
+    border:1px solid rgba(255,255,255,.14);
+    border-radius:12px;
+    background:
+      radial-gradient(circle at 18% 45%,rgba(231,7,121,.12),transparent 34%),
+      linear-gradient(180deg,rgba(11,14,18,.98),rgba(5,7,10,.98));
+    box-shadow:
+      0 12px 28px rgba(0,0,0,.34),
+      0 0 24px rgba(231,7,121,.08);
+    backdrop-filter:blur(12px);
+    overflow:hidden;
+  }
+
+  .mobile-voice-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:8px;
+  }
+
+  .mobile-voice-title{
+    font:600 12px var(--display);
+    letter-spacing:.10em;
+  }
+
+  .mobile-voice-sub{
+    margin-top:2px;
+    font:6px var(--mono);
+    letter-spacing:.12em;
+    color:#777e87;
+  }
+
+  .mobile-voice-state-dot{
+    width:8px;height:8px;border-radius:50%;
+    background:#6b7079;
+    box-shadow:0 0 8px rgba(107,112,121,.35);
+  }
+
+  .mobile-voice-main{
+    display:grid;
+    grid-template-columns:72px 1fr;
+    gap:12px;
+    align-items:center;
+  }
+
+  .mobile-voice-button{
+    width:68px;
+    height:68px;
+    border-radius:50%;
+    border:1px solid rgba(255,75,169,.92);
+    background:
+      radial-gradient(circle at 50% 35%,#fff5fb 0 3%,#ff9bcf 7%,#ff4fa9 16%,#e70779 30%,#6b0534 52%,#090b0f 74%);
+    box-shadow:
+      0 0 16px rgba(231,7,121,.92),
+      0 0 42px rgba(231,7,121,.44),
+      inset 0 0 18px rgba(255,255,255,.14);
+    display:grid;
+    place-items:center;
+    position:relative;
+  }
+
+  .mobile-voice-button:before{
+    content:"🎙";
+    font-size:24px;
+    filter:grayscale(1) brightness(3.1);
+  }
+
+  .mobile-voice-button:after{
+    content:"";
+    position:absolute;
+    inset:-6px;
+    border-radius:50%;
+    border:1px dashed rgba(231,7,121,.46);
+    animation:spin 9s linear infinite;
+  }
+
+  .mobile-voice-label{
+    font:600 15px var(--display);
+    letter-spacing:.04em;
+  }
+
+  .mobile-voice-status{
+    margin-top:3px;
+    font:8px var(--mono);
+    letter-spacing:.16em;
+    color:#ff4fa8;
+  }
+
+  .mobile-wave{
+    position:absolute;
+    top:50%;
+    width:76px;
+    height:18px;
+    opacity:.25;
+    background:
+      linear-gradient(165deg,transparent 0 22%,rgba(231,7,121,.9) 23% 29%,transparent 30% 43%,rgba(255,45,154,.9) 44% 50%,transparent 51%);
+  }
+
+  .mobile-wave-left{right:86px}
+  .mobile-wave-right{right:8px;transform:scaleX(-1)}
+
+  body[data-mobile-voice-state="connecting"] .mobile-voice-state-dot,
+  body[data-mobile-voice-state="thinking"] .mobile-voice-state-dot{
+    background:#ffb020;
+    box-shadow:0 0 10px rgba(255,176,32,.8);
+  }
+
+  body[data-mobile-voice-state="listening"] .mobile-voice-state-dot,
+  body[data-mobile-voice-state="hearing"] .mobile-voice-state-dot,
+  body[data-mobile-voice-state="speaking"] .mobile-voice-state-dot{
+    background:#25d366;
+    box-shadow:0 0 10px rgba(37,211,102,.85);
+  }
+
+  body[data-mobile-voice-state="listening"] .mobile-voice-button,
+  body[data-mobile-voice-state="hearing"] .mobile-voice-button,
+  body[data-mobile-voice-state="speaking"] .mobile-voice-button{
+    animation:v12-mobile-mic 1s ease-in-out infinite;
+  }
+
+  .command-center{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+
+  /* Business first */
+  .shop-panel{order:1}
+  .whatsapp-panel{order:2}
+  .mail-panel{order:3}
+  .weather-panel{order:4}
+  .local-news-panel{order:5}
+  .core-panel{order:6}
+  .cinematic-dock{display:none!important}
+
+  .side-stack{
+    display:contents;
+  }
+
+  .shop-panel,.mail-panel,.whatsapp-panel,.weather-panel,.local-news-panel,.core-panel{
+    width:100%;
+  }
+
+  /* Compact Shopify cards */
+  .shop-panel .panel-head{height:34px}
+  .shop-panel .kpi-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:auto auto;
+    gap:7px;
+    padding:8px;
+  }
+
+  .shop-panel .kpi{
+    min-height:112px!important;
+    height:auto!important;
+    padding:9px 10px 6px;
+    position:relative;
+    overflow:hidden;
+  }
+
+  .shop-panel .stat-value{font-size:24px}
+  .shop-panel .stat-value.stat-small{font-size:22px}
+  .shop-panel .kpi-label{font-size:7px}
+  .shop-panel .kpi-trend{font-size:6px;margin-top:5px}
+  .shop-spark{height:34px;bottom:5px}
+  .shop-panel .shop-foot,.shop-panel .compat-chart{display:none!important}
+
+  /* WhatsApp */
+  .whatsapp-panel .panel-head{height:34px}
+  .wa-summary{margin:7px 8px 4px}
+  .wa-row{min-height:40px}
+
+  /* Mail */
+  .mail-panel .panel-head{height:34px}
+  .mail-panel .email-row{
+    grid-template-columns:28px 1fr 38px;
+    min-height:43px;
+  }
+  .email-sender{display:none}
+  .mail-footer{margin:7px 8px 9px}
+
+  /* Weather + news each as own panel */
+  .weather-panel{min-height:220px}
+  .local-news-panel{min-height:250px}
+
+  /* Core later in feed */
+  .core-panel{
+    min-height:430px;
+    max-height:520px;
+  }
+  .core-exact-image{
+    object-fit:cover;
+    object-position:center;
+  }
+
+  .panel{
+    border-radius:10px;
+  }
+}
+
+@media (max-width:430px){
+  .mobile-voice-main{grid-template-columns:64px 1fr}
+  .mobile-voice-button{width:60px;height:60px}
+  .mobile-wave{display:none}
+
+  .shop-panel .kpi-grid{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .shop-panel .kpi{
+    min-height:104px!important;
+  }
+
+  .wa-copy span,
+  .email-snippet,
+  .news-copy span{
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+}
+
+@keyframes v12-orbit-pulse{
+  0%,100%{opacity:.35;transform:scale(.97)}
+  50%{opacity:1;transform:scale(1.04)}
+}
+
+@keyframes v12-wave{
+  0%,100%{opacity:.46}
+  50%{opacity:1}
+}
+
+@keyframes v12-mobile-mic{
+  0%,100%{transform:scale(1)}
+  50%{transform:scale(1.055)}
+}
