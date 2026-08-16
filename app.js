@@ -2,7 +2,12 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V10.2 · OPENAI REALTIME TEXT + ELEVENLABS STREAMING + DEBUG
+   V10.3
+   OPENAI REALTIME TEXT
+   + ELEVENLABS WEBSOCKET
+   + PCM 24 KHZ
+   + WEB AUDIO
+   + DEBUG HUD
    ========================================================= */
 
 
@@ -11,24 +16,16 @@
    ========================================================= */
 
 const button =
-  document.querySelector(
-    "#toggle"
-  );
+  document.querySelector("#toggle");
 
 const statusEl =
-  document.querySelector(
-    "#status"
-  );
+  document.querySelector("#status");
 
 const logEl =
-  document.querySelector(
-    "#log"
-  );
+  document.querySelector("#log");
 
 const remoteAudio =
-  document.querySelector(
-    "#remoteAudio"
-  );
+  document.querySelector("#remoteAudio");
 
 
 /* =========================================================
@@ -36,9 +33,7 @@ const remoteAudio =
    ========================================================= */
 
 const debugHud =
-  document.createElement(
-    "div"
-  );
+  document.createElement("div");
 
 debugHud.id =
   "jarvisDebugHud";
@@ -56,13 +51,13 @@ debugHud.style.zIndex =
   "99999";
 
 debugHud.style.background =
-  "rgba(0,0,0,0.88)";
+  "rgba(0,0,0,0.92)";
 
 debugHud.style.color =
   "#00ff88";
 
 debugHud.style.padding =
-  "12px 15px";
+  "14px 16px";
 
 debugHud.style.fontFamily =
   "monospace";
@@ -71,25 +66,36 @@ debugHud.style.fontSize =
   "13px";
 
 debugHud.style.lineHeight =
-  "1.6";
+  "1.65";
 
 debugHud.style.border =
   "1px solid #00ff88";
 
 debugHud.style.borderRadius =
-  "8px";
+  "10px";
 
 debugHud.style.minWidth =
-  "280px";
+  "310px";
+
+debugHud.style.maxWidth =
+  "430px";
+
+debugHud.style.wordBreak =
+  "break-word";
 
 debugHud.innerHTML = `
-  <strong>JARVIS DEBUG</strong><br>
+  <strong>JARVIS DEBUG V10.3</strong><br>
   OpenAI: <span id="dbgOpenAI">❌</span><br>
   ElevenLabs: <span id="dbgEleven">❌</span><br>
+  Token: <span id="dbgToken">❌</span><br>
+  Voice ID: <span id="dbgVoice">-</span><br>
+  Socket: <span id="dbgSocket">-</span><br>
   OpenAI Text: <span id="dbgText">❌</span><br>
   ElevenLabs Audio: <span id="dbgAudio">❌</span><br>
   Wiedergabe: <span id="dbgPlayback">❌</span><br>
-  Letztes Event: <span id="dbgEvent">-</span>
+  Format: <span id="dbgFormat">pcm_24000</span><br>
+  Close Code: <span id="dbgClose">-</span><br>
+  Letztes Event: <span id="dbgEvent">Bereit</span>
 `;
 
 document.body.appendChild(
@@ -103,16 +109,11 @@ function debugSet(
 ) {
 
   const el =
-    document.getElementById(
-      id
-    );
+    document.getElementById(id);
 
-  if (
-    el
-  ) {
-
+  if (el) {
     el.textContent =
-      value;
+      String(value);
   }
 }
 
@@ -154,6 +155,14 @@ let responseInProgress =
 let currentResponseText =
   "";
 
+const runningToolCalls =
+  new Set();
+
+
+/* =========================================================
+   ELEVENLABS STATE
+   ========================================================= */
+
 let elevenSocket =
   null;
 
@@ -172,20 +181,28 @@ let elevenTokenData =
 let elevenSessionId =
   0;
 
-let elevenAudioQueue =
-  [];
-
-let elevenAudioPlaying =
-  false;
-
-let currentElevenAudio =
+let elevenKeepAliveTimer =
   null;
 
-let currentElevenObjectUrl =
+
+/* =========================================================
+   WEB AUDIO / PCM STATE
+   ========================================================= */
+
+let audioContext =
   null;
 
-const runningToolCalls =
+let nextPlaybackTime =
+  0;
+
+let audioScheduleChain =
+  Promise.resolve();
+
+const scheduledAudioSources =
   new Set();
+
+const ELEVEN_PCM_SAMPLE_RATE =
+  24000;
 
 
 /* =========================================================
@@ -202,18 +219,13 @@ let reminderCheckTimer =
   null;
 
 const PROACTIVE_CHECK_INTERVAL_MS =
-  20 *
-  60 *
-  1000;
+  20 * 60 * 1000;
 
 const PROACTIVE_FIRST_CHECK_DELAY_MS =
-  2 *
-  60 *
-  1000;
+  2 * 60 * 1000;
 
 const REMINDER_CHECK_INTERVAL_MS =
-  60 *
-  1000;
+  60 * 1000;
 
 
 /* =========================================================
@@ -249,29 +261,20 @@ const INTRO_FADE_DURATION_MS =
    HELPERS
    ========================================================= */
 
-function sleep(
-  ms
-) {
+function sleep(ms) {
 
   return new Promise(
     resolve =>
-      setTimeout(
-        resolve,
-        ms
-      )
+      setTimeout(resolve, ms)
   );
 }
 
 
-function safeJsonParse(
-  value
-) {
+function safeJsonParse(value) {
 
   try {
 
-    return JSON.parse(
-      value
-    );
+    return JSON.parse(value);
 
   } catch {
 
@@ -284,13 +287,9 @@ function safeJsonParse(
    UI
    ========================================================= */
 
-function setStatus(
-  text
-) {
+function setStatus(text) {
 
-  if (
-    !statusEl
-  ) {
+  if (!statusEl) {
     return;
   }
 
@@ -299,19 +298,14 @@ function setStatus(
 
   statusEl.classList.toggle(
     "online",
-    text ===
-      "Online"
+    text === "Online"
   );
 }
 
 
-function setLog(
-  text
-) {
+function setLog(text) {
 
-  if (
-    !logEl
-  ) {
+  if (!logEl) {
     return;
   }
 
@@ -320,32 +314,22 @@ function setLog(
 }
 
 
-function setButtonActive(
-  value
-) {
+function setButtonActive(value) {
 
-  if (
-    !button
-  ) {
+  if (!button) {
     return;
   }
 
   button.classList.toggle(
     "active",
-    Boolean(
-      value
-    )
+    Boolean(value)
   );
 }
 
 
-function setJarvisState(
-  state
-) {
+function setJarvisState(state) {
 
-  document.body
-    .dataset
-    .jarvisState =
+  document.body.dataset.jarvisState =
     state;
 }
 
@@ -354,9 +338,7 @@ function setJarvisState(
    DRAFT PANEL
    ========================================================= */
 
-function showDraft(
-  draft
-) {
+function showDraft(draft) {
 
   const panel =
     document.getElementById(
@@ -387,8 +369,7 @@ function showDraft(
       : "";
 
   bodyEl.textContent =
-    draft?.body ||
-    "";
+    draft?.body || "";
 
   panel.style.display =
     "flex";
@@ -400,9 +381,7 @@ const draftCopyBtn =
     "draftCopyBtn"
   );
 
-if (
-  draftCopyBtn
-) {
+if (draftCopyBtn) {
 
   draftCopyBtn.addEventListener(
     "click",
@@ -419,15 +398,16 @@ if (
         );
 
       const fullText =
-        `${subjectEl?.textContent || ""}\n\n${bodyEl?.textContent || ""}`
-          .trim();
+        `${
+          subjectEl?.textContent || ""
+        }\n\n${
+          bodyEl?.textContent || ""
+        }`.trim();
 
       try {
 
         await navigator.clipboard
-          .writeText(
-            fullText
-          );
+          .writeText(fullText);
 
         const original =
           draftCopyBtn.textContent;
@@ -445,9 +425,7 @@ if (
           1500
         );
 
-      } catch (
-        error
-      ) {
+      } catch (error) {
 
         console.warn(
           "Kopieren fehlgeschlagen:",
@@ -490,8 +468,7 @@ function getBerlinHour() {
     const hourPart =
       parts.find(
         part =>
-          part.type ===
-          "hour"
+          part.type === "hour"
       );
 
     const hour =
@@ -499,17 +476,11 @@ function getBerlinHour() {
         hourPart?.value
       );
 
-    if (
-      !Number.isNaN(
-        hour
-      )
-    ) {
+    if (!Number.isNaN(hour)) {
       return hour;
     }
 
-  } catch (
-    error
-  ) {
+  } catch (error) {
 
     console.warn(
       "Berlin-Zeit Fehler:",
@@ -526,9 +497,7 @@ function getBerlinHour() {
    GREETING
    ========================================================= */
 
-function pickRandom(
-  items
-) {
+function pickRandom(items) {
 
   return items[
     Math.floor(
@@ -539,22 +508,35 @@ function pickRandom(
 }
 
 
+function getGreetingAddress() {
+
+  const roll =
+    Math.random();
+
+  if (roll < 0.40) {
+    return "Mattl";
+  }
+
+  if (roll < 0.70) {
+    return "Chef";
+  }
+
+  if (roll < 0.94) {
+    return "Meister";
+  }
+
+  return "Daddy";
+}
+
+
 function getGreeting() {
 
   const hour =
     getBerlinHour();
 
   const name =
-    pickRandom([
-      "Mattl",
-      "Mattl",
-      "Mattl",
-      "Meister",
-      "Meister",
-      "Chef",
-      "Chef",
-      "Daddy"
-    ]);
+    getGreetingAddress();
+
 
   if (
     hour >= 5 &&
@@ -571,6 +553,7 @@ function getGreeting() {
     ]);
   }
 
+
   if (
     hour >= 11 &&
     hour < 18
@@ -586,6 +569,7 @@ function getGreeting() {
     ]);
   }
 
+
   if (
     hour >= 18 &&
     hour < 23
@@ -600,6 +584,7 @@ function getGreeting() {
       `${name}, Systeme aktiv. Wenn heute noch etwas eskaliert, sind wir wenigstens vorbereitet.`
     ]);
   }
+
 
   return pickRandom([
     `${name} … beeindruckend. Andere schlafen. Wir bauen weiter.`,
@@ -617,9 +602,7 @@ function getGreeting() {
 
 function stopIntro() {
 
-  if (
-    introFadeTimer
-  ) {
+  if (introFadeTimer) {
 
     clearInterval(
       introFadeTimer
@@ -629,18 +612,19 @@ function stopIntro() {
       null;
   }
 
-  if (
-    introAudio
-  ) {
+
+  if (introAudio) {
 
     try {
       introAudio.pause();
     } catch {}
 
+
     try {
       introAudio.currentTime =
         0;
     } catch {}
+
 
     introAudio =
       null;
@@ -652,16 +636,20 @@ async function startIntro() {
 
   stopIntro();
 
+
   introAudio =
     new Audio(
-      "/Intro.mp3?v=100"
+      "/Intro.mp3?v=103"
     );
+
 
   introAudio.preload =
     "auto";
 
+
   introAudio.volume =
     INTRO_START_VOLUME;
+
 
   return new Promise(
     resolve => {
@@ -669,12 +657,11 @@ async function startIntro() {
       let resolved =
         false;
 
+
       const done =
         () => {
 
-          if (
-            resolved
-          ) {
+          if (resolved) {
             return;
           }
 
@@ -684,63 +671,66 @@ async function startIntro() {
           resolve();
         };
 
+
       const play =
         async () => {
 
           try {
 
-            if (
-              !introAudio
-            ) {
+            if (!introAudio) {
 
               done();
               return;
             }
 
+
             introAudio.currentTime =
               INTRO_START;
 
+
             await introAudio.play();
+
 
             done();
 
-          } catch (
-            error
-          ) {
+          } catch (error) {
 
             console.warn(
               "Intro Fehler:",
               error
             );
 
+
             done();
           }
         };
+
 
       introAudio.addEventListener(
         "loadedmetadata",
         play,
         {
-          once:
-            true
+          once: true
         }
       );
+
 
       introAudio.addEventListener(
         "error",
         done,
         {
-          once:
-            true
+          once: true
         }
       );
 
+
       if (
-        introAudio.readyState >=
-        1
+        introAudio.readyState >= 1
       ) {
+
         play();
       }
+
 
       introAudio.load();
     }
@@ -757,9 +747,8 @@ function duckIntro() {
     return;
   }
 
-  if (
-    introFadeTimer
-  ) {
+
+  if (introFadeTimer) {
 
     clearInterval(
       introFadeTimer
@@ -769,19 +758,20 @@ function duckIntro() {
       null;
   }
 
+
   const original =
     introAudio.volume;
 
+
   const start =
     performance.now();
+
 
   introFadeTimer =
     setInterval(
       () => {
 
-        if (
-          !introAudio
-        ) {
+        if (!introAudio) {
 
           clearInterval(
             introFadeTimer
@@ -793,6 +783,7 @@ function duckIntro() {
           return;
         }
 
+
         const progress =
           Math.min(
             (
@@ -803,14 +794,15 @@ function duckIntro() {
             1
           );
 
+
         const smooth =
           progress *
           progress *
           (
             3 -
-            2 *
-            progress
+            2 * progress
           );
+
 
         introAudio.volume =
           original -
@@ -820,10 +812,8 @@ function duckIntro() {
           ) *
           smooth;
 
-        if (
-          progress >=
-          1
-        ) {
+
+        if (progress >= 1) {
 
           clearInterval(
             introFadeTimer
@@ -831,6 +821,7 @@ function duckIntro() {
 
           introFadeTimer =
             null;
+
 
           fadeIntroOut();
         }
@@ -850,19 +841,20 @@ function fadeIntroOut() {
     return;
   }
 
+
   const start =
     performance.now();
 
+
   const volume =
     introAudio.volume;
+
 
   introFadeTimer =
     setInterval(
       () => {
 
-        if (
-          !introAudio
-        ) {
+        if (!introAudio) {
 
           clearInterval(
             introFadeTimer
@@ -874,6 +866,7 @@ function fadeIntroOut() {
           return;
         }
 
+
         const progress =
           Math.min(
             (
@@ -884,21 +877,19 @@ function fadeIntroOut() {
             1
           );
 
+
         introAudio.volume =
           Math.max(
             0,
             volume *
             Math.pow(
-              1 -
-              progress,
+              1 - progress,
               1.7
             )
           );
 
-        if (
-          progress >=
-          1
-        ) {
+
+        if (progress >= 1) {
 
           clearInterval(
             introFadeTimer
@@ -907,9 +898,11 @@ function fadeIntroOut() {
           introFadeTimer =
             null;
 
+
           try {
             introAudio.pause();
           } catch {}
+
 
           introAudio =
             null;
@@ -922,6 +915,407 @@ function fadeIntroOut() {
 
 
 /* =========================================================
+   WEB AUDIO
+   ========================================================= */
+
+async function ensureAudioContext() {
+
+  if (!audioContext) {
+
+    const AudioContextClass =
+      window.AudioContext ||
+      window.webkitAudioContext;
+
+
+    if (!AudioContextClass) {
+
+      throw new Error(
+        "Web Audio wird von diesem Browser nicht unterstützt."
+      );
+    }
+
+
+    audioContext =
+      new AudioContextClass();
+
+
+    nextPlaybackTime =
+      audioContext.currentTime;
+  }
+
+
+  if (
+    audioContext.state ===
+    "suspended"
+  ) {
+
+    await audioContext.resume();
+  }
+
+
+  return audioContext;
+}
+
+
+function base64ToUint8Array(base64) {
+
+  const binary =
+    atob(base64);
+
+
+  const bytes =
+    new Uint8Array(
+      binary.length
+    );
+
+
+  for (
+    let i = 0;
+    i < binary.length;
+    i++
+  ) {
+
+    bytes[i] =
+      binary.charCodeAt(i);
+  }
+
+
+  return bytes;
+}
+
+
+function pcm16ToFloat32(bytes) {
+
+  const sampleCount =
+    Math.floor(
+      bytes.byteLength / 2
+    );
+
+
+  const floats =
+    new Float32Array(
+      sampleCount
+    );
+
+
+  const view =
+    new DataView(
+      bytes.buffer,
+      bytes.byteOffset,
+      bytes.byteLength
+    );
+
+
+  for (
+    let i = 0;
+    i < sampleCount;
+    i++
+  ) {
+
+    const sample =
+      view.getInt16(
+        i * 2,
+        true
+      );
+
+
+    floats[i] =
+      sample < 0
+        ? sample / 32768
+        : sample / 32767;
+  }
+
+
+  return floats;
+}
+
+
+function hasPendingElevenAudio() {
+
+  if (
+    scheduledAudioSources.size > 0
+  ) {
+    return true;
+  }
+
+
+  if (
+    audioContext &&
+    nextPlaybackTime >
+      audioContext.currentTime +
+      0.03
+  ) {
+    return true;
+  }
+
+
+  return false;
+}
+
+
+async function scheduleElevenPcm(
+  base64
+) {
+
+  const ctx =
+    await ensureAudioContext();
+
+
+  const bytes =
+    base64ToUint8Array(
+      base64
+    );
+
+
+  if (
+    bytes.byteLength < 2
+  ) {
+    return;
+  }
+
+
+  const samples =
+    pcm16ToFloat32(
+      bytes
+    );
+
+
+  if (
+    samples.length === 0
+  ) {
+    return;
+  }
+
+
+  const buffer =
+    ctx.createBuffer(
+      1,
+      samples.length,
+      ELEVEN_PCM_SAMPLE_RATE
+    );
+
+
+  buffer
+    .getChannelData(0)
+    .set(samples);
+
+
+  const source =
+    ctx.createBufferSource();
+
+
+  source.buffer =
+    buffer;
+
+
+  source.connect(
+    ctx.destination
+  );
+
+
+  const startAt =
+    Math.max(
+      ctx.currentTime + 0.025,
+      nextPlaybackTime
+    );
+
+
+  nextPlaybackTime =
+    startAt +
+    buffer.duration;
+
+
+  scheduledAudioSources.add(
+    source
+  );
+
+
+  assistantSpeaking =
+    true;
+
+
+  setJarvisState(
+    "speaking"
+  );
+
+
+  setLog(
+    "JARVIS spricht."
+  );
+
+
+  setMicrophoneEnabled(
+    false
+  );
+
+
+  debugSet(
+    "dbgPlayback",
+    "✅"
+  );
+
+
+  debugSet(
+    "dbgEvent",
+    "PCM Audio spielt"
+  );
+
+
+  source.onended =
+    () => {
+
+      scheduledAudioSources.delete(
+        source
+      );
+
+
+      if (
+        scheduledAudioSources.size === 0
+      ) {
+
+        const delayMs =
+          Math.max(
+            0,
+            (
+              nextPlaybackTime -
+              ctx.currentTime
+            ) * 1000
+          );
+
+
+        setTimeout(
+          () => {
+
+            if (
+              scheduledAudioSources.size ===
+                0 &&
+              !responseInProgress
+            ) {
+
+              assistantSpeaking =
+                false;
+
+
+              if (
+                greetingInProgress
+              ) {
+
+                greetingInProgress =
+                  false;
+              }
+
+
+              if (
+                active &&
+                runningToolCalls.size ===
+                  0
+              ) {
+
+                setJarvisState(
+                  "listening"
+                );
+
+
+                setLog(
+                  "JARVIS hört zu."
+                );
+
+
+                setMicrophoneEnabled(
+                  true
+                );
+              }
+            }
+
+          },
+          delayMs + 80
+        );
+      }
+    };
+
+
+  source.start(
+    startAt
+  );
+}
+
+
+function enqueueElevenAudio(
+  base64
+) {
+
+  audioScheduleChain =
+    audioScheduleChain
+      .then(
+        () =>
+          scheduleElevenPcm(
+            base64
+          )
+      )
+      .catch(
+        error => {
+
+          console.error(
+            "PCM Playback Fehler:",
+            error
+          );
+
+
+          debugSet(
+            "dbgPlayback",
+            "❌"
+          );
+
+
+          debugSet(
+            "dbgEvent",
+            `PCM Fehler: ${
+              error.message ||
+              "unbekannt"
+            }`
+          );
+        }
+      );
+}
+
+
+function clearElevenAudio() {
+
+  for (
+    const source of
+    scheduledAudioSources
+  ) {
+
+    try {
+      source.stop();
+    } catch {}
+  }
+
+
+  scheduledAudioSources.clear();
+
+
+  if (audioContext) {
+
+    nextPlaybackTime =
+      audioContext.currentTime;
+  } else {
+
+    nextPlaybackTime =
+      0;
+  }
+
+
+  audioScheduleChain =
+    Promise.resolve();
+
+
+  assistantSpeaking =
+    false;
+}
+
+
+/* =========================================================
    MICROPHONE
    ========================================================= */
 
@@ -929,7 +1323,8 @@ async function createMicrophoneStream() {
 
   if (
     !navigator.mediaDevices ||
-    !navigator.mediaDevices.getUserMedia
+    !navigator.mediaDevices
+      .getUserMedia
   ) {
 
     throw new Error(
@@ -937,10 +1332,12 @@ async function createMicrophoneStream() {
     );
   }
 
+
   micStream =
     await navigator.mediaDevices
       .getUserMedia({
         audio: {
+
           echoCancellation:
             true,
 
@@ -955,9 +1352,11 @@ async function createMicrophoneStream() {
         }
       });
 
+
   setMicrophoneEnabled(
     false
   );
+
 
   return micStream;
 }
@@ -967,11 +1366,10 @@ function setMicrophoneEnabled(
   enabled
 ) {
 
-  if (
-    !micStream
-  ) {
+  if (!micStream) {
     return;
   }
+
 
   for (
     const track of
@@ -979,10 +1377,9 @@ function setMicrophoneEnabled(
   ) {
 
     track.enabled =
-      Boolean(
-        enabled
-      );
+      Boolean(enabled);
   }
+
 
   console.log(
     "Mikrofon:",
@@ -995,11 +1392,10 @@ function setMicrophoneEnabled(
 
 function stopMicrophone() {
 
-  if (
-    !micStream
-  ) {
+  if (!micStream) {
     return;
   }
+
 
   try {
 
@@ -1012,6 +1408,7 @@ function stopMicrophone() {
     }
 
   } catch {}
+
 
   micStream =
     null;
@@ -1037,8 +1434,10 @@ function sendRealtimeEvent(
       event?.type
     );
 
+
     return false;
   }
+
 
   try {
 
@@ -1048,16 +1447,16 @@ function sendRealtimeEvent(
       )
     );
 
+
     return true;
 
-  } catch (
-    error
-  ) {
+  } catch (error) {
 
     console.error(
       "Realtime Sendefehler:",
       error
     );
+
 
     return false;
   }
@@ -1069,6 +1468,12 @@ function sendRealtimeEvent(
    ========================================================= */
 
 async function fetchElevenLabsToken() {
+
+  debugSet(
+    "dbgToken",
+    "⏳"
+  );
+
 
   const response =
     await fetch(
@@ -1082,8 +1487,22 @@ async function fetchElevenLabsToken() {
       }
     );
 
-  const data =
-    await response.json();
+
+  let data;
+
+
+  try {
+
+    data =
+      await response.json();
+
+  } catch {
+
+    throw new Error(
+      "ElevenLabs Token-Antwort ist kein JSON."
+    );
+  }
+
 
   if (
     !response.ok ||
@@ -1091,369 +1510,109 @@ async function fetchElevenLabsToken() {
     !data?.token
   ) {
 
+    debugSet(
+      "dbgToken",
+      "❌"
+    );
+
+
     throw new Error(
       data?.error ||
       "ElevenLabs-Token fehlt."
     );
   }
 
+
   elevenTokenData =
     data;
+
+
+  debugSet(
+    "dbgToken",
+    "✅"
+  );
+
+
+  debugSet(
+    "dbgVoice",
+    data.voice_id ||
+    "FEHLT"
+  );
+
 
   return data;
 }
 
 
 /* =========================================================
-   ELEVENLABS AUDIO QUEUE
+   ELEVENLABS KEEP ALIVE
    ========================================================= */
 
-function base64ToBlob(
-  base64,
-  mimeType =
-    "audio/mpeg"
-) {
+function stopElevenKeepAlive() {
 
-  const binary =
-    atob(
-      base64
-    );
-
-  const len =
-    binary.length;
-
-  const bytes =
-    new Uint8Array(
-      len
-    );
-
-  for (
-    let i = 0;
-    i < len;
-    i++
+  if (
+    elevenKeepAliveTimer
   ) {
 
-    bytes[i] =
-      binary.charCodeAt(
-        i
-      );
-  }
+    clearInterval(
+      elevenKeepAliveTimer
+    );
 
-  return new Blob(
-    [bytes],
-    {
-      type:
-        mimeType
-    }
-  );
+
+    elevenKeepAliveTimer =
+      null;
+  }
 }
 
 
-function clearElevenAudioQueue() {
+function startElevenKeepAlive() {
 
-  elevenAudioQueue =
-    [];
-
-  elevenAudioPlaying =
-    false;
-
-  if (
-    currentElevenAudio
-  ) {
-
-    try {
-      currentElevenAudio.pause();
-    } catch {}
-
-    currentElevenAudio =
-      null;
-  }
-
-  if (
-    currentElevenObjectUrl
-  ) {
-
-    try {
-      URL.revokeObjectURL(
-        currentElevenObjectUrl
-      );
-    } catch {}
-
-    currentElevenObjectUrl =
-      null;
-  }
-}/* =========================================================
-   ELEVENLABS AUDIO PLAYBACK
-   ========================================================= */
-
-async function playNextElevenAudio() {
-
-  if (
-    elevenAudioPlaying
-  ) {
-    return;
-  }
+  stopElevenKeepAlive();
 
 
-  const next =
-    elevenAudioQueue.shift();
-
-
-  if (
-    !next
-  ) {
-
-    if (
-      active &&
-      !responseInProgress &&
-      !assistantSpeaking &&
-      !greetingInProgress &&
-      runningToolCalls.size ===
-        0
-    ) {
-
-      setJarvisState(
-        "listening"
-      );
-
-      setLog(
-        "JARVIS hört zu."
-      );
-
-      setMicrophoneEnabled(
-        true
-      );
-    }
-
-    return;
-  }
-
-
-  elevenAudioPlaying =
-    true;
-
-  assistantSpeaking =
-    true;
-
-
-  setJarvisState(
-    "speaking"
-  );
-
-
-  setLog(
-    "JARVIS spricht."
-  );
-
-
-  setMicrophoneEnabled(
-    false
-  );
-
-
-  debugSet(
-    "dbgPlayback",
-    "⏳"
-  );
-
-  debugSet(
-    "dbgEvent",
-    "Audio wird vorbereitet"
-  );
-
-
-  const blob =
-    base64ToBlob(
-      next,
-      "audio/mpeg"
-    );
-
-
-  currentElevenObjectUrl =
-    URL.createObjectURL(
-      blob
-    );
-
-
-  currentElevenAudio =
-    new Audio(
-      currentElevenObjectUrl
-    );
-
-
-  currentElevenAudio.volume =
-    1;
-
-
-  currentElevenAudio.onended =
-    () => {
-
-      try {
-
-        URL.revokeObjectURL(
-          currentElevenObjectUrl
-        );
-
-      } catch {}
-
-
-      currentElevenObjectUrl =
-        null;
-
-
-      currentElevenAudio =
-        null;
-
-
-      elevenAudioPlaying =
-        false;
-
-
-      if (
-        elevenAudioQueue.length
-      ) {
-
-        playNextElevenAudio();
-
-      } else {
-
-        assistantSpeaking =
-          false;
-
+  elevenKeepAliveTimer =
+    setInterval(
+      () => {
 
         if (
-          greetingInProgress
+          elevenSocket &&
+          elevenSocket.readyState ===
+            WebSocket.OPEN &&
+          elevenReady &&
+          !responseInProgress
         ) {
 
-          greetingInProgress =
-            false;
+          try {
+
+            elevenSocket.send(
+              JSON.stringify({
+                text: " "
+              })
+            );
+
+          } catch (error) {
+
+            console.warn(
+              "ElevenLabs Keepalive Fehler:",
+              error
+            );
+          }
         }
 
-
-        if (
-          active &&
-          !responseInProgress &&
-          runningToolCalls.size ===
-            0
-        ) {
-
-          setJarvisState(
-            "listening"
-          );
-
-
-          setLog(
-            "JARVIS hört zu."
-          );
-
-
-          setTimeout(
-            () => {
-
-              if (
-                active &&
-                !assistantSpeaking &&
-                !responseInProgress
-              ) {
-
-                setMicrophoneEnabled(
-                  true
-                );
-              }
-
-            },
-            300
-          );
-        }
-      }
-    };
-
-
-  currentElevenAudio.onerror =
-    error => {
-
-      console.warn(
-        "ElevenLabs Audio Fehler:",
-        error
-      );
-
-
-      debugSet(
-        "dbgPlayback",
-        "❌"
-      );
-
-      debugSet(
-        "dbgEvent",
-        "Audio Wiedergabe Fehler"
-      );
-
-
-      elevenAudioPlaying =
-        false;
-
-
-      currentElevenAudio =
-        null;
-
-
-      playNextElevenAudio();
-    };
-
-
-  try {
-
-    await currentElevenAudio
-      .play();
-
-
-    debugSet(
-      "dbgPlayback",
-      "✅"
+      },
+      120000
     );
-
-    debugSet(
-      "dbgEvent",
-      "Audio spielt"
-    );
-
-
-  } catch (
-    error
-  ) {
-
-    console.warn(
-      "ElevenLabs Audio autoplay:",
-      error
-    );
-
-
-    debugSet(
-      "dbgPlayback",
-      "❌"
-    );
-
-    debugSet(
-      "dbgEvent",
-      "Browser blockiert Audio"
-    );
-
-
-    elevenAudioPlaying =
-      false;
-
-
-    currentElevenAudio =
-      null;
-  }
 }
 
 
 /* =========================================================
-   ELEVENLABS WEBSOCKET
+   ELEVENLABS DISCONNECT
    ========================================================= */
 
 function disconnectElevenLabs() {
+
+  stopElevenKeepAlive();
+
 
   elevenConnected =
     false;
@@ -1467,19 +1626,14 @@ function disconnectElevenLabs() {
     true;
 
 
-  debugSet(
-    "dbgEleven",
-    "❌"
-  );
-
-
-  if (
-    elevenSocket
-  ) {
+  if (elevenSocket) {
 
     try {
 
-      elevenSocket.close();
+      elevenSocket.close(
+        1000,
+        "JARVIS stop"
+      );
 
     } catch {}
 
@@ -1489,21 +1643,47 @@ function disconnectElevenLabs() {
   }
 
 
-  clearElevenAudioQueue();
-
-
   elevenTokenData =
     null;
 
 
-  elevenClosing =
-    false;
+  setTimeout(
+    () => {
+
+      elevenClosing =
+        false;
+
+    },
+    100
+  );
 }
 
+
+/* =========================================================
+   ELEVENLABS CONNECT
+   ========================================================= */
 
 async function connectElevenLabs() {
 
   disconnectElevenLabs();
+
+
+  debugSet(
+    "dbgEleven",
+    "❌"
+  );
+
+
+  debugSet(
+    "dbgSocket",
+    "verbinde..."
+  );
+
+
+  debugSet(
+    "dbgClose",
+    "-"
+  );
 
 
   debugSet(
@@ -1534,6 +1714,14 @@ async function connectElevenLabs() {
     "de";
 
 
+  if (!voiceId) {
+
+    throw new Error(
+      "ELEVENLABS_VOICE_ID fehlt."
+    );
+  }
+
+
   const url =
     new URL(
       `wss://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream-input`
@@ -1548,7 +1736,7 @@ async function connectElevenLabs() {
 
   url.searchParams.set(
     "output_format",
-    "mp3_44100_128"
+    "pcm_24000"
   );
 
 
@@ -1595,46 +1783,53 @@ async function connectElevenLabs() {
         socket;
 
 
+      let settled =
+        false;
+
+
       const timeout =
         setTimeout(
           () => {
 
-            if (
-              !elevenConnected
-            ) {
-
-              try {
-
-                socket.close();
-
-              } catch {}
-
-
-              debugSet(
-                "dbgEvent",
-                "ElevenLabs Timeout"
-              );
-
-
-              reject(
-                new Error(
-                  "ElevenLabs WebSocket Timeout."
-                )
-              );
+            if (settled) {
+              return;
             }
 
+
+            settled =
+              true;
+
+
+            debugSet(
+              "dbgSocket",
+              "TIMEOUT"
+            );
+
+
+            debugSet(
+              "dbgEvent",
+              "ElevenLabs WebSocket Timeout"
+            );
+
+
+            try {
+              socket.close();
+            } catch {}
+
+
+            reject(
+              new Error(
+                "ElevenLabs WebSocket Timeout."
+              )
+            );
+
           },
-          10000
+          12000
         );
 
 
       socket.onopen =
         () => {
-
-          clearTimeout(
-            timeout
-          );
-
 
           if (
             sessionId !==
@@ -1642,6 +1837,11 @@ async function connectElevenLabs() {
           ) {
             return;
           }
+
+
+          clearTimeout(
+            timeout
+          );
 
 
           elevenConnected =
@@ -1657,44 +1857,70 @@ async function connectElevenLabs() {
             "✅"
           );
 
+
+          debugSet(
+            "dbgSocket",
+            "OPEN"
+          );
+
+
           debugSet(
             "dbgEvent",
             "ElevenLabs verbunden"
           );
 
 
-          socket.send(
-            JSON.stringify({
+          try {
 
-              text:
-                " ",
+            socket.send(
+              JSON.stringify({
 
-              voice_settings: {
+                text:
+                  " ",
 
-                stability:
-                  0.52,
+                voice_settings: {
 
-                similarity_boost:
-                  0.82,
+                  stability:
+                    0.52,
 
-                style:
-                  0.18,
+                  similarity_boost:
+                    0.82,
 
-                use_speaker_boost:
-                  true
-              },
+                  style:
+                    0.18,
 
-              generation_config: {
+                  use_speaker_boost:
+                    true
+                },
 
-                chunk_length_schedule: [
-                  40,
-                  60,
-                  90,
-                  120
-                ]
-              }
-            })
-          );
+                generation_config: {
+
+                  chunk_length_schedule: [
+                    40,
+                    60,
+                    90,
+                    120
+                  ]
+                }
+              })
+            );
+
+          } catch (error) {
+
+            console.error(
+              "ElevenLabs Init Fehler:",
+              error
+            );
+
+
+            debugSet(
+              "dbgEvent",
+              "ElevenLabs Init Sendefehler"
+            );
+          }
+
+
+          startElevenKeepAlive();
 
 
           console.log(
@@ -1702,7 +1928,13 @@ async function connectElevenLabs() {
           );
 
 
-          resolve();
+          if (!settled) {
+
+            settled =
+              true;
+
+            resolve();
+          }
         };
 
 
@@ -1724,55 +1956,64 @@ async function connectElevenLabs() {
             );
 
 
-          if (
-            !data
-          ) {
+          if (!data) {
+
+            debugSet(
+              "dbgEvent",
+              "ElevenLabs Nachricht kein JSON"
+            );
+
             return;
           }
 
 
-          if (
-            data.audio
-          ) {
+          if (data.audio) {
 
             debugSet(
               "dbgAudio",
               "✅"
             );
 
+
             debugSet(
               "dbgEvent",
-              "ElevenLabs Audio kommt"
+              "ElevenLabs PCM Audio kommt"
             );
 
 
-            elevenAudioQueue.push(
+            enqueueElevenAudio(
               data.audio
             );
-
-
-            playNextElevenAudio();
           }
 
 
           if (
-            data.isFinal
+            data.isFinal ||
+            data.is_final
           ) {
-
-            console.log(
-              "ElevenLabs Antwort fertig."
-            );
 
             debugSet(
               "dbgEvent",
-              "ElevenLabs Antwort fertig"
+              "ElevenLabs Generation fertig"
+            );
+
+
+            console.log(
+              "ElevenLabs Generation fertig."
             );
           }
 
 
-          if (
-            data.error
-          ) {
+          if (data.error) {
+
+            const errorText =
+              typeof data.error ===
+                "string"
+                ? data.error
+                : JSON.stringify(
+                    data.error
+                  );
+
 
             console.error(
               "ElevenLabs Serverfehler:",
@@ -1782,9 +2023,7 @@ async function connectElevenLabs() {
 
             debugSet(
               "dbgEvent",
-              `ElevenLabs Fehler: ${String(
-                data.error
-              )}`
+              `ELEVEN FEHLER: ${errorText}`
             );
           }
         };
@@ -1804,15 +2043,24 @@ async function connectElevenLabs() {
             "❌"
           );
 
+
+          debugSet(
+            "dbgSocket",
+            "ERROR"
+          );
+
+
           debugSet(
             "dbgEvent",
             "ElevenLabs WebSocket Fehler"
           );
 
 
-          if (
-            !elevenConnected
-          ) {
+          if (!settled) {
+
+            settled =
+              true;
+
 
             clearTimeout(
               timeout
@@ -1839,26 +2087,71 @@ async function connectElevenLabs() {
             false;
 
 
+          stopElevenKeepAlive();
+
+
           debugSet(
             "dbgEleven",
             "❌"
           );
 
 
-          if (
-            !elevenClosing
-          ) {
+          debugSet(
+            "dbgSocket",
+            "CLOSED"
+          );
 
-            console.log(
-              "ElevenLabs WebSocket geschlossen.",
-              event.code,
+
+          debugSet(
+            "dbgClose",
+            `${event.code}${
               event.reason
-            );
+                ? ` · ${event.reason}`
+                : ""
+            }`
+          );
 
+
+          console.log(
+            "ElevenLabs WebSocket geschlossen.",
+            event.code,
+            event.reason
+          );
+
+
+          if (!elevenClosing) {
 
             debugSet(
               "dbgEvent",
-              `ElevenLabs geschlossen: ${event.code}`
+              `ElevenLabs geschlossen: ${
+                event.code
+              } ${
+                event.reason || ""
+              }`
+            );
+          }
+
+
+          if (!settled) {
+
+            settled =
+              true;
+
+
+            clearTimeout(
+              timeout
+            );
+
+
+            reject(
+              new Error(
+                `ElevenLabs geschlossen: ${
+                  event.code
+                } ${
+                  event.reason ||
+                  ""
+                }`
+              )
             );
           }
         };
@@ -1877,14 +2170,11 @@ function sendTextToElevenLabs(
 
   const clean =
     String(
-      text ||
-      ""
+      text || ""
     );
 
 
-  if (
-    !clean
-  ) {
+  if (!clean) {
     return;
   }
 
@@ -1903,7 +2193,7 @@ function sendTextToElevenLabs(
 
     debugSet(
       "dbgEvent",
-      "ElevenLabs nicht bereit"
+      "ElevenLabs nicht bereit für Text"
     );
 
 
@@ -1924,10 +2214,7 @@ function sendTextToElevenLabs(
       })
     );
 
-
-  } catch (
-    error
-  ) {
+  } catch (error) {
 
     console.error(
       "ElevenLabs Text Sendefehler:",
@@ -1943,34 +2230,55 @@ function sendTextToElevenLabs(
 }
 
 
+/* =========================================================
+   ELEVENLABS FLUSH
+   ========================================================= */
+
 function flushElevenLabs() {
 
   if (
     !elevenSocket ||
     elevenSocket.readyState !==
-      WebSocket.OPEN
+      WebSocket.OPEN ||
+    !elevenReady
   ) {
+
     return;
   }
 
 
   try {
 
+    /*
+      WICHTIG:
+      KEIN text:"" mehr.
+      Leerer Text würde den Socket beenden.
+
+      Leerzeichen + flush:true erzeugt den Rest
+      der Sprache, ohne die Verbindung zu schließen.
+    */
+
     elevenSocket.send(
       JSON.stringify({
 
         text:
-          ""
+          " ",
+
+        flush:
+          true
       })
     );
 
 
-  } catch (
-    error
-  ) {
+    debugSet(
+      "dbgEvent",
+      "ElevenLabs Flush gesendet"
+    );
+
+  } catch (error) {
 
     console.warn(
-      "ElevenLabs Flush:",
+      "ElevenLabs Flush Fehler:",
       error
     );
 
@@ -1984,7 +2292,7 @@ function flushElevenLabs() {
 
 
 /* =========================================================
-   SPEAK TEXT DIRECTLY
+   DIRECT ELEVENLABS SPEECH
    ========================================================= */
 
 function speakTextWithElevenLabs(
@@ -1993,15 +2301,27 @@ function speakTextWithElevenLabs(
 
   const clean =
     String(
-      text ||
-      ""
-    )
-      .trim();
+      text || ""
+    ).trim();
+
+
+  if (!clean) {
+    return false;
+  }
 
 
   if (
-    !clean
+    !elevenReady ||
+    !elevenSocket ||
+    elevenSocket.readyState !==
+      WebSocket.OPEN
   ) {
+
+    debugSet(
+      "dbgEvent",
+      "Direkte Sprache: ElevenLabs nicht verbunden"
+    );
+
     return false;
   }
 
@@ -2041,15 +2361,13 @@ async function executeRealtimeTool(
 
   const callId =
     String(
-      event.call_id ||
-      ""
+      event.call_id || ""
     );
 
 
   const toolName =
     String(
-      event.name ||
-      ""
+      event.name || ""
     );
 
 
@@ -2072,6 +2390,7 @@ async function executeRealtimeTool(
       callId
     )
   ) {
+
     return;
   }
 
@@ -2168,9 +2487,7 @@ async function executeRealtimeTool(
     try {
 
       toolResult =
-        JSON.parse(
-          raw
-        );
+        JSON.parse(raw);
 
     } catch {
 
@@ -2186,9 +2503,7 @@ async function executeRealtimeTool(
     }
 
 
-    if (
-      !response.ok
-    ) {
+    if (!response.ok) {
 
       toolResult = {
 
@@ -2209,10 +2524,7 @@ async function executeRealtimeTool(
       );
     }
 
-
-  } catch (
-    error
-  ) {
+  } catch (error) {
 
     console.error(
       "Tool Request Fehler:",
@@ -2285,9 +2597,7 @@ function handleRealtimeEvent(
   event
 ) {
 
-  if (
-    !event?.type
-  ) {
+  if (!event?.type) {
     return;
   }
 
@@ -2298,25 +2608,25 @@ function handleRealtimeEvent(
   );
 
 
-  switch (
-    event.type
-  ) {
+  switch (event.type) {
 
 
     case "session.created":
-
-      console.log(
-        "Realtime Session erstellt."
-      );
 
       debugSet(
         "dbgOpenAI",
         "✅"
       );
 
+
       debugSet(
         "dbgEvent",
         "OpenAI Session erstellt"
+      );
+
+
+      console.log(
+        "Realtime Session erstellt."
       );
 
       break;
@@ -2332,6 +2642,15 @@ function handleRealtimeEvent(
 
 
     case "input_audio_buffer.speech_started":
+
+      if (
+        assistantSpeaking ||
+        responseInProgress
+      ) {
+
+        handleUserInterruption();
+      }
+
 
       if (
         !active ||
@@ -2432,9 +2751,7 @@ function handleRealtimeEvent(
 
     case "response.output_text.delta":
 
-      if (
-        event.delta
-      ) {
+      if (event.delta) {
 
         const delta =
           String(
@@ -2451,9 +2768,10 @@ function handleRealtimeEvent(
           "✅"
         );
 
+
         debugSet(
           "dbgEvent",
-          "OpenAI Text kommt"
+          "OpenAI Text → ElevenLabs"
         );
 
 
@@ -2467,9 +2785,7 @@ function handleRealtimeEvent(
 
     case "response.output_text.done":
 
-      if (
-        event.text
-      ) {
+      if (event.text) {
 
         console.log(
           "JARVIS:",
@@ -2483,7 +2799,7 @@ function handleRealtimeEvent(
 
       debugSet(
         "dbgEvent",
-        "OpenAI Text fertig"
+        "OpenAI Text fertig · ElevenLabs Flush"
       );
 
       break;
@@ -2497,21 +2813,16 @@ function handleRealtimeEvent(
 
       const hasFunctionCall =
         Array.isArray(
-          event.response
-            ?.output
+          event.response?.output
         ) &&
-        event.response
-          .output
-          .some(
-            item =>
-              item?.type ===
-              "function_call"
-          );
+        event.response.output.some(
+          item =>
+            item?.type ===
+            "function_call"
+        );
 
 
-      if (
-        hasFunctionCall
-      ) {
+      if (hasFunctionCall) {
 
         setJarvisState(
           "thinking"
@@ -2534,11 +2845,8 @@ function handleRealtimeEvent(
 
 
       if (
-        !elevenAudioPlaying &&
-        elevenAudioQueue.length ===
-          0
+        !hasPendingElevenAudio()
       ) {
-
 
         if (
           greetingInProgress
@@ -2549,19 +2857,7 @@ function handleRealtimeEvent(
         }
 
 
-        if (
-          active
-        ) {
-
-          setJarvisState(
-            "listening"
-          );
-
-
-          setLog(
-            "JARVIS hört zu."
-          );
-
+        if (active) {
 
           setTimeout(
             () => {
@@ -2569,8 +2865,19 @@ function handleRealtimeEvent(
               if (
                 active &&
                 !assistantSpeaking &&
-                !responseInProgress
+                !responseInProgress &&
+                !hasPendingElevenAudio()
               ) {
+
+                setJarvisState(
+                  "listening"
+                );
+
+
+                setLog(
+                  "JARVIS hört zu."
+                );
+
 
                 setMicrophoneEnabled(
                   true
@@ -2578,7 +2885,7 @@ function handleRealtimeEvent(
               }
 
             },
-            300
+            350
           );
         }
       }
@@ -2618,9 +2925,7 @@ function handleRealtimeEvent(
       );
 
 
-      if (
-        active
-      ) {
+      if (active) {
 
         setTimeout(
           () => {
@@ -2652,7 +2957,10 @@ function handleRealtimeEvent(
 
       break;
   }
-}/* =========================================================
+}
+
+
+/* =========================================================
    OPENAI REALTIME WEBRTC
    ========================================================= */
 
@@ -2673,9 +2981,7 @@ async function connectRealtime() {
     pc;
 
 
-  if (
-    !micStream
-  ) {
+  if (!micStream) {
 
     await createMicrophoneStream();
   }
@@ -2686,9 +2992,7 @@ async function connectRealtime() {
       .getAudioTracks()[0];
 
 
-  if (
-    !micTrack
-  ) {
+  if (!micTrack) {
 
     throw new Error(
       "Kein Mikrofon-Audiotrack gefunden."
@@ -2716,21 +3020,24 @@ async function connectRealtime() {
     "open",
     () => {
 
-      console.log(
-        "OpenAI DataChannel offen."
-      );
-
       realtimeConnected =
         true;
+
 
       debugSet(
         "dbgOpenAI",
         "✅"
       );
 
+
       debugSet(
         "dbgEvent",
-        "OpenAI verbunden"
+        "OpenAI DataChannel offen"
+      );
+
+
+      console.log(
+        "OpenAI DataChannel offen."
       );
     }
   );
@@ -2740,16 +3047,18 @@ async function connectRealtime() {
     "close",
     () => {
 
-      console.log(
-        "OpenAI DataChannel geschlossen."
-      );
-
       realtimeConnected =
         false;
+
 
       debugSet(
         "dbgOpenAI",
         "❌"
+      );
+
+
+      console.log(
+        "OpenAI DataChannel geschlossen."
       );
     }
   );
@@ -2764,10 +3073,12 @@ async function connectRealtime() {
         error
       );
 
+
       debugSet(
         "dbgOpenAI",
         "❌"
       );
+
 
       debugSet(
         "dbgEvent",
@@ -2787,9 +3098,7 @@ async function connectRealtime() {
         );
 
 
-      if (
-        !message
-      ) {
+      if (!message) {
         return;
       }
 
@@ -2834,14 +3143,13 @@ async function connectRealtime() {
     await response.text();
 
 
-  if (
-    !response.ok
-  ) {
+  if (!response.ok) {
 
     debugSet(
       "dbgEvent",
       "OpenAI Session Fehler"
     );
+
 
     throw new Error(
       answerSdp ||
@@ -2850,20 +3158,14 @@ async function connectRealtime() {
   }
 
 
-  const answer =
-    {
+  await pc.setRemoteDescription({
 
-      type:
-        "answer",
+    type:
+      "answer",
 
-      sdp:
-        answerSdp
-    };
-
-
-  await pc.setRemoteDescription(
-    answer
-  );
+    sdp:
+      answerSdp
+  });
 
 
   const start =
@@ -2878,7 +3180,7 @@ async function connectRealtime() {
 
     if (
       Date.now() -
-        start >
+      start >
       10000
     ) {
 
@@ -2902,6 +3204,7 @@ async function connectRealtime() {
     "dbgOpenAI",
     "✅"
   );
+
 
   debugSet(
     "dbgEvent",
@@ -2931,26 +3234,24 @@ function disconnectRealtime() {
   );
 
 
-  if (
-    dataChannel
-  ) {
+  if (dataChannel) {
 
     try {
       dataChannel.close();
     } catch {}
+
 
     dataChannel =
       null;
   }
 
 
-  if (
-    peerConnection
-  ) {
+  if (peerConnection) {
 
     try {
       peerConnection.close();
     } catch {}
+
 
     peerConnection =
       null;
@@ -2978,20 +3279,19 @@ function cancelCurrentResponse() {
   responseInProgress =
     false;
 
+
   currentResponseText =
     "";
 
 
-  clearElevenAudioQueue();
+  clearElevenAudio();
 
 
   assistantSpeaking =
     false;
 
 
-  if (
-    active
-  ) {
+  if (active) {
 
     setJarvisState(
       "listening"
@@ -3006,18 +3306,12 @@ function cancelCurrentResponse() {
     setMicrophoneEnabled(
       true
     );
-
-
-    debugSet(
-      "dbgEvent",
-      "Antwort abgebrochen"
-    );
   }
 }
 
 
 /* =========================================================
-   DIRECT ASSISTANT TEXT
+   EXACT SPEECH
    ========================================================= */
 
 function requestExactSpeech(
@@ -3027,13 +3321,10 @@ function requestExactSpeech(
   const clean =
     String(
       text || ""
-    )
-      .trim();
+    ).trim();
 
 
-  if (
-    !clean
-  ) {
+  if (!clean) {
     return;
   }
 
@@ -3043,12 +3334,6 @@ function requestExactSpeech(
     dataChannel.readyState !==
       "open"
   ) {
-
-    debugSet(
-      "dbgEvent",
-      "Direkt an ElevenLabs"
-    );
-
 
     speakTextWithElevenLabs(
       clean
@@ -3092,9 +3377,7 @@ ${clean}`
 
 async function speakGreeting() {
 
-  if (
-    !active
-  ) {
+  if (!active) {
     return;
   }
 
@@ -3129,9 +3412,7 @@ async function speakGreeting() {
   );
 
 
-  if (
-    !active
-  ) {
+  if (!active) {
     return;
   }
 
@@ -3162,8 +3443,7 @@ function speakProactiveMessage(
     greetingInProgress ||
     assistantSpeaking ||
     responseInProgress ||
-    runningToolCalls.size >
-      0
+    runningToolCalls.size > 0
   ) {
 
     return false;
@@ -3173,13 +3453,10 @@ function speakProactiveMessage(
   const clean =
     String(
       text || ""
-    )
-      .trim();
+    ).trim();
 
 
-  if (
-    !clean
-  ) {
+  if (!clean) {
     return false;
   }
 
@@ -3209,8 +3486,7 @@ async function runProactiveCheck() {
     greetingInProgress ||
     assistantSpeaking ||
     responseInProgress ||
-    runningToolCalls.size >
-      0
+    runningToolCalls.size > 0
   ) {
 
     return;
@@ -3228,6 +3504,7 @@ async function runProactiveCheck() {
             "POST",
 
           headers: {
+
             "Content-Type":
               "application/json"
           },
@@ -3247,7 +3524,6 @@ async function runProactiveCheck() {
       !data?.hasNotice ||
       !data?.text
     ) {
-
       return;
     }
 
@@ -3256,10 +3532,7 @@ async function runProactiveCheck() {
       data.text
     );
 
-
-  } catch (
-    error
-  ) {
+  } catch (error) {
 
     console.warn(
       "Proactive Check Fehler:",
@@ -3281,7 +3554,6 @@ async function runReminderCheck() {
     assistantSpeaking ||
     responseInProgress
   ) {
-
     return;
   }
 
@@ -3297,6 +3569,7 @@ async function runReminderCheck() {
             "POST",
 
           headers: {
+
             "Content-Type":
               "application/json"
           },
@@ -3316,7 +3589,6 @@ async function runReminderCheck() {
       !data?.hasNotice ||
       !data?.text
     ) {
-
       return;
     }
 
@@ -3325,10 +3597,7 @@ async function runReminderCheck() {
       data.text
     );
 
-
-  } catch (
-    error
-  ) {
+  } catch (error) {
 
     console.warn(
       "Reminder Check Fehler:",
@@ -3391,6 +3660,7 @@ function stopBackgroundChecks() {
       proactiveFirstCheckTimer
     );
 
+
     proactiveFirstCheckTimer =
       null;
   }
@@ -3403,6 +3673,7 @@ function stopBackgroundChecks() {
     clearInterval(
       proactiveCheckTimer
     );
+
 
     proactiveCheckTimer =
       null;
@@ -3417,6 +3688,7 @@ function stopBackgroundChecks() {
       reminderCheckTimer
     );
 
+
     reminderCheckTimer =
       null;
   }
@@ -3424,14 +3696,12 @@ function stopBackgroundChecks() {
 
 
 /* =========================================================
-   USER INTERRUPTION
+   INTERRUPTION
    ========================================================= */
 
 function handleUserInterruption() {
 
-  if (
-    !active
-  ) {
+  if (!active) {
     return;
   }
 
@@ -3458,7 +3728,7 @@ function handleUserInterruption() {
   cancelCurrentResponse();
 
 
-  clearElevenAudioQueue();
+  clearElevenAudio();
 
 
   assistantSpeaking =
@@ -3483,40 +3753,6 @@ function handleUserInterruption() {
     "Ich höre zu …"
   );
 }
-
-
-/* =========================================================
-   MICROPHONE SPEECH INTERRUPTION
-   ========================================================= */
-
-const originalHandleRealtimeEvent =
-  handleRealtimeEvent;
-
-
-handleRealtimeEvent =
-  function (
-    event
-  ) {
-
-    if (
-      event?.type ===
-      "input_audio_buffer.speech_started"
-    ) {
-
-      if (
-        assistantSpeaking ||
-        responseInProgress
-      ) {
-
-        handleUserInterruption();
-      }
-    }
-
-
-    originalHandleRealtimeEvent(
-      event
-    );
-  };
 
 
 /* =========================================================
@@ -3546,25 +3782,54 @@ async function startJarvis() {
     "❌"
   );
 
+
   debugSet(
     "dbgEleven",
     "❌"
   );
+
+
+  debugSet(
+    "dbgToken",
+    "❌"
+  );
+
+
+  debugSet(
+    "dbgVoice",
+    "-"
+  );
+
+
+  debugSet(
+    "dbgSocket",
+    "-"
+  );
+
 
   debugSet(
     "dbgText",
     "❌"
   );
 
+
   debugSet(
     "dbgAudio",
     "❌"
   );
 
+
   debugSet(
     "dbgPlayback",
     "❌"
   );
+
+
+  debugSet(
+    "dbgClose",
+    "-"
+  );
+
 
   debugSet(
     "dbgEvent",
@@ -3593,6 +3858,20 @@ async function startJarvis() {
 
 
   try {
+
+    /*
+      AudioContext sofort im echten Button-Klick
+      aktivieren.
+    */
+
+    await ensureAudioContext();
+
+
+    debugSet(
+      "dbgPlayback",
+      "bereit"
+    );
+
 
     const introPromise =
       startIntro();
@@ -3657,10 +3936,7 @@ async function startJarvis() {
 
     await speakGreeting();
 
-
-  } catch (
-    error
-  ) {
+  } catch (error) {
 
     console.error(
       "JARVIS Startfehler:",
@@ -3688,10 +3964,33 @@ async function startJarvis() {
     );
 
 
-    await stopJarvis(
+    active =
+      false;
+
+
+    disconnectElevenLabs();
+
+
+    disconnectRealtime();
+
+
+    stopMicrophone();
+
+
+    stopIntro();
+
+
+    clearElevenAudio();
+
+
+    setButtonActive(
       false
     );
 
+
+    setJarvisState(
+      "offline"
+    );
 
   } finally {
 
@@ -3706,13 +4005,10 @@ async function startJarvis() {
    ========================================================= */
 
 async function stopJarvis(
-  updateUi =
-    true
+  updateUi = true
 ) {
 
-  if (
-    stopping
-  ) {
+  if (stopping) {
     return;
   }
 
@@ -3745,7 +4041,7 @@ async function stopJarvis(
   );
 
 
-  clearElevenAudioQueue();
+  clearElevenAudio();
 
 
   disconnectElevenLabs();
@@ -3763,9 +4059,7 @@ async function stopJarvis(
   runningToolCalls.clear();
 
 
-  if (
-    updateUi
-  ) {
+  if (updateUi) {
 
     setButtonActive(
       false
@@ -3803,9 +4097,7 @@ async function stopJarvis(
    TOGGLE BUTTON
    ========================================================= */
 
-if (
-  button
-) {
+if (button) {
 
   button.addEventListener(
     "click",
@@ -3819,9 +4111,7 @@ if (
       }
 
 
-      if (
-        active
-      ) {
+      if (active) {
 
         await stopJarvis();
 
@@ -3844,15 +4134,31 @@ window.addEventListener(
 
     stopBackgroundChecks();
 
-    clearElevenAudioQueue();
+
+    stopElevenKeepAlive();
+
+
+    clearElevenAudio();
+
 
     disconnectElevenLabs();
 
+
     disconnectRealtime();
+
 
     stopMicrophone();
 
+
     stopIntro();
+
+
+    if (audioContext) {
+
+      try {
+        audioContext.close();
+      } catch {}
+    }
   }
 );
 
@@ -3897,12 +4203,12 @@ console.log(
 
 
 console.log(
-  "JARVIS APP V10.2 DEBUG · OPENAI REALTIME + ELEVENLABS"
+  "JARVIS APP V10.3"
 );
 
 
 console.log(
-  "Realtime: TEXT"
+  "OpenAI Realtime: TEXT"
 );
 
 
@@ -3912,17 +4218,27 @@ console.log(
 
 
 console.log(
+  "ElevenLabs Audio: PCM 24000 Hz"
+);
+
+
+console.log(
+  "Playback: Web Audio API"
+);
+
+
+console.log(
   "WebSocket Auth: single_use_token"
 );
 
 
 console.log(
-  "Inactivity Timeout: 180 Sekunden"
+  "Flush: true"
 );
 
 
 console.log(
-  "Debug HUD: aktiv"
+  "Inactivity Timeout: 180 Sekunden"
 );
 
 
