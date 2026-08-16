@@ -4280,6 +4280,348 @@ function speakProactiveMessage(
 
 
 /* =========================================================
+   GMAIL DASHBOARD · LETZTE 5 POSTEINGANG
+   Läuft unabhängig davon, ob JARVIS gerade zuhört.
+   ========================================================= */
+
+let inboxRefreshTimer =
+  null;
+
+
+function escapeHtml(value) {
+
+  return String(
+    value ?? ""
+  )
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+
+function getSenderDisplayName(from) {
+
+  const value =
+    String(from || "")
+      .trim();
+
+
+  if (!value) {
+    return "Unbekannt";
+  }
+
+
+  const quoted =
+    value.match(/^\s*\"([^\"]+)\"\s*</);
+
+
+  if (quoted?.[1]) {
+    return quoted[1].trim();
+  }
+
+
+  const beforeAddress =
+    value.split("<")[0]
+      .trim()
+      .replace(/^\"|\"$/g, "");
+
+
+  if (beforeAddress) {
+    return beforeAddress;
+  }
+
+
+  const address =
+    value.match(/<([^>]+)>/)?.[1] ||
+    value;
+
+
+  return String(address)
+    .split("@")[0]
+    .trim() ||
+    "Unbekannt";
+}
+
+
+function getSenderInitials(name) {
+
+  const parts =
+    String(name || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+
+  if (!parts.length) {
+    return "ML";
+  }
+
+
+  if (parts.length === 1) {
+    return parts[0]
+      .slice(0, 2)
+      .toUpperCase();
+  }
+
+
+  return `${parts[0][0]}${parts[1][0]}`
+    .toUpperCase();
+}
+
+
+function formatInboxTime(email) {
+
+  const raw =
+    email?.internalDate
+      ? Number(email.internalDate)
+      : email?.date
+        ? Date.parse(email.date)
+        : NaN;
+
+
+  if (!Number.isFinite(raw)) {
+    return "—";
+  }
+
+
+  const date =
+    new Date(raw);
+
+
+  const now =
+    new Date();
+
+
+  const sameBerlinDay =
+    new Intl.DateTimeFormat(
+      "en-CA",
+      {
+        timeZone:
+          "Europe/Berlin",
+        year:
+          "numeric",
+        month:
+          "2-digit",
+        day:
+          "2-digit"
+      }
+    ).format(date) ===
+    new Intl.DateTimeFormat(
+      "en-CA",
+      {
+        timeZone:
+          "Europe/Berlin",
+        year:
+          "numeric",
+        month:
+          "2-digit",
+        day:
+          "2-digit"
+      }
+    ).format(now);
+
+
+  if (sameBerlinDay) {
+    return new Intl.DateTimeFormat(
+      "de-DE",
+      {
+        timeZone:
+          "Europe/Berlin",
+        hour:
+          "2-digit",
+        minute:
+          "2-digit"
+      }
+    ).format(date);
+  }
+
+
+  return new Intl.DateTimeFormat(
+    "de-DE",
+    {
+      timeZone:
+        "Europe/Berlin",
+      day:
+        "2-digit",
+      month:
+        "2-digit"
+    }
+  ).format(date);
+}
+
+
+function renderInboxEmails(emails) {
+
+  const list =
+    document.getElementById(
+      "inboxList"
+    );
+
+
+  if (!list) {
+    return;
+  }
+
+
+  const items =
+    Array.isArray(emails)
+      ? emails.slice(0, 5)
+      : [];
+
+
+  if (!items.length) {
+    list.innerHTML =
+      `<div class="email-row">
+        <div class="avatar">✓</div>
+        <div class="email-sender">Gmail</div>
+        <div class="email-copy">
+          <div class="email-subject">Posteingang leer</div>
+          <div class="email-snippet">Aktuell liegen keine Nachrichten im Posteingang.</div>
+        </div>
+        <div class="email-time">—</div>
+      </div>`;
+    return;
+  }
+
+
+  list.innerHTML =
+    items.map(
+      email => {
+
+        const sender =
+          getSenderDisplayName(
+            email.from
+          );
+
+
+        const subject =
+          String(
+            email.subject ||
+            "(kein Betreff)"
+          );
+
+
+        const snippet =
+          String(
+            email.snippet ||
+            ""
+          );
+
+
+        const unreadMark =
+          email.unread
+            ? "● "
+            : "";
+
+
+        return `
+          <div class="email-row" data-mail-id="${escapeHtml(email.id || "")}">
+            <div class="avatar">${escapeHtml(getSenderInitials(sender))}</div>
+            <div class="email-sender">${escapeHtml(sender)}</div>
+            <div class="email-copy">
+              <div class="email-subject">${unreadMark}${escapeHtml(subject)}</div>
+              <div class="email-snippet">${escapeHtml(snippet)}</div>
+            </div>
+            <div class="email-time">${escapeHtml(formatInboxTime(email))}</div>
+          </div>`;
+      }
+    ).join("");
+}
+
+
+async function loadInboxDashboard() {
+
+  const list =
+    document.getElementById(
+      "inboxList"
+    );
+
+
+  if (!list) {
+    return;
+  }
+
+
+  try {
+
+    const response =
+      await fetch(
+        "/api/gmail-inbox",
+        {
+          method:
+            "GET",
+          cache:
+            "no-store"
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    if (
+      !response.ok ||
+      !data?.ok
+    ) {
+      throw new Error(
+        data?.error ||
+        "Gmail konnte nicht geladen werden."
+      );
+    }
+
+
+    renderInboxEmails(
+      data.emails
+    );
+
+  } catch (error) {
+
+    console.warn(
+      "Gmail Dashboard Fehler:",
+      error
+    );
+
+
+    list.innerHTML =
+      `<div class="email-row">
+        <div class="avatar">!</div>
+        <div class="email-sender">Gmail</div>
+        <div class="email-copy">
+          <div class="email-subject">Posteingang nicht verfügbar</div>
+          <div class="email-snippet">${escapeHtml(error.message || "Abruf fehlgeschlagen")}</div>
+        </div>
+        <div class="email-time">—</div>
+      </div>`;
+  }
+}
+
+
+function startInboxDashboardRefresh() {
+
+  if (inboxRefreshTimer) {
+    clearInterval(
+      inboxRefreshTimer
+    );
+  }
+
+
+  loadInboxDashboard();
+
+
+  inboxRefreshTimer =
+    setInterval(
+      () => {
+        loadInboxDashboard();
+      },
+      60 * 1000
+    );
+}
+
+
+/* =========================================================
    PROACTIVE CHECK
    ========================================================= */
 
@@ -4948,6 +5290,12 @@ window.addEventListener(
     stopBackgroundChecks();
 
 
+    if (inboxRefreshTimer) {
+      clearInterval(inboxRefreshTimer);
+      inboxRefreshTimer = null;
+    }
+
+
     stopElevenKeepAlive();
 
 
@@ -5006,6 +5354,9 @@ debugSet(
 );
 
 
+startInboxDashboardRefresh();
+
+
 /* =========================================================
    VERSION
    ========================================================= */
@@ -5016,7 +5367,7 @@ console.log(
 
 
 console.log(
-  "JARVIS APP V10.4 · ZAHLEN FIX"
+  "JARVIS APP V10.4 · GMAIL DASHBOARD"
 );
 
 
