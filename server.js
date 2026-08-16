@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V10.2-TIME-MAIL";
+  "V10.1-ELEVENLABS-OAUTH";
 
 
 /* =========================================================
@@ -46,6 +46,283 @@ app.get(
         root: "."
       }
     );
+  }
+);
+
+
+
+/* =========================================================
+   TEMPORÄRE GOOGLE OAUTH-AUTORISIERUNG
+   Nur zum Erzeugen eines neuen Refresh-Tokens mit gmail.modify.
+   Nach erfolgreicher Einrichtung kann dieser Block wieder entfernt werden.
+   ========================================================= */
+
+const GOOGLE_OAUTH_REDIRECT_URI =
+  process.env.GOOGLE_OAUTH_REDIRECT_URI ||
+  "https://jarvis-druckelite24-1.onrender.com/auth/google/callback";
+
+
+app.get(
+  "/auth/google",
+  (req, res) => {
+
+    const clientId =
+      process.env
+        .GOOGLE_CLIENT_ID;
+
+
+    if (!clientId) {
+
+      return res
+        .status(500)
+        .send(
+          "GOOGLE_CLIENT_ID fehlt in Render."
+        );
+    }
+
+
+    const url =
+      new URL(
+        "https://accounts.google.com/o/oauth2/v2/auth"
+      );
+
+
+    url.searchParams.set(
+      "client_id",
+      clientId
+    );
+
+
+    url.searchParams.set(
+      "redirect_uri",
+      GOOGLE_OAUTH_REDIRECT_URI
+    );
+
+
+    url.searchParams.set(
+      "response_type",
+      "code"
+    );
+
+
+    url.searchParams.set(
+      "scope",
+      "https://www.googleapis.com/auth/gmail.modify"
+    );
+
+
+    url.searchParams.set(
+      "access_type",
+      "offline"
+    );
+
+
+    url.searchParams.set(
+      "prompt",
+      "consent"
+    );
+
+
+    url.searchParams.set(
+      "include_granted_scopes",
+      "true"
+    );
+
+
+    return res.redirect(
+      url.toString()
+    );
+  }
+);
+
+
+app.get(
+  "/auth/google/callback",
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+
+      const code =
+        String(
+          req.query?.code ||
+          ""
+        ).trim();
+
+
+      if (!code) {
+
+        return res
+          .status(400)
+          .send(
+            "Google hat keinen Autorisierungscode geliefert."
+          );
+      }
+
+
+      const clientId =
+        process.env
+          .GOOGLE_CLIENT_ID;
+
+
+      const clientSecret =
+        process.env
+          .GOOGLE_CLIENT_SECRET;
+
+
+      if (
+        !clientId ||
+        !clientSecret
+      ) {
+
+        return res
+          .status(500)
+          .send(
+            "GOOGLE_CLIENT_ID oder GOOGLE_CLIENT_SECRET fehlt in Render."
+          );
+      }
+
+
+      const body =
+        new URLSearchParams({
+
+          code,
+
+          client_id:
+            clientId,
+
+          client_secret:
+            clientSecret,
+
+          redirect_uri:
+            GOOGLE_OAUTH_REDIRECT_URI,
+
+          grant_type:
+            "authorization_code"
+        });
+
+
+      const response =
+        await fetch(
+          "https://oauth2.googleapis.com/token",
+          {
+
+            method:
+              "POST",
+
+            headers: {
+
+              "Content-Type":
+                "application/x-www-form-urlencoded"
+            },
+
+            body,
+
+            signal:
+              timeoutSignal(
+                15000
+              )
+          }
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if (
+        !response.ok
+      ) {
+
+        console.error(
+          "[GOOGLE OAUTH CALLBACK ERROR]",
+          data
+        );
+
+
+        return res
+          .status(502)
+          .type("html")
+          .send(
+            `<h2>Google OAuth fehlgeschlagen</h2><pre>${String(
+              data?.error_description ||
+              data?.error ||
+              "Unbekannter Fehler"
+            )}</pre>`
+          );
+      }
+
+
+      const refreshToken =
+        String(
+          data.refresh_token ||
+          ""
+        ).trim();
+
+
+      if (
+        !refreshToken
+      ) {
+
+        return res
+          .status(200)
+          .type("html")
+          .send(
+            `<h2>Autorisierung erfolgreich, aber kein neuer Refresh-Token geliefert.</h2>
+             <p>Öffne <b>/auth/google</b> erneut und bestätige den Google-Zugriff noch einmal.</p>`
+          );
+      }
+
+
+      return res
+        .status(200)
+        .type("html")
+        .send(
+          `<!doctype html>
+          <html lang="de">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>JARVIS Gmail verbunden</title>
+            <style>
+              body{font-family:Arial,sans-serif;background:#0a0a0d;color:#fff;padding:30px;line-height:1.5}
+              .box{max-width:900px;margin:auto;background:#15151c;border:1px solid #e70779;padding:24px;border-radius:14px}
+              code{display:block;word-break:break-all;background:#050507;padding:16px;border-radius:10px;border:1px solid #333;color:#7cff9b}
+              .warn{color:#ffcf66}
+            </style>
+          </head>
+          <body>
+            <div class="box">
+              <h2>JARVIS Gmail-Autorisierung erfolgreich</h2>
+              <p>Setze in Render die Environment Variable <b>GOOGLE_REFRESH_TOKEN</b> auf diesen Wert:</p>
+              <code>${refreshToken}</code>
+              <p class="warn"><b>Wichtig:</b> Behandle diesen Token wie ein Passwort. Nicht in GitHub posten und nicht öffentlich weitergeben.</p>
+              <p>Danach Render neu deployen.</p>
+            </div>
+          </body>
+          </html>`
+        );
+
+
+    } catch (
+      error
+    ) {
+
+      console.error(
+        "[GOOGLE OAUTH CALLBACK ERROR]",
+        error
+      );
+
+
+      return res
+        .status(500)
+        .send(
+          error.message ||
+          "Google OAuth konnte nicht abgeschlossen werden."
+        );
+    }
   }
 );
 
@@ -160,162 +437,6 @@ function getBerlinHour() {
 
   return hour;
 }
-
-
-function getBerlinDateTimeContext() {
-
-  const now =
-    new Date();
-
-
-  const parts =
-    new Intl.DateTimeFormat(
-      "de-DE",
-      {
-        timeZone:
-          "Europe/Berlin",
-
-        weekday:
-          "long",
-
-        year:
-          "numeric",
-
-        month:
-          "long",
-
-        day:
-          "numeric",
-
-        hour:
-          "2-digit",
-
-        minute:
-          "2-digit",
-
-        second:
-          "2-digit",
-
-        hourCycle:
-          "h23"
-      }
-    )
-      .formatToParts(
-        now
-      );
-
-
-  const get =
-    type =>
-      parts.find(
-        part =>
-          part.type ===
-          type
-      )?.value || "";
-
-
-  const weekday =
-    get("weekday");
-
-  const day =
-    get("day");
-
-  const month =
-    get("month");
-
-  const year =
-    get("year");
-
-  const hour =
-    get("hour");
-
-  const minute =
-    get("minute");
-
-  const second =
-    get("second");
-
-
-  return {
-
-    timezone:
-      "Europe/Berlin",
-
-    iso:
-      now.toISOString(),
-
-    weekday,
-
-    day,
-
-    month,
-
-    year,
-
-    hour,
-
-    minute,
-
-    second,
-
-    date_text:
-      `${weekday}, ${day}. ${month} ${year}`,
-
-    time_text:
-      `${hour}:${minute}:${second}`,
-
-    speech_text:
-      `${weekday}, der ${day}. ${month} ${year}, ${hour} Uhr ${minute}`
-  };
-}
-
-
-function isQuietHoursBerlin() {
-
-  const hour =
-    getBerlinHour();
-
-
-  const start =
-    Number(
-      process.env
-        .JARVIS_QUIET_START_HOUR ||
-      22
-    );
-
-
-  const end =
-    Number(
-      process.env
-        .JARVIS_QUIET_END_HOUR ||
-      7
-    );
-
-
-  if (
-    start === end
-  ) {
-    return false;
-  }
-
-
-  if (
-    start > end
-  ) {
-
-    return (
-      hour >= start ||
-      hour < end
-    );
-  }
-
-
-  return (
-    hour >= start &&
-    hour < end
-  );
-}
-
 
 
 function getPeriodDates(
@@ -466,14 +587,6 @@ Du arbeitest primär für Mattl und sein Unternehmen Druckelite24.
 
 Aktuelle Tageszeit:
 ${dayPart}
-
-AKTUELLE UHRZEIT UND DATUM:
-- Zeitzone ist Europe/Berlin.
-- Exakt jetzt ist: ${getBerlinDateTimeContext().speech_text}
-- Wenn Mattl nach Uhrzeit, Datum, Wochentag, heute oder morgen fragt, verwende get_current_datetime.
-- Erfinde niemals eine Uhrzeit.
-- Sprich Uhrzeiten natürlich, zum Beispiel "23 Uhr 10".
-- Sprich Daten natürlich, zum Beispiel "am siebzehnten August zweitausendsechsundzwanzig".
 
 SPRACHE:
 - Antworte ausschließlich auf Deutsch.
@@ -654,29 +767,6 @@ Du bist Mattls persönlicher JARVIS.
    ========================================================= */
 
 const REALTIME_TOOLS = [
-
-  {
-    type:
-      "function",
-
-    name:
-      "get_current_datetime",
-
-    description:
-      "Liefert die exakte aktuelle Uhrzeit und das aktuelle Datum in Europe/Berlin.",
-
-    parameters: {
-
-      type:
-        "object",
-
-      properties: {},
-
-      additionalProperties:
-        false
-    }
-  },
-
 
   {
     type:
@@ -3609,14 +3699,6 @@ app.post(
       ) {
 
 
-        case "get_current_datetime":
-
-          data =
-            getBerlinDateTimeContext();
-
-          break;
-
-
         case "search_internet":
 
           data =
@@ -3884,333 +3966,7 @@ app.post(
       });
     }
   }
-);
-/* =========================================================
-   SERVER MAIL MONITOR
-   Prüft unabhängig vom Browser alle 5 Minuten.
-   ========================================================= */
-
-const SERVER_MAIL_CHECK_INTERVAL_MS =
-  5 * 60 * 1000;
-
-
-let mailMonitorInitialized =
-  false;
-
-
-let mailMonitorRunning =
-  false;
-
-
-const monitorSeenEmailIds =
-  new Set();
-
-
-const importantMailQueue =
-  [];
-
-
-function classifyImportantMail(
-  email
-) {
-
-  const text =
-    normalize(
-      `${email.subject || ""} ${email.snippet || ""}`
-    );
-
-
-  const importantTerms = [
-
-    "anfrage",
-    "kundenanfrage",
-    "angebot",
-    "angebotsanfrage",
-    "preisanfrage",
-    "kostenvoranschlag",
-
-    "bestellung",
-    "bestellt",
-    "auftrag",
-    "bestellstatus",
-
-    "reklamation",
-    "beschwerde",
-
-    "lieferung",
-    "liefertermin",
-
-    "dringend"
-  ];
-
-
-  const ignoreTerms = [
-
-    "newsletter",
-    "werbung",
-    "marketing",
-
-    "noreply",
-    "no reply",
-
-    "automatische nachricht",
-    "security alert"
-  ];
-
-
-  const ignored =
-    ignoreTerms.some(
-      word =>
-        text.includes(
-          word
-        )
-    );
-
-
-  const matches =
-    importantTerms.filter(
-      word =>
-        text.includes(
-          word
-        )
-    );
-
-
-  return {
-
-    important:
-      !ignored &&
-      matches.length > 0,
-
-    matches
-  };
-}
-
-
-function cleanMailSender(
-  value
-) {
-
-  return String(
-    value ||
-    "unbekannt"
-  )
-    .replace(
-      /<[^>]+>/g,
-      ""
-    )
-    .replace(
-      /["']/g,
-      ""
-    )
-    .trim();
-}
-
-
-function queueImportantMail(
-  email
-) {
-
-  const sender =
-    cleanMailSender(
-      email.from
-    );
-
-
-  const subject =
-    String(
-      email.subject ||
-      "ohne Betreff"
-    ).trim();
-
-
-  importantMailQueue.push({
-
-    id:
-      email.id,
-
-    created_at:
-      new Date()
-        .toISOString(),
-
-    text:
-      `Mattl, wichtige neue Mail von ${sender}. Betreff: ${subject}.`
-  });
-
-
-  if (
-    importantMailQueue.length >
-    50
-  ) {
-
-    importantMailQueue.splice(
-      0,
-      importantMailQueue.length -
-      50
-    );
-  }
-}
-
-
-async function runServerMailMonitor() {
-
-  if (
-    mailMonitorRunning ||
-    !isGmailConfigured()
-  ) {
-    return;
-  }
-
-
-  mailMonitorRunning =
-    true;
-
-
-  try {
-
-    const emails =
-      await getUnreadEmails();
-
-
-    if (
-      !mailMonitorInitialized
-    ) {
-
-      for (
-        const email of
-        emails
-      ) {
-
-        monitorSeenEmailIds.add(
-          email.id
-        );
-      }
-
-
-      mailMonitorInitialized =
-        true;
-
-
-      console.log(
-        `[GMAIL MONITOR] Basis gesetzt: ${emails.length} ungelesene Mail(s).`
-      );
-
-
-      return;
-    }
-
-
-    for (
-      const email of
-      emails
-    ) {
-
-      if (
-        monitorSeenEmailIds.has(
-          email.id
-        )
-      ) {
-        continue;
-      }
-
-
-      monitorSeenEmailIds.add(
-        email.id
-      );
-
-
-      const classification =
-        classifyImportantMail(
-          email
-        );
-
-
-      if (
-        !classification
-          .important
-      ) {
-        continue;
-      }
-
-
-      queueImportantMail(
-        email
-      );
-
-
-      console.log(
-        "[GMAIL WICHTIG]",
-        email.subject
-      );
-    }
-
-
-  } catch (
-    error
-  ) {
-
-    console.warn(
-      "[GMAIL MONITOR ERROR]",
-      error
-    );
-
-
-  } finally {
-
-    mailMonitorRunning =
-      false;
-  }
-}
-
-
-function takeImportantMailNotice() {
-
-  if (
-    isQuietHoursBerlin()
-  ) {
-    return null;
-  }
-
-
-  if (
-    importantMailQueue.length ===
-    0
-  ) {
-    return null;
-  }
-
-
-  if (
-    importantMailQueue.length ===
-    1
-  ) {
-
-    return importantMailQueue.shift();
-  }
-
-
-  const items =
-    importantMailQueue.splice(
-      0,
-      importantMailQueue.length
-    );
-
-
-  const latest =
-    items[
-      items.length - 1
-    ];
-
-
-  return {
-
-    text:
-      `Mattl, seit der letzten Meldung sind ${items.length} wichtige Mails eingegangen. Die neueste: ${latest.text.replace(/^Mattl,\s*/i, "")}`
-  };
-}
-
-
-/* =========================================================
+);/* =========================================================
    PROACTIVE CHECK
    ========================================================= */
 
@@ -4237,53 +3993,6 @@ app.post(
   ) => {
 
     try {
-
-
-      /* Nachtruhe: keine Sprachmeldung zwischen 22:00 und 07:00. */
-
-      if (
-        isQuietHoursBerlin()
-      ) {
-
-        return res.json({
-
-          ok:
-            true,
-
-          hasNotice:
-            false,
-
-          quietHours:
-            true
-        });
-      }
-
-
-      /* Wichtige Mails, die der Servermonitor erkannt hat. */
-
-      const importantNotice =
-        takeImportantMailNotice();
-
-
-      if (
-        importantNotice?.text
-      ) {
-
-        return res.json({
-
-          ok:
-            true,
-
-          hasNotice:
-            true,
-
-          type:
-            "important_email",
-
-          text:
-            importantNotice.text
-        });
-      }
 
 
       /* Gmail */
@@ -4748,32 +4457,6 @@ app.listen(
   "0.0.0.0",
 
   () => {
-
-
-    /*
-      Gmail serverseitig überwachen.
-      Startet 15 Sekunden nach Serverstart,
-      danach alle 5 Minuten.
-    */
-
-    setTimeout(
-      () => {
-
-        runServerMailMonitor();
-
-      },
-      15 * 1000
-    );
-
-
-    setInterval(
-      () => {
-
-        runServerMailMonitor();
-
-      },
-      SERVER_MAIL_CHECK_INTERVAL_MS
-    );
 
     console.log(
       "=============================================="
