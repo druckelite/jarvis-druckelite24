@@ -12,7 +12,7 @@
     content="Druckelite24 JARVIS Business Voice Assistant"
   />
   <title>Druckelite24 · JARVIS</title>
-  <link rel="stylesheet" href="styles.css?v=5.2-shopify" />
+  <link rel="stylesheet" href="styles.css?v=5.1-clean" />
 </head>
 <body>
 
@@ -86,88 +86,37 @@
       <!-- LINKS: SHOPIFY + MAIL -->
       <section class="zone zone-left">
 
-        <section class="panel shop-panel-clean shop-v52">
-          <div class="panel-head shop-v52-head">
-            <span>SHOPIFY · LIVE COMMAND</span>
-            <span class="shop-live-wrap"><i class="shop-live-pulse"></i> LIVE</span>
+        <section class="panel shop-panel-clean">
+          <div class="panel-head">
+            <span>SHOPIFY · LIVE</span>
+            <span class="panel-dot" id="shopDot"></span>
           </div>
 
-          <div class="shop-v52-grid">
-
-            <article class="shop-revenue-hero">
-              <div class="shop-v52-topline">
-                <div>
-                  <div class="shop-v52-label">UMSATZ HEUTE</div>
-                  <div class="shop-v52-value" id="statRevenue">—</div>
-                  <div class="shop-v52-trend">↗ LIVE · HEUTE</div>
-                </div>
-                <div class="shop-v52-badge">24H</div>
-              </div>
-
-              <div class="shop-chart-stage">
-                <svg class="shop-neon-chart" viewBox="0 0 520 150" preserveAspectRatio="none" aria-hidden="true">
-                  <defs>
-                    <linearGradient id="shopFill52" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stop-color="#ff2f9c" stop-opacity=".42"/>
-                      <stop offset="60%" stop-color="#e70779" stop-opacity=".12"/>
-                      <stop offset="100%" stop-color="#e70779" stop-opacity="0"/>
-                    </linearGradient>
-                    <filter id="shopGlow52">
-                      <feGaussianBlur stdDeviation="2.4" result="blur"/>
-                      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                    </filter>
-                  </defs>
-                  <path class="shop-area52" fill="url(#shopFill52)" d="M0,120 L32,112 L64,117 L96,96 L128,101 L160,82 L192,90 L224,65 L256,73 L288,51 L320,62 L352,38 L384,49 L416,27 L448,36 L480,18 L520,7 L520,150 L0,150 Z"/>
-                  <path class="shop-line52" filter="url(#shopGlow52)" d="M0,120 L32,112 L64,117 L96,96 L128,101 L160,82 L192,90 L224,65 L256,73 L288,51 L320,62 L352,38 L384,49 L416,27 L448,36 L480,18 L520,7"/>
-                  <circle class="shop-dot52 d1" cx="224" cy="65" r="3"/>
-                  <circle class="shop-dot52 d2" cx="352" cy="38" r="3"/>
-                  <circle class="shop-dot52 d3" cx="520" cy="7" r="4"/>
-                </svg>
-                <div class="shop-scan52"></div>
-                <canvas class="week-chart live-week-chart" id="weekChart" width="520" height="150"></canvas>
-              </div>
-            </article>
-
-            <div class="shop-side-metrics">
-
-              <article class="shop-metric52">
-                <div class="shop-v52-label">BESTELLUNGEN</div>
-                <div class="shop-metric52-value" id="statOrders">—</div>
-                <div class="shop-mini-bars">
-                  <i style="--h:28%"></i><i style="--h:42%"></i><i style="--h:36%"></i><i style="--h:54%"></i>
-                  <i style="--h:48%"></i><i style="--h:68%"></i><i style="--h:62%"></i><i style="--h:80%"></i>
-                  <i style="--h:72%"></i><i style="--h:92%"></i>
-                </div>
-                <div class="shop-v52-trend">↗ LIVE</div>
-              </article>
-
-              <article class="shop-metric52">
-                <div class="shop-v52-label">Ø BESTELLWERT</div>
-                <div class="shop-metric52-value" id="statAov">—</div>
-                <svg class="mini-line52" viewBox="0 0 160 44" preserveAspectRatio="none" aria-hidden="true">
-                  <path d="M0,35 L18,31 L36,33 L54,25 L72,28 L90,20 L108,24 L126,15 L144,20 L160,7"/>
-                </svg>
-                <div class="shop-v52-trend">↗ AKTUELL</div>
-              </article>
-
-              <article class="shop-metric52 shop-yesterday52">
-                <div>
-                  <div class="shop-v52-label">GESTERN</div>
-                  <div class="shop-metric52-value small52" id="statYesterday">—</div>
-                </div>
-                <div class="shop-compare52">
-                  <span>VERGLEICH</span>
-                  <b>↗</b>
-                </div>
-              </article>
-
+          <div class="shop-kpis">
+            <div class="shop-kpi">
+              <div class="stat-value" id="statRevenue">—</div>
+              <div class="stat-label">UMSATZ HEUTE</div>
+            </div>
+            <div class="shop-kpi">
+              <div class="stat-value" id="statOrders">—</div>
+              <div class="stat-label">BESTELLUNGEN</div>
+            </div>
+            <div class="shop-kpi">
+              <div class="stat-value stat-small" id="statAov">—</div>
+              <div class="stat-label">Ø BESTELLWERT</div>
+            </div>
+            <div class="shop-kpi">
+              <div class="stat-value stat-small" id="statYesterday">—</div>
+              <div class="stat-label">GESTERN</div>
             </div>
           </div>
 
-          <div class="shop-v52-footer">
-            <span id="shopUpdated">WARTE AUF DATEN …</span>
-            <span class="shop-v52-system"><i id="shopDot" class="panel-dot"></i> SHOPIFY API</span>
+          <div class="chart-label">UMSATZ · LETZTE 7 TAGE</div>
+          <div class="chart-shell">
+            <canvas class="week-chart" id="weekChart" width="520" height="126"></canvas>
+            <div class="chart-grid-lines"></div>
           </div>
+          <div class="panel-foot" id="shopUpdated">WARTE AUF DATEN …</div>
         </section>
 
         <section class="panel mail-panel-clean">
