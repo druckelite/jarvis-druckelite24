@@ -1171,3 +1171,492 @@ audio { display: none; }
     transition-duration: 0.001ms !important;
   }
 }
+
+/* =========================================================
+   V5.1 CLEAN COCKPIT
+   Originaler Reaktor bleibt unverändert.
+   ========================================================= */
+
+.hud{
+  max-width: 1780px;
+  padding: .65rem .8rem .9rem;
+  gap: .55rem;
+}
+
+.topbar{
+  padding-bottom: .55rem;
+}
+
+.ticker{
+  height: 22px;
+  margin: 0;
+}
+
+.cockpit.cockpit-clean{
+  display:grid;
+  grid-template-columns:minmax(420px, 1.05fr) minmax(430px, .95fr) minmax(420px, 1.05fr);
+  gap:.7rem;
+  align-items:stretch;
+  min-height:0;
+}
+
+.zone{
+  display:grid;
+  gap:.7rem;
+  min-height:0;
+}
+
+.zone-left{
+  grid-template-rows:minmax(0, 1.08fr) minmax(240px, .92fr);
+}
+
+.zone-right{
+  grid-template-rows:minmax(260px, .92fr) minmax(250px, .82fr) auto;
+}
+
+.panel{
+  border-color:#25252c;
+  background:linear-gradient(180deg,rgba(17,17,22,.90),rgba(9,9,13,.90));
+  backdrop-filter:blur(6px);
+}
+
+.panel-head{
+  letter-spacing:.20em;
+  color:var(--magenta);
+}
+
+.shop-panel-clean{
+  min-height:0;
+}
+
+.shop-kpis{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:.55rem;
+}
+
+.shop-kpi{
+  min-height:76px;
+  padding:.62rem .65rem;
+  border:1px solid var(--panel-border);
+  background:
+    radial-gradient(circle at 90% 90%, rgba(231,7,121,.08), transparent 44%),
+    rgba(7,7,10,.72);
+}
+
+.shop-kpi .stat-value{
+  font-size:1.65rem;
+}
+
+.shop-kpi .stat-small{
+  font-size:1.25rem;
+}
+
+.chart-label{
+  font-family:var(--font-mono);
+  font-size:.52rem;
+  letter-spacing:.18em;
+  color:var(--text-faint);
+}
+
+.chart-shell{
+  position:relative;
+  flex:1;
+  min-height:115px;
+  border:1px solid rgba(231,7,121,.12);
+  background:
+    linear-gradient(rgba(231,7,121,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(231,7,121,.035) 1px, transparent 1px),
+    rgba(5,5,8,.65);
+  background-size:100% 24px, 36px 100%;
+  overflow:hidden;
+}
+
+.week-chart{
+  width:100%;
+  height:100%;
+  min-height:115px;
+  position:relative;
+  z-index:2;
+  filter:drop-shadow(0 0 7px rgba(231,7,121,.62));
+}
+
+.chart-shell::after{
+  content:"";
+  position:absolute;
+  left:-20%;
+  top:0;
+  width:18%;
+  height:100%;
+  background:linear-gradient(90deg,transparent,rgba(231,7,121,.10),transparent);
+  animation:chart-scan 5.2s linear infinite;
+  z-index:1;
+}
+
+.message-list{
+  display:grid;
+  gap:0;
+}
+
+.message-row{
+  min-height:40px;
+  display:grid;
+  grid-template-columns:30px minmax(0,1fr) 36px;
+  gap:.55rem;
+  align-items:center;
+  border-bottom:1px solid rgba(255,255,255,.055);
+}
+
+.msg-avatar{
+  width:27px;
+  height:27px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  background:#24242b;
+  color:#f4f4f6;
+  font:600 .58rem var(--font-display);
+  border:1px solid rgba(255,255,255,.07);
+}
+
+.msg-copy{
+  min-width:0;
+}
+
+.msg-copy b{
+  display:block;
+  font-size:.72rem;
+  font-weight:600;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.msg-copy span{
+  display:block;
+  margin-top:1px;
+  font-size:.59rem;
+  color:var(--text-faint);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.message-row time{
+  text-align:right;
+  font:.53rem var(--font-mono);
+  color:var(--text-faint);
+}
+
+.whatsapp-panel-clean{
+  border-color:rgba(37,211,102,.23);
+  background:
+    radial-gradient(circle at 100% 0%,rgba(37,211,102,.06),transparent 38%),
+    linear-gradient(180deg,rgba(12,17,15,.92),rgba(7,10,9,.92));
+}
+
+.whatsapp-panel-clean::after{
+  content:"";
+  position:absolute;
+  left:0; right:0; top:0;
+  height:1px;
+  background:linear-gradient(90deg,transparent,#25d366,transparent);
+}
+
+.wa-head{
+  color:#e9fff0;
+}
+
+.wa-state{
+  color:#25d366;
+  font-family:var(--font-mono);
+  font-size:.55rem;
+}
+
+.wa-avatar{
+  color:#25d366;
+  border-color:rgba(37,211,102,.23);
+  background:rgba(37,211,102,.08);
+}
+
+.right-bottom-grid{
+  display:grid;
+  grid-template-columns:.85fr 1.15fr;
+  gap:.7rem;
+  min-height:0;
+}
+
+.weather-panel-clean,
+.news-panel-clean{
+  min-height:0;
+}
+
+.compact-wx{
+  align-items:center;
+}
+
+.compact-wx .wx-temp{
+  font-size:2.2rem;
+}
+
+.wx-grid{
+  grid-template-columns:repeat(2,1fr);
+}
+
+.news-clean-list{
+  display:grid;
+  gap:0;
+}
+
+.news-clean-list div{
+  padding:.56rem 0;
+  border-bottom:1px solid rgba(255,255,255,.055);
+}
+
+.news-clean-list b{
+  display:block;
+  font:600 .63rem var(--font-display);
+  letter-spacing:.06em;
+}
+
+.news-clean-list span{
+  display:block;
+  margin-top:.16rem;
+  font-size:.57rem;
+  line-height:1.3;
+  color:var(--text-faint);
+}
+
+.system-strip{
+  padding:.68rem .8rem;
+}
+
+.compact-sys{
+  display:grid;
+  grid-template-columns:repeat(4,1fr);
+  gap:.6rem;
+}
+
+.compact-sys .sys-line{
+  display:grid;
+  gap:.15rem;
+  justify-content:initial;
+  text-align:center;
+  padding:.35rem .2rem;
+  border:1px solid rgba(255,255,255,.06);
+}
+
+.hidden-gauge-wrap{
+  display:none;
+}
+
+/* ORIGINAL STAGE stays central and compact */
+.stage{
+  min-height:0;
+  padding:.3rem 0;
+  gap:.7rem;
+}
+
+.stage-title h1{
+  font-size:clamp(2rem,4vw,3.35rem);
+}
+
+.voice-button{
+  width:min(300px, 23vw);
+}
+
+.voice-log{
+  font-size:.78rem;
+}
+
+.core-loc{
+  font-size:.53rem;
+}
+
+/* draft floats over dashboard rather than breaking grid */
+#draftPanel{
+  position:fixed;
+  right:18px;
+  bottom:18px;
+  z-index:90;
+  width:min(450px, calc(100vw - 36px));
+  box-shadow:0 22px 60px rgba(0,0,0,.55),0 0 28px rgba(231,7,121,.10);
+}
+
+/* Mobile control hidden on desktop */
+.mobile-core-launch{
+  display:none;
+}
+
+@keyframes chart-scan{
+  from{left:-22%}
+  to{left:120%}
+}
+
+/* Tablet */
+@media(max-width:1180px) and (min-width:761px){
+  .hud{
+    max-width:none;
+  }
+
+  .cockpit.cockpit-clean{
+    grid-template-columns:1fr 1fr;
+    grid-template-areas:
+      "stage stage"
+      "left right";
+  }
+
+  .zone-left{grid-area:left}
+  .stage{grid-area:stage;min-height:470px}
+  .zone-right{grid-area:right}
+
+  .voice-button{
+    width:min(290px,42vw);
+  }
+}
+
+/* iPhone / Mobile */
+@media(max-width:760px){
+  body{
+    overflow-y:auto;
+  }
+
+  .hud{
+    width:100%;
+    padding:.35rem .42rem .8rem;
+  }
+
+  .topbar{
+    position:sticky;
+    top:0;
+    z-index:95;
+    background:rgba(6,6,8,.96);
+    backdrop-filter:blur(12px);
+  }
+
+  .top-center{
+    display:none;
+  }
+
+  .brand-logo{
+    height:22px;
+  }
+
+  .top-datetime{
+    display:none;
+  }
+
+  .ticker{
+    display:none;
+  }
+
+  .mobile-core-launch{
+    position:sticky;
+    top:55px;
+    z-index:90;
+    display:grid;
+    grid-template-columns:1fr 62px;
+    gap:.65rem;
+    align-items:center;
+    margin:.38rem 0 .5rem;
+    padding:.6rem .7rem;
+    border:1px solid rgba(231,7,121,.22);
+    clip-path:var(--clip-corner);
+    background:
+      radial-gradient(circle at 80% 50%,rgba(231,7,121,.12),transparent 42%),
+      rgba(11,11,15,.96);
+    backdrop-filter:blur(12px);
+    box-shadow:0 12px 28px rgba(0,0,0,.38);
+  }
+
+  .mobile-core-launch span{
+    display:block;
+    font:.52rem var(--font-mono);
+    letter-spacing:.15em;
+    color:var(--text-faint);
+  }
+
+  .mobile-core-launch b{
+    display:block;
+    margin-top:.15rem;
+    font:600 1rem var(--font-display);
+    letter-spacing:.05em;
+  }
+
+  .mobile-core-launch small{
+    display:block;
+    margin-top:.12rem;
+    font:.58rem var(--font-mono);
+    letter-spacing:.15em;
+    color:var(--magenta);
+  }
+
+  .mobile-core-button{
+    position:relative;
+    width:56px;
+    height:56px;
+    border-radius:50%;
+    border:1px solid var(--reactor-color);
+    background:
+      radial-gradient(circle at 34% 30%,rgba(255,255,255,.95) 0%,var(--reactor-color) 48%,rgba(0,0,0,0) 80%);
+    box-shadow:0 0 18px 4px var(--reactor-glow),0 0 38px 9px var(--reactor-glow);
+  }
+
+  .mobile-core-button::after{
+    content:"";
+    position:absolute;
+    inset:-6px;
+    border-radius:50%;
+    border:1px dashed var(--reactor-color);
+    animation:spin var(--reactor-speed) linear infinite;
+  }
+
+  .cockpit.cockpit-clean{
+    display:flex;
+    flex-direction:column;
+    gap:.5rem;
+  }
+
+  .stage{
+    order:1;
+    min-height:390px;
+  }
+
+  .zone-left,
+  .zone-right{
+    display:contents;
+  }
+
+  .shop-panel-clean{order:2}
+  .mail-panel-clean{order:3}
+  .whatsapp-panel-clean{order:4}
+  .right-bottom-grid{display:contents}
+  .weather-panel-clean{order:5}
+  .news-panel-clean{order:6}
+  .system-strip{order:7}
+
+  .voice-button{
+    width:min(250px,66vw);
+  }
+
+  .shop-kpis{
+    gap:.4rem;
+  }
+
+  .shop-kpi{
+    min-height:67px;
+    padding:.5rem;
+  }
+
+  .chart-shell{
+    min-height:105px;
+  }
+
+  .message-row{
+    min-height:43px;
+  }
+
+  .compact-sys{
+    grid-template-columns:1fr 1fr;
+  }
+}
