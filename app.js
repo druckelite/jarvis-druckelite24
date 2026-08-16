@@ -531,11 +531,31 @@ function getGreetingAddress() {
 
 function getGreeting() {
 
+function getGreeting() {
+
   const hour =
     getBerlinHour();
 
-  const name =
-    getGreetingAddress();
+  const roll =
+    Math.random();
+
+  let name;
+
+  if (roll < 0.36) {
+    name = "Mattl";
+  }
+
+  else if (roll < 0.66) {
+    name = "Chef";
+  }
+
+  else if (roll < 0.92) {
+    name = "Meister";
+  }
+
+  else {
+    name = "Daddy";
+  }
 
 
   if (
@@ -544,12 +564,21 @@ function getGreeting() {
   ) {
 
     return pickRandom([
-      `Guten Morgen, ${name}. JARVIS ist online. Die Systeme laufen, der Tag kann kommen.`,
-      `Morgen, ${name}. Kommandozentrale aktiv. Mal sehen, wer heute zuerst nervt.`,
-      `${name}, willkommen zurück. Kaffee organisierst du, den Rest kriegen wir hin.`,
-      `Guten Morgen, ${name}. Systeme bereit. Zeit, aus Chaos wieder Umsatz zu machen.`,
-      `${name}, JARVIS meldet sich dienstbereit. Der Tag gehört uns – bis die erste wilde E-Mail reinkommt.`,
-      `Morgen, ${name}. Alles hochgefahren. Vernunft später, zuerst machen wir Geschäft.`
+
+      `Systemcheck abgeschlossen. Kommandozentrale online. Guten Morgen, ${name}. JARVIS ist vollständig einsatzbereit. Heute machen wir keine halben Sachen.`,
+
+      `Energieversorgung stabil. Systeme synchronisiert. Guten Morgen, ${name}. Die Welt schläft langsam aus. Wir sind ihr bereits einen Schritt voraus.`,
+
+      `JARVIS online. Alle Systeme auf Grün. Guten Morgen, ${name}. Kaffee besorgst du. Den Rest erledigen wir gemeinsam.`,
+
+      `Kommandozentrale aktiviert. Datenverbindungen stehen. Guten Morgen, ${name}. Heute wird nicht verwaltet. Heute wird angegriffen.`,
+
+      `Systeme hochgefahren. Aufmerksamkeit bei einhundert Prozent. Guten Morgen, ${name}. Zeit, aus Ideen Ergebnisse zu machen.`,
+
+      `Guten Morgen, ${name}. JARVIS meldet volle Einsatzbereitschaft. Systeme stabil. Ziele noch nicht definiert. Das ändern wir jetzt.`,
+
+      `Verbindung hergestellt. Kommandozentrale bereit. Guten Morgen, ${name}. Mal sehen, wer heute versucht, uns aufzuhalten.`
+
     ]);
   }
 
@@ -560,12 +589,25 @@ function getGreeting() {
   ) {
 
     return pickRandom([
-      `${name}, JARVIS ist online. Was reißen wir als Nächstes ab?`,
-      `Da ist er ja, ${name}. Systeme bereit. Gib mir ein Ziel.`,
-      `${name}, willkommen zurück in der Kommandozentrale. Wo brennt es diesmal?`,
-      `JARVIS meldet sich dienstbereit, ${name}. Zeit, ein bisschen Unordnung in Produktivität zu verwandeln.`,
-      `${name}, alles bereit. Sag mir, was wir heute noch auseinandernehmen.`,
-      `Willkommen zurück, ${name}. Maschinen wach, JARVIS wach. Das kann nur interessant werden.`
+
+      `Kommandozentrale online. Systeme synchronisiert. Willkommen zurück, ${name}. Sag mir, welches Problem heute zuerst kapitulieren soll.`,
+
+      `JARVIS ist online. Datenströme aktiv. Systeme stabil. ${name}, du hast meine volle Aufmerksamkeit.`,
+
+      `Verbindung steht. Systeme auf Grün. Willkommen zurück, ${name}. Geschäft, Werbung, Zahlen oder Chaos. Ich bin bereit.`,
+
+      `Kommandozentrale aktiviert. ${name}, JARVIS meldet vollständige Einsatzbereitschaft. Gib mir ein Ziel.`,
+
+      `Alle Systeme online. Analyse bereit. ${name}, wenn heute irgendwo Umsatz liegen bleibt, finden wir ihn.`,
+
+      `Systemcheck abgeschlossen. Keine kritischen Fehler. Noch nicht. Willkommen zurück, ${name}. Was steht an?`,
+
+      `JARVIS online. Kommandozentrale bereit. ${name}, heute machen wir entweder Fortschritt oder wenigstens einen beeindruckenden Versuch.`,
+
+      `Verbindung hergestellt. Daten bereit. Geduld geladen. Willkommen zurück, ${name}. Nutzen wir sie, solange sie noch da ist.`,
+
+      `${name}. JARVIS ist online. Systeme synchronisiert. Der Laden läuft. Jetzt sorgen wir dafür, dass er noch besser läuft.`
+
     ]);
   }
 
@@ -576,22 +618,39 @@ function getGreeting() {
   ) {
 
     return pickRandom([
-      `Guten Abend, ${name}. Andere machen Feierabend. Wir offenbar nicht.`,
-      `${name}, JARVIS ist online. Der Abend kann beginnen – oder die nächste Schicht.`,
-      `Willkommen zurück, ${name}. Systeme bereit. Vernunft wurde für heute offenbar abgewählt.`,
-      `${name}, ich bin da. Sagen wir einfach, das hier zählt noch als normale Arbeitszeit.`,
-      `Abend, ${name}. Die Kommandozentrale ist wieder besetzt. Was steht an?`,
-      `${name}, Systeme aktiv. Wenn heute noch etwas eskaliert, sind wir wenigstens vorbereitet.`
+
+      `Nachtbetrieb wird vorbereitet. Kommandozentrale online. Guten Abend, ${name}. Andere machen Feierabend. Wir offenbar nicht.`,
+
+      `Systeme synchronisiert. Abendmodus aktiv. Willkommen zurück, ${name}. Die zweite Halbzeit kann beginnen.`,
+
+      `JARVIS online. Beleuchtung gedimmt. Rechenleistung unverändert. Guten Abend, ${name}. Was reißen wir heute noch ab?`,
+
+      `Kommandozentrale aktiviert. Guten Abend, ${name}. Die meisten fahren jetzt runter. Wir gehen offensichtlich den anderen Weg.`,
+
+      `Systemcheck abgeschlossen. Alles bereit. Guten Abend, ${name}. Wenn wir schon um diese Uhrzeit arbeiten, sollte es wenigstens spektakulär werden.`,
+
+      `JARVIS meldet sich. Systeme auf Grün. Guten Abend, ${name}. Feierabend wurde für heute offenbar nicht genehmigt.`,
+
+      `Verbindung hergestellt. Nachtbetrieb bereit. Guten Abend, ${name}. Zeit, noch etwas zu erledigen, das morgen niemand kommen sieht.`
+
     ]);
   }
 
 
   return pickRandom([
-    `${name} … beeindruckend. Andere schlafen. Wir bauen weiter.`,
-    `Willkommen zurück, ${name}. Die Uhr sagt nein, JARVIS sagt los.`,
-    `${name}, mitten in der Nacht. Natürlich. Ich hätte mit nichts anderem gerechnet.`,
-    `JARVIS online, ${name}. Schlaf ist offenbar weiterhin optional.`,
-    `${name}, Systeme bereit. Falls jemand fragt: Das hier ist Forschung.`
+
+    `Nachtmodus aktiviert. Systeme online. ${name}, vernünftige Menschen schlafen jetzt. Das erklärt vermutlich, warum wir beide hier sind.`,
+
+    `Kommandozentrale online. Uhrzeit kritisch. Einsatzbereitschaft trotzdem einhundert Prozent. Willkommen zurück, ${name}.`,
+
+    `Systemcheck abgeschlossen. Die Stadt schläft. JARVIS nicht. ${name}, was bauen wir jetzt noch?`,
+
+    `Nachtbetrieb aktiv. Systeme stabil. Vernunft auf Stand-by. ${name}, JARVIS ist bereit.`,
+
+    `Verbindung hergestellt. Alles ruhig. Verdächtig ruhig. Willkommen zurück, ${name}. Was haben wir vor?`,
+
+    `${name}. Es ist mitten in der Nacht. JARVIS ist online. Wenn das irgendwann groß wird, behaupten wir einfach, das sei alles Teil des Plans gewesen.`
+
   ]);
 }
 
