@@ -1,203 +1,187 @@
-/* DRUCKELITE24 · JARVIS APP V9.3 */
+/* =========================================================
+   DRUCKELITE24 · JARVIS
+   APP.JS
 
-const button = document.querySelector("#toggle");
-const statusEl = document.querySelector("#status");
-const logEl = document.querySelector("#log");
-const remoteAudio = document.querySelector("#remoteAudio");
+   V9.4 · AUDIO LEVELING + LONG INTRO FADE
+   ========================================================= */
 
-let active = false;
-let starting = false;
-let stopping = false;
 
-let peerConnection = null;
-let dataChannel = null;
-let micStream = null;
+/* =========================================================
+   DOM
+   ========================================================= */
 
-let realtimeConnected = false;
-let assistantSpeaking = false;
-let greetingInProgress = false;
+const button =
+  document.querySelector("#toggle");
 
-const runningToolCalls = new Set();
+const statusEl =
+  document.querySelector("#status");
+
+const logEl =
+  document.querySelector("#log");
+
+const remoteAudio =
+  document.querySelector("#remoteAudio");
+
+
+/* =========================================================
+   STATE
+   ========================================================= */
+
+let active =
+  false;
+
+let starting =
+  false;
+
+let stopping =
+  false;
+
+let peerConnection =
+  null;
+
+let dataChannel =
+  null;
+
+let micStream =
+  null;
+
+let realtimeConnected =
+  false;
+
+let assistantSpeaking =
+  false;
+
+let greetingInProgress =
+  false;
+
+const runningToolCalls =
+  new Set();
 
 
 /* =========================================================
    BACKGROUND CHECKS
    ========================================================= */
 
-let proactiveCheckTimer = null;
-let proactiveFirstCheckTimer = null;
-let reminderCheckTimer = null;
+let proactiveCheckTimer =
+  null;
+
+let proactiveFirstCheckTimer =
+  null;
+
+let reminderCheckTimer =
+  null;
+
 
 const PROACTIVE_CHECK_INTERVAL_MS =
   20 * 60 * 1000;
 
+
 const PROACTIVE_FIRST_CHECK_DELAY_MS =
   2 * 60 * 1000;
+
 
 const REMINDER_CHECK_INTERVAL_MS =
   60 * 1000;
 
 
 /* =========================================================
-   INTRO
+   INTRO SOUND
    ========================================================= */
 
-let introAudio = null;
-let introFadeTimer = null;
+let introAudio =
+  null;
 
-const INTRO_START = 4;
-const INTRO_START_VOLUME = 0.28;
-const INTRO_VOICE_DELAY_MS = 1800;
-const INTRO_BACKGROUND_VOLUME = 0.025;
-const INTRO_DUCK_DURATION_MS = 400;
-const INTRO_FADE_DURATION_MS = 7000;
+let introFadeTimer =
+  null;
+
+
+/*
+ * Musik beginnt bei Sekunde 4.
+ */
+const INTRO_START =
+  4;
+
+
+/*
+ * Anfangslautstärke der Musik.
+ */
+const INTRO_START_VOLUME =
+  0.26;
+
+
+/*
+ * Nur kurze Wartezeit,
+ * bevor JARVIS begrüßt.
+ */
+const INTRO_VOICE_DELAY_MS =
+  900;
+
+
+/*
+ * Sobald JARVIS spricht,
+ * Musik sehr leise im Hintergrund.
+ */
+const INTRO_BACKGROUND_VOLUME =
+  0.018;
+
+
+/*
+ * Wie schnell die Musik
+ * für die Stimme abgesenkt wird.
+ */
+const INTRO_DUCK_DURATION_MS =
+  650;
+
+
+/*
+ * NACH Ende der Begrüßung:
+ * Musik blendet über volle
+ * 15 Sekunden langsam aus.
+ */
+const INTRO_POST_GREETING_FADE_MS =
+  15000;
 
 
 /* =========================================================
-   AUDIO LEVELING
+   REALTIME AUDIO LEVELING
    ========================================================= */
 
-let playbackAudioContext = null;
-let playbackSourceNode = null;
-let playbackCompressor = null;
-let playbackGain = null;
+/*
+ * Diese Audio-Kette sorgt dafür,
+ * dass JARVIS nicht mit einem
+ * sehr leisen ersten Wort beginnt
+ * und danach plötzlich lauter wird.
+ *
+ * Signal:
+ *
+ * Realtime Audio
+ *      ↓
+ * Vorverstärkung
+ *      ↓
+ * Kompressor
+ *      ↓
+ * Limiter
+ *      ↓
+ * Lautsprecher
+ */
 
+let playbackAudioContext =
+  null;
 
-async function ensurePlaybackAudioContext() {
+let playbackSourceNode =
+  null;
 
-  if (!playbackAudioContext) {
+let playbackPreGain =
+  null;
 
-    const AudioContextClass =
-      window.AudioContext ||
-      window.webkitAudioContext;
+let playbackCompressor =
+  null;
 
+let playbackLimiter =
+  null;
 
-    if (!AudioContextClass) {
-      return null;
-    }
-
-
-    playbackAudioContext =
-      new AudioContextClass({
-        latencyHint: "interactive"
-      });
-  }
-
-
-  if (
-    playbackAudioContext.state ===
-    "suspended"
-  ) {
-
-    try {
-      await playbackAudioContext.resume();
-
-    } catch (error) {
-
-      console.warn(
-        "AudioContext resume:",
-        error
-      );
-    }
-  }
-
-
-  return playbackAudioContext;
-}
-
-
-function disconnectProcessedPlayback() {
-
-  try {
-    playbackSourceNode?.disconnect();
-  } catch {}
-
-
-  try {
-    playbackCompressor?.disconnect();
-  } catch {}
-
-
-  try {
-    playbackGain?.disconnect();
-  } catch {}
-
-
-  playbackSourceNode = null;
-  playbackCompressor = null;
-  playbackGain = null;
-}
-
-
-async function connectProcessedPlayback(stream) {
-
-  const context =
-    await ensurePlaybackAudioContext();
-
-
-  if (!context) {
-    return false;
-  }
-
-
-  disconnectProcessedPlayback();
-
-
-  playbackSourceNode =
-    context.createMediaStreamSource(
-      stream
-    );
-
-
-  playbackCompressor =
-    context.createDynamicsCompressor();
-
-
-  /*
-   * Pegel ausgleichen:
-   *
-   * Leise Anfänge werden angehoben.
-   * Laute Spitzen werden abgefangen.
-   */
-
-  playbackCompressor.threshold.value =
-    -34;
-
-  playbackCompressor.knee.value =
-    18;
-
-  playbackCompressor.ratio.value =
-    5;
-
-  playbackCompressor.attack.value =
-    0.004;
-
-  playbackCompressor.release.value =
-    0.22;
-
-
-  playbackGain =
-    context.createGain();
-
-
-  playbackGain.gain.value =
-    1.18;
-
-
-  playbackSourceNode
-    .connect(
-      playbackCompressor
-    )
-    .connect(
-      playbackGain
-    )
-    .connect(
-      context.destination
-    );
-
-
-  return true;
-}
+let playbackOutputGain =
+  null;
 
 
 /* =========================================================
@@ -216,7 +200,9 @@ function sleep(ms) {
 }
 
 
-function safeJsonParse(value) {
+function safeJsonParse(
+  value
+) {
 
   try {
 
@@ -235,7 +221,9 @@ function safeJsonParse(value) {
    UI
    ========================================================= */
 
-function setStatus(text) {
+function setStatus(
+  text
+) {
 
   if (!statusEl) {
     return;
@@ -253,28 +241,39 @@ function setStatus(text) {
 }
 
 
-function setLog(text) {
+function setLog(
+  text
+) {
 
-  if (logEl) {
-    logEl.textContent =
-      text;
+  if (!logEl) {
+    return;
   }
+
+
+  logEl.textContent =
+    text;
 }
 
 
-function setButtonActive(value) {
+function setButtonActive(
+  value
+) {
 
-  if (button) {
-
-    button.classList.toggle(
-      "active",
-      Boolean(value)
-    );
+  if (!button) {
+    return;
   }
+
+
+  button.classList.toggle(
+    "active",
+    Boolean(value)
+  );
 }
 
 
-function setJarvisState(state) {
+function setJarvisState(
+  state
+) {
 
   document.body.dataset.jarvisState =
     state;
@@ -285,7 +284,9 @@ function setJarvisState(state) {
    DRAFT PANEL
    ========================================================= */
 
-function showDraft(draft) {
+function showDraft(
+  draft
+) {
 
   const panel =
     document.getElementById(
@@ -343,26 +344,31 @@ if (draftCopyBtn) {
 
     async () => {
 
-      const subject =
+      const subjectEl =
         document.getElementById(
           "draftSubject"
-        )?.textContent || "";
+        );
 
 
-      const body =
+      const bodyEl =
         document.getElementById(
           "draftBody"
-        )?.textContent || "";
+        );
+
+
+      const fullText =
+        `${subjectEl?.textContent || ""}\n\n${bodyEl?.textContent || ""}`.trim();
 
 
       try {
 
-        await navigator.clipboard.writeText(
-          `${subject}\n\n${body}`.trim()
-        );
+        await navigator.clipboard
+          .writeText(
+            fullText
+          );
 
 
-        const old =
+        const original =
           draftCopyBtn.textContent;
 
 
@@ -374,7 +380,7 @@ if (draftCopyBtn) {
           () => {
 
             draftCopyBtn.textContent =
-              old;
+              original;
 
           },
           1500
@@ -401,10 +407,11 @@ function getBerlinHour() {
 
   try {
 
-    const parts =
+    const formatter =
       new Intl.DateTimeFormat(
         "de-DE",
         {
+
           timeZone:
             "Europe/Berlin",
 
@@ -414,22 +421,33 @@ function getBerlinHour() {
           hourCycle:
             "h23"
         }
-      ).formatToParts(
+      );
+
+
+    const parts =
+      formatter.formatToParts(
         new Date()
+      );
+
+
+    const hourPart =
+      parts.find(
+        part =>
+          part.type ===
+          "hour"
       );
 
 
     const hour =
       Number(
-        parts.find(
-          part =>
-            part.type === "hour"
-        )?.value
+        hourPart?.value
       );
 
 
     if (
-      !Number.isNaN(hour)
+      !Number.isNaN(
+        hour
+      )
     ) {
 
       return hour;
@@ -454,7 +472,9 @@ function getBerlinHour() {
    GREETING
    ========================================================= */
 
-function pickRandom(items) {
+function pickRandom(
+  items
+) {
 
   return items[
     Math.floor(
@@ -472,7 +492,7 @@ function getGreeting() {
 
 
   /*
-   * Sehr früh morgens
+   * FRÜHER MORGEN
    */
 
   if (
@@ -482,20 +502,20 @@ function getGreeting() {
 
     return pickRandom([
 
-      "Morgen, Mattl. Ich bin da. Wir starten ruhig, der Tag wird noch lang genug.",
+      "Guten Morgen, Mattl. Ich bin da. Schauen wir mal, was heute auf uns wartet.",
 
-      "Morgen, Mattl. Ich bin wach. Das sollte für uns beide erstmal reichen.",
+      "Morgen, Mattl. Ich bin bereit. Der Tag kann also anfangen.",
 
-      "Guten Morgen, Mattl. Schauen wir mal, was heute auf uns wartet.",
+      "Guten Morgen, Mattl. Dann schauen wir mal, was heute wieder los ist.",
 
-      "Morgen, Mattl. Kaffee wäre vermutlich keine schlechte Idee. Ich bin jedenfalls bereit."
+      "Morgen, Mattl. Ich bin wach. Das sollte fürs Erste reichen."
 
     ]);
   }
 
 
   /*
-   * Morgen
+   * MORGEN
    */
 
   if (
@@ -505,20 +525,20 @@ function getGreeting() {
 
     return pickRandom([
 
-      "Morgen, Mattl. Ich bin da. Was steht an?",
+      "Guten Morgen, Mattl. Was steht an?",
 
       "Morgen, Mattl. Dann schauen wir mal, was heute wieder brennt.",
 
       "Guten Morgen, Mattl. Was nehmen wir uns zuerst vor?",
 
-      "Mattl, guten Morgen. Ich bin bereit. Der ruhige Teil des Tages dürfte damit vorbei sein."
+      "Morgen, Mattl. Ich bin da. Ruhig wird es vermutlich ohnehin nicht."
 
     ]);
   }
 
 
   /*
-   * Vormittag / Mittag
+   * MITTAG
    */
 
   if (
@@ -528,20 +548,20 @@ function getGreeting() {
 
     return pickRandom([
 
-      "Hey Mattl. Da bin ich. Was machen wir?",
+      "Hey Mattl. Ich bin da. Was machen wir?",
 
-      "Mattl, ich bin da. Was steht an?",
+      "Mattl, da bin ich. Was steht an?",
 
       "Hey Mattl. Was gibt es?",
 
-      "Da bist du ja, Mattl. Ich hatte kurz Hoffnung auf einen entspannten Vormittag."
+      "Da bist du ja, Mattl. Ich hatte kurz Hoffnung auf einen ruhigen Vormittag."
 
     ]);
   }
 
 
   /*
-   * Nachmittag
+   * NACHMITTAG
    */
 
   if (
@@ -553,18 +573,18 @@ function getGreeting() {
 
       "Hey Mattl. Was steht heute noch an?",
 
-      "Mattl, da bin ich. Dann retten wir mal den Rest des Tages.",
+      "Mattl, ich bin da. Dann retten wir mal den Rest des Tages.",
 
       "Hey Mattl. Was nehmen wir uns als Nächstes vor?",
 
-      "Mattl, ich bin bereit. Langweilig wird es vermutlich wieder nicht."
+      "Mattl, da bin ich. Langweilig wird es vermutlich wieder nicht."
 
     ]);
   }
 
 
   /*
-   * Früher Abend
+   * ABEND
    */
 
   if (
@@ -574,20 +594,20 @@ function getGreeting() {
 
     return pickRandom([
 
-      "Abend, Mattl. Was liegt noch an?",
+      "Guten Abend, Mattl. Was liegt noch an?",
 
       "Mattl, ich bin da. Feierabend hat offenbar noch etwas Zeit.",
 
-      "Hey Mattl. Noch eine Runde? Was machen wir?",
+      "Abend, Mattl. Was machen wir noch?",
 
-      "Abend, Mattl. Schauen wir mal, was wir heute noch erledigt bekommen."
+      "Guten Abend, Mattl. Schauen wir mal, was wir heute noch erledigt bekommen."
 
     ]);
   }
 
 
   /*
-   * Später Abend
+   * SPÄTER ABEND
    */
 
   if (
@@ -599,7 +619,7 @@ function getGreeting() {
 
       "Abend, Mattl. Feierabend scheint heute wieder eher ein theoretisches Konzept zu sein.",
 
-      "Mattl, ich bin da. Andere nennen das jetzt vermutlich Feierabend.",
+      "Mattl, ich bin da. Andere Menschen nennen das vermutlich Feierabend.",
 
       "Hey Mattl. Noch nicht genug für heute? Na gut, was liegt an?",
 
@@ -610,7 +630,7 @@ function getGreeting() {
 
 
   /*
-   * Nacht
+   * NACHT
    */
 
   return pickRandom([
@@ -628,12 +648,277 @@ function getGreeting() {
 
 
 /* =========================================================
-   INTRO
+   AUDIO CONTEXT
    ========================================================= */
 
-function stopIntro() {
+async function ensurePlaybackAudioContext() {
 
-  if (introFadeTimer) {
+  if (
+    !playbackAudioContext
+  ) {
+
+    const AudioContextClass =
+      window.AudioContext ||
+      window.webkitAudioContext;
+
+
+    if (
+      !AudioContextClass
+    ) {
+
+      console.warn(
+        "Web Audio API nicht verfügbar."
+      );
+
+
+      return null;
+    }
+
+
+    playbackAudioContext =
+      new AudioContextClass({
+
+        latencyHint:
+          "interactive"
+      });
+  }
+
+
+  if (
+    playbackAudioContext.state ===
+    "suspended"
+  ) {
+
+    try {
+
+      await playbackAudioContext
+        .resume();
+
+    } catch (error) {
+
+      console.warn(
+        "AudioContext konnte nicht fortgesetzt werden:",
+        error
+      );
+    }
+  }
+
+
+  return playbackAudioContext;
+}
+
+
+function disconnectProcessedPlayback() {
+
+  try {
+    playbackSourceNode
+      ?.disconnect();
+  } catch {}
+
+
+  try {
+    playbackPreGain
+      ?.disconnect();
+  } catch {}
+
+
+  try {
+    playbackCompressor
+      ?.disconnect();
+  } catch {}
+
+
+  try {
+    playbackLimiter
+      ?.disconnect();
+  } catch {}
+
+
+  try {
+    playbackOutputGain
+      ?.disconnect();
+  } catch {}
+
+
+  playbackSourceNode =
+    null;
+
+  playbackPreGain =
+    null;
+
+  playbackCompressor =
+    null;
+
+  playbackLimiter =
+    null;
+
+  playbackOutputGain =
+    null;
+}
+
+
+/* =========================================================
+   AUDIO LEVELING
+   ========================================================= */
+
+async function connectProcessedPlayback(
+  stream
+) {
+
+  const context =
+    await ensurePlaybackAudioContext();
+
+
+  if (!context) {
+    return false;
+  }
+
+
+  disconnectProcessedPlayback();
+
+
+  playbackSourceNode =
+    context.createMediaStreamSource(
+      stream
+    );
+
+
+  /*
+   * Vorverstärkung:
+   * hebt auch das erste,
+   * leisere Wort an.
+   */
+
+  playbackPreGain =
+    context.createGain();
+
+
+  playbackPreGain.gain.value =
+    1.5;
+
+
+  /*
+   * Hauptkompressor:
+   * fängt lautere Bereiche ab.
+   */
+
+  playbackCompressor =
+    context.createDynamicsCompressor();
+
+
+  playbackCompressor.threshold.value =
+    -34;
+
+
+  playbackCompressor.knee.value =
+    12;
+
+
+  playbackCompressor.ratio.value =
+    8;
+
+
+  playbackCompressor.attack.value =
+    0.002;
+
+
+  playbackCompressor.release.value =
+    0.20;
+
+
+  /*
+   * Zweiter Kompressor
+   * als weicher Limiter.
+   */
+
+  playbackLimiter =
+    context.createDynamicsCompressor();
+
+
+  playbackLimiter.threshold.value =
+    -10;
+
+
+  playbackLimiter.knee.value =
+    3;
+
+
+  playbackLimiter.ratio.value =
+    18;
+
+
+  playbackLimiter.attack.value =
+    0.001;
+
+
+  playbackLimiter.release.value =
+    0.10;
+
+
+  /*
+   * Finale Lautstärke.
+   */
+
+  playbackOutputGain =
+    context.createGain();
+
+
+  playbackOutputGain.gain.value =
+    1.08;
+
+
+  /*
+   * Audio-Kette verbinden.
+   */
+
+  playbackSourceNode
+    .connect(
+      playbackPreGain
+    );
+
+
+  playbackPreGain
+    .connect(
+      playbackCompressor
+    );
+
+
+  playbackCompressor
+    .connect(
+      playbackLimiter
+    );
+
+
+  playbackLimiter
+    .connect(
+      playbackOutputGain
+    );
+
+
+  playbackOutputGain
+    .connect(
+      context.destination
+    );
+
+
+  console.log(
+    "JARVIS Audio-Leveling aktiv."
+  );
+
+
+  return true;
+}
+
+
+/* =========================================================
+   INTRO CONTROL
+   ========================================================= */
+
+function clearIntroFadeTimer() {
+
+  if (
+    introFadeTimer
+  ) {
 
     clearInterval(
       introFadeTimer
@@ -643,18 +928,30 @@ function stopIntro() {
     introFadeTimer =
       null;
   }
+}
 
 
-  if (introAudio) {
+function stopIntro() {
+
+  clearIntroFadeTimer();
+
+
+  if (
+    introAudio
+  ) {
 
     try {
+
       introAudio.pause();
+
     } catch {}
 
 
     try {
+
       introAudio.currentTime =
         0;
+
     } catch {}
 
 
@@ -671,7 +968,7 @@ async function startIntro() {
 
   introAudio =
     new Audio(
-      "/Intro.mp3?v=93"
+      "/Intro.mp3?v=94"
     );
 
 
@@ -711,7 +1008,9 @@ async function startIntro() {
 
           try {
 
-            if (!introAudio) {
+            if (
+              !introAudio
+            ) {
 
               done();
 
@@ -723,7 +1022,8 @@ async function startIntro() {
               INTRO_START;
 
 
-            await introAudio.play();
+            await introAudio
+              .play();
 
 
             done();
@@ -775,6 +1075,10 @@ async function startIntro() {
 }
 
 
+/* =========================================================
+   DUCK INTRO WHILE JARVIS SPEAKS
+   ========================================================= */
+
 function duckIntro() {
 
   if (
@@ -786,23 +1090,14 @@ function duckIntro() {
   }
 
 
-  if (introFadeTimer) {
-
-    clearInterval(
-      introFadeTimer
-    );
+  clearIntroFadeTimer();
 
 
-    introFadeTimer =
-      null;
-  }
-
-
-  const original =
+  const originalVolume =
     introAudio.volume;
 
 
-  const start =
+  const startTime =
     performance.now();
 
 
@@ -810,7 +1105,12 @@ function duckIntro() {
     setInterval(
       () => {
 
-        if (!introAudio) {
+        if (
+          !introAudio
+        ) {
+
+          clearIntroFadeTimer();
+
           return;
         }
 
@@ -820,7 +1120,7 @@ function duckIntro() {
 
             (
               performance.now() -
-              start
+              startTime
             ) /
             INTRO_DUCK_DURATION_MS,
 
@@ -839,9 +1139,9 @@ function duckIntro() {
 
 
         introAudio.volume =
-          original -
+          originalVolume -
           (
-            original -
+            originalVolume -
             INTRO_BACKGROUND_VOLUME
           ) *
           smooth;
@@ -851,16 +1151,19 @@ function duckIntro() {
           progress >= 1
         ) {
 
-          clearInterval(
-            introFadeTimer
-          );
+          clearIntroFadeTimer();
 
 
-          introFadeTimer =
-            null;
-
-
-          fadeIntroOut();
+          /*
+           * Wichtig:
+           *
+           * Musik bleibt jetzt
+           * auf dieser sehr leisen
+           * Lautstärke stehen.
+           *
+           * Sie wird NICHT sofort
+           * ausgeblendet.
+           */
         }
 
       },
@@ -869,7 +1172,11 @@ function duckIntro() {
 }
 
 
-function fadeIntroOut() {
+/* =========================================================
+   FADE INTRO AFTER GREETING
+   ========================================================= */
+
+function fadeIntroAfterGreeting() {
 
   if (
     !introAudio ||
@@ -880,47 +1187,69 @@ function fadeIntroOut() {
   }
 
 
-  const start =
+  clearIntroFadeTimer();
+
+
+  const startVolume =
+    Math.max(
+      introAudio.volume,
+      INTRO_BACKGROUND_VOLUME
+    );
+
+
+  const startTime =
     performance.now();
-
-
-  const volume =
-    introAudio.volume;
 
 
   introFadeTimer =
     setInterval(
       () => {
 
-        if (!introAudio) {
+        if (
+          !introAudio
+        ) {
+
+          clearIntroFadeTimer();
+
           return;
         }
+
+
+        const elapsed =
+          performance.now() -
+          startTime;
 
 
         const progress =
           Math.min(
 
-            (
-              performance.now() -
-              start
-            ) /
-            INTRO_FADE_DURATION_MS,
+            elapsed /
+            INTRO_POST_GREETING_FADE_MS,
 
             1
           );
 
 
+        /*
+         * Sehr weicher Fade.
+         *
+         * Anfang bleibt noch hörbar,
+         * danach immer langsamer weg.
+         */
+
+        const curve =
+          Math.pow(
+            1 -
+            progress,
+            1.55
+          );
+
+
         introAudio.volume =
           Math.max(
-
             0,
-
-            volume *
-            Math.pow(
-              1 -
-              progress,
-              1.7
-            )
+            startVolume *
+            curve
           );
 
 
@@ -928,26 +1257,27 @@ function fadeIntroOut() {
           progress >= 1
         ) {
 
-          clearInterval(
-            introFadeTimer
-          );
-
-
-          introFadeTimer =
-            null;
+          clearIntroFadeTimer();
 
 
           try {
+
             introAudio.pause();
+
           } catch {}
 
 
           introAudio =
             null;
+
+
+          console.log(
+            "Intro nach Begrüßung vollständig ausgeblendet."
+          );
         }
 
       },
-      60
+      50
     );
 }
 
@@ -959,8 +1289,9 @@ function fadeIntroOut() {
 async function createMicrophoneStream() {
 
   if (
+    !navigator.mediaDevices ||
     !navigator.mediaDevices
-      ?.getUserMedia
+      .getUserMedia
   ) {
 
     throw new Error(
@@ -1003,7 +1334,10 @@ function setMicrophoneEnabled(
   enabled
 ) {
 
-  if (!micStream) {
+  if (
+    !micStream
+  ) {
+
     return;
   }
 
@@ -1014,14 +1348,19 @@ function setMicrophoneEnabled(
   ) {
 
     track.enabled =
-      Boolean(enabled);
+      Boolean(
+        enabled
+      );
   }
 }
 
 
 function stopMicrophone() {
 
-  if (!micStream) {
+  if (
+    !micStream
+  ) {
+
     return;
   }
 
@@ -1055,7 +1394,7 @@ function sendRealtimeEvent(
   if (
     !dataChannel ||
     dataChannel.readyState !==
-      "open"
+    "open"
   ) {
 
     console.warn(
@@ -1094,10 +1433,12 @@ function sendRealtimeEvent(
 
 
 /* =========================================================
-   SPEECH
+   SPEECH HELPERS
    ========================================================= */
 
-function speakExactText(text) {
+function speakExactText(
+  text
+) {
 
   const clean =
     String(
@@ -1115,18 +1456,16 @@ function speakExactText(text) {
     type:
       "response.create",
 
-
     response: {
 
       output_modalities: [
         "audio"
       ],
 
-
       instructions:
-        `Sprich genau diese kurze Begrüßung auf Deutsch. ` +
-        `Gleichmäßig laut, ruhig, tief und flüssig. ` +
-        `Natürliches Hochdeutsch ohne fremden Akzent. ` +
+        `Sprich jetzt genau diese kurze Begrüßung aus. ` +
+        `Sprich vom ersten Wort an mit stabiler Lautstärke. ` +
+        `Sprich ruhig, natürlich und flüssig auf Deutsch. ` +
         `Füge nichts hinzu: ${clean}`
     }
   });
@@ -1153,17 +1492,16 @@ function speakProactiveNotice(
     type:
       "response.create",
 
-
     response: {
 
       output_modalities: [
         "audio"
       ],
 
-
       instructions:
-        `Melde dich kurz und natürlich bei Mattl. ` +
-        `Gleichmäßige Lautstärke und ruhiges Hochdeutsch. ` +
+        `Melde dich selbstständig kurz. ` +
+        `Sprich vom ersten Wort an mit stabiler Lautstärke. ` +
+        `Sprich folgenden Hinweis natürlich aus. ` +
         `Keine technische Erklärung und keine zusätzliche Frage: ${clean}`
     }
   });
@@ -1171,7 +1509,7 @@ function speakProactiveNotice(
 
 
 /* =========================================================
-   TOOL CALLS
+   TOOL CALL
    ========================================================= */
 
 async function executeRealtimeTool(
@@ -1180,19 +1518,34 @@ async function executeRealtimeTool(
 
   const callId =
     String(
-      event.call_id || ""
+      event.call_id ||
+      ""
     );
 
 
   const toolName =
     String(
-      event.name || ""
+      event.name ||
+      ""
     );
 
 
   if (
     !callId ||
-    !toolName ||
+    !toolName
+  ) {
+
+    console.error(
+      "Ungültiger Tool Call:",
+      event
+    );
+
+
+    return;
+  }
+
+
+  if (
     runningToolCalls.has(
       callId
     )
@@ -1217,19 +1570,33 @@ async function executeRealtimeTool(
   );
 
 
-  let args = {};
+  let args =
+    {};
 
 
   try {
 
     args =
       event.arguments
+
         ? JSON.parse(
             event.arguments
           )
+
         : {};
 
-  } catch {}
+  } catch {
+
+    args =
+      {};
+  }
+
+
+  console.log(
+    "[TOOL]",
+    toolName,
+    args
+  );
 
 
   let toolResult;
@@ -1245,13 +1612,11 @@ async function executeRealtimeTool(
           method:
             "POST",
 
-
           headers: {
 
             "Content-Type":
               "application/json"
           },
-
 
           body:
             JSON.stringify({
@@ -1317,6 +1682,12 @@ async function executeRealtimeTool(
 
   } catch (error) {
 
+    console.error(
+      "Tool Request Fehler:",
+      error
+    );
+
+
     toolResult = {
 
       ok:
@@ -1333,7 +1704,6 @@ async function executeRealtimeTool(
 
     type:
       "conversation.item.create",
-
 
     item: {
 
@@ -1355,7 +1725,6 @@ async function executeRealtimeTool(
 
     type:
       "response.create",
-
 
     response: {
 
@@ -1380,7 +1749,10 @@ function handleRealtimeEvent(
   event
 ) {
 
-  if (!event?.type) {
+  if (
+    !event?.type
+  ) {
+
     return;
   }
 
@@ -1396,12 +1768,31 @@ function handleRealtimeEvent(
   ) {
 
 
+    case "session.created":
+
+      console.log(
+        "Realtime Session erstellt."
+      );
+
+      break;
+
+
+    case "session.updated":
+
+      console.log(
+        "Realtime Session aktualisiert."
+      );
+
+      break;
+
+
     case "input_audio_buffer.speech_started":
 
       if (
         !active ||
         greetingInProgress
       ) {
+
         return;
       }
 
@@ -1415,6 +1806,7 @@ function handleRealtimeEvent(
         "Ich höre zu …"
       );
 
+
       break;
 
 
@@ -1424,6 +1816,7 @@ function handleRealtimeEvent(
         !active ||
         greetingInProgress
       ) {
+
         return;
       }
 
@@ -1437,6 +1830,7 @@ function handleRealtimeEvent(
         "Denke nach …"
       );
 
+
       break;
 
 
@@ -1445,6 +1839,7 @@ function handleRealtimeEvent(
       executeRealtimeTool(
         event
       );
+
 
       break;
 
@@ -1464,6 +1859,7 @@ function handleRealtimeEvent(
         "JARVIS denkt …"
       );
 
+
       break;
 
 
@@ -1482,6 +1878,7 @@ function handleRealtimeEvent(
         "JARVIS spricht."
       );
 
+
       break;
 
 
@@ -1496,6 +1893,7 @@ function handleRealtimeEvent(
           event.transcript
         );
       }
+
 
       break;
 
@@ -1535,6 +1933,10 @@ function handleRealtimeEvent(
       }
 
 
+      /*
+       * Begrüßung gerade beendet.
+       */
+
       if (
         greetingInProgress
       ) {
@@ -1543,9 +1945,21 @@ function handleRealtimeEvent(
           false;
 
 
+        /*
+         * Mikrofon sofort aktivieren.
+         */
+
         setMicrophoneEnabled(
           true
         );
+
+
+        /*
+         * Musik beginnt JETZT
+         * ihren 15-Sekunden-Fade.
+         */
+
+        fadeIntroAfterGreeting();
 
 
         setJarvisState(
@@ -1558,6 +1972,11 @@ function handleRealtimeEvent(
         );
 
 
+        console.log(
+          "Begrüßung fertig. Mikrofon aktiv. Intro blendet 15 Sekunden aus."
+        );
+
+
         break;
       }
 
@@ -1565,7 +1984,7 @@ function handleRealtimeEvent(
       if (
         active &&
         runningToolCalls.size ===
-          0
+        0
       ) {
 
         setJarvisState(
@@ -1596,18 +2015,26 @@ function handleRealtimeEvent(
         "Realtime Fehler."
       );
 
+
+      break;
+
+
+    default:
+
       break;
   }
 }
 
 
 /* =========================================================
-   WEBRTC
+   WEBRTC CONNECT
    ========================================================= */
 
 async function connectRealtime() {
 
-  if (!micStream) {
+  if (
+    !micStream
+  ) {
 
     throw new Error(
       "Mikrofon wurde nicht gestartet."
@@ -1621,7 +2048,7 @@ async function connectRealtime() {
   ) {
 
     throw new Error(
-      "WebRTC wird nicht unterstützt."
+      "WebRTC wird von diesem Browser nicht unterstützt."
     );
   }
 
@@ -1630,10 +2057,16 @@ async function connectRealtime() {
     new RTCPeerConnection();
 
 
+  /* =======================================================
+     REMOTE AUDIO
+     ======================================================= */
+
   peerConnection.ontrack =
     async event => {
 
-      if (!remoteAudio) {
+      if (
+        !remoteAudio
+      ) {
 
         throw new Error(
           "#remoteAudio fehlt in index.html."
@@ -1648,6 +2081,10 @@ async function connectRealtime() {
         ]);
 
 
+      /*
+       * Stream weiterhin am Element hinterlegen.
+       */
+
       remoteAudio.srcObject =
         stream;
 
@@ -1660,17 +2097,25 @@ async function connectRealtime() {
         true;
 
 
+      /*
+       * Erst versuchen wir
+       * unsere eigene Audio-Kette.
+       */
+
       const processed =
         await connectProcessedPlayback(
           stream
         );
 
 
-      if (processed) {
+      if (
+        processed
+      ) {
 
         /*
-         * HTML-Audio stumm.
-         * Wiedergabe läuft über AudioContext.
+         * Wichtig:
+         * HTML-Audio stumm,
+         * sonst hören wir alles doppelt.
          */
 
         remoteAudio.muted =
@@ -1681,11 +2126,15 @@ async function connectRealtime() {
           0;
 
 
+        console.log(
+          "Remote Audio läuft über JARVIS Audio-Leveling."
+        );
+
+
       } else {
 
         /*
-         * Fallback falls WebAudio
-         * im Browser nicht funktioniert.
+         * Fallback.
          */
 
         remoteAudio.muted =
@@ -1711,6 +2160,10 @@ async function connectRealtime() {
     };
 
 
+  /* =======================================================
+     CONNECTION STATE
+     ======================================================= */
+
   peerConnection
     .onconnectionstatechange =
     () => {
@@ -1728,8 +2181,10 @@ async function connectRealtime() {
 
       if (
         (
-          state === "failed" ||
-          state === "disconnected"
+          state ===
+            "failed" ||
+          state ===
+            "disconnected"
         ) &&
         active &&
         !stopping
@@ -1752,12 +2207,17 @@ async function connectRealtime() {
     };
 
 
-  const tracks =
-    micStream.getAudioTracks();
+  /* =======================================================
+     MICROPHONE
+     ======================================================= */
+
+  const audioTracks =
+    micStream
+      .getAudioTracks();
 
 
   if (
-    !tracks.length
+    !audioTracks.length
   ) {
 
     throw new Error(
@@ -1767,10 +2227,14 @@ async function connectRealtime() {
 
 
   peerConnection.addTrack(
-    tracks[0],
+    audioTracks[0],
     micStream
   );
 
+
+  /* =======================================================
+     DATA CHANNEL
+     ======================================================= */
 
   dataChannel =
     peerConnection
@@ -1790,12 +2254,17 @@ async function connectRealtime() {
         );
 
 
-      if (data) {
+      if (
+        !data
+      ) {
 
-        handleRealtimeEvent(
-          data
-        );
+        return;
       }
+
+
+      handleRealtimeEvent(
+        data
+      );
     }
   );
 
@@ -1824,6 +2293,7 @@ async function connectRealtime() {
 
         dataChannel.addEventListener(
           "open",
+
           () => {
 
             clearTimeout(
@@ -1835,8 +2305,14 @@ async function connectRealtime() {
               true;
 
 
+            console.log(
+              "Realtime DataChannel offen."
+            );
+
+
             resolve();
           },
+
           {
             once: true
           }
@@ -1845,6 +2321,7 @@ async function connectRealtime() {
 
         dataChannel.addEventListener(
           "error",
+
           () => {
 
             clearTimeout(
@@ -1857,8 +2334,8 @@ async function connectRealtime() {
                 "Realtime DataChannel Fehler."
               )
             );
-
           },
+
           {
             once: true
           }
@@ -1866,6 +2343,10 @@ async function connectRealtime() {
       }
     );
 
+
+  /* =======================================================
+     SDP
+     ======================================================= */
 
   const offer =
     await peerConnection
@@ -1891,6 +2372,12 @@ async function connectRealtime() {
     );
 
 
+  console.log(
+    "[WEBRTC] SDP Länge:",
+    offer.sdp.length
+  );
+
+
   const response =
     await fetch(
       "/api/realtime-session",
@@ -1899,13 +2386,11 @@ async function connectRealtime() {
         method:
           "POST",
 
-
         headers: {
 
           "Content-Type":
             "application/sdp"
         },
-
 
         body:
           offer.sdp
@@ -1952,6 +2437,11 @@ async function connectRealtime() {
 
 
   await channelReady;
+
+
+  console.log(
+    "Realtime vollständig verbunden."
+  );
 }
 
 
@@ -1968,10 +2458,14 @@ function disconnectRealtime() {
   runningToolCalls.clear();
 
 
-  if (dataChannel) {
+  if (
+    dataChannel
+  ) {
 
     try {
+
       dataChannel.close();
+
     } catch {}
 
 
@@ -1980,10 +2474,14 @@ function disconnectRealtime() {
   }
 
 
-  if (peerConnection) {
+  if (
+    peerConnection
+  ) {
 
     try {
+
       peerConnection.close();
+
     } catch {}
 
 
@@ -1995,16 +2493,22 @@ function disconnectRealtime() {
   disconnectProcessedPlayback();
 
 
-  if (remoteAudio) {
+  if (
+    remoteAudio
+  ) {
 
     try {
+
       remoteAudio.pause();
+
     } catch {}
 
 
     try {
+
       remoteAudio.srcObject =
         null;
+
     } catch {}
 
 
@@ -2023,7 +2527,7 @@ function disconnectRealtime() {
    ========================================================= */
 
 async function runBackgroundCheck(
-  url
+  endpointUrl
 ) {
 
   if (
@@ -2042,12 +2546,11 @@ async function runBackgroundCheck(
 
     const response =
       await fetch(
-        url,
+        endpointUrl,
         {
 
           method:
             "POST",
-
 
           headers: {
 
@@ -2055,9 +2558,8 @@ async function runBackgroundCheck(
               "application/json"
           },
 
-
           body:
-            "{}"
+            JSON.stringify({})
         }
       );
 
@@ -2075,15 +2577,18 @@ async function runBackgroundCheck(
 
 
     if (
-      data?.ok &&
-      data.hasNotice &&
-      data.text
+      !data?.ok ||
+      !data.hasNotice ||
+      !data.text
     ) {
 
-      speakProactiveNotice(
-        data.text
-      );
+      return;
     }
+
+
+    speakProactiveNotice(
+      data.text
+    );
 
 
   } catch (error) {
@@ -2096,17 +2601,17 @@ async function runBackgroundCheck(
 }
 
 
-function checkProactiveNotice() {
+async function checkProactiveNotice() {
 
-  return runBackgroundCheck(
+  await runBackgroundCheck(
     "/api/jarvis-checkin"
   );
 }
 
 
-function checkDueReminders() {
+async function checkDueReminders() {
 
-  return runBackgroundCheck(
+  await runBackgroundCheck(
     "/api/jarvis-reminder-check"
   );
 }
@@ -2148,6 +2653,10 @@ function stopProactiveChecks() {
     clearTimeout(
       proactiveFirstCheckTimer
     );
+
+
+    proactiveFirstCheckTimer =
+      null;
   }
 
 
@@ -2158,6 +2667,10 @@ function stopProactiveChecks() {
     clearInterval(
       proactiveCheckTimer
     );
+
+
+    proactiveCheckTimer =
+      null;
   }
 
 
@@ -2168,19 +2681,11 @@ function stopProactiveChecks() {
     clearInterval(
       reminderCheckTimer
     );
+
+
+    reminderCheckTimer =
+      null;
   }
-
-
-  proactiveFirstCheckTimer =
-    null;
-
-
-  proactiveCheckTimer =
-    null;
-
-
-  reminderCheckTimer =
-    null;
 }
 
 
@@ -2204,7 +2709,9 @@ async function startJarvis() {
     true;
 
 
-  if (button) {
+  if (
+    button
+  ) {
 
     button.disabled =
       true;
@@ -2235,7 +2742,7 @@ async function startJarvis() {
 
     /*
      * AudioContext direkt beim
-     * Button-Klick freischalten.
+     * Benutzer-Klick aktivieren.
      */
 
     await ensurePlaybackAudioContext();
@@ -2245,6 +2752,11 @@ async function startJarvis() {
 
 
     await startIntro();
+
+
+    setLog(
+      "Realtime-Verbindung wird aufgebaut …"
+    );
 
 
     await connectRealtime();
@@ -2259,15 +2771,27 @@ async function startJarvis() {
     );
 
 
+    /*
+     * Kürzer als vorher:
+     * JARVIS soll schneller sprechen.
+     */
+
     await sleep(
       INTRO_VOICE_DELAY_MS
     );
 
 
-    if (!active) {
+    if (
+      !active
+    ) {
+
       return;
     }
 
+
+    /*
+     * Musik leise hinter Stimme.
+     */
 
     duckIntro();
 
@@ -2286,10 +2810,14 @@ async function startJarvis() {
     );
 
 
-    if (
-      !speakExactText(
+    const sent =
+      speakExactText(
         getGreeting()
-      )
+      );
+
+
+    if (
+      !sent
     ) {
 
       throw new Error(
@@ -2355,7 +2883,9 @@ async function startJarvis() {
       false;
 
 
-    if (button) {
+    if (
+      button
+    ) {
 
       button.disabled =
         false;
@@ -2370,7 +2900,10 @@ async function startJarvis() {
 
 async function stopJarvis() {
 
-  if (stopping) {
+  if (
+    stopping
+  ) {
+
     return;
   }
 
@@ -2432,7 +2965,9 @@ async function stopJarvis() {
   );
 
 
-  if (button) {
+  if (
+    button
+  ) {
 
     button.disabled =
       false;
@@ -2463,7 +2998,9 @@ setLog(
 );
 
 
-if (remoteAudio) {
+if (
+  remoteAudio
+) {
 
   remoteAudio.autoplay =
     true;
@@ -2472,6 +3009,12 @@ if (remoteAudio) {
   remoteAudio.playsInline =
     true;
 
+
+  /*
+   * Standardmäßig stumm,
+   * weil die Wiedergabe über
+   * Web Audio läuft.
+   */
 
   remoteAudio.muted =
     true;
@@ -2486,7 +3029,9 @@ if (remoteAudio) {
    BUTTON
    ========================================================= */
 
-if (button) {
+if (
+  button
+) {
 
   button.addEventListener(
     "click",
@@ -2502,7 +3047,9 @@ if (button) {
       }
 
 
-      if (active) {
+      if (
+        active
+      ) {
 
         await stopJarvis();
 
