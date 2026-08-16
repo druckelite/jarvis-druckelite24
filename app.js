@@ -169,11 +169,16 @@ let proactiveFirstCheckTimer =
 let reminderCheckTimer =
   null;
 
+
+let screenWakeLock =
+  null;
+
+
 const PROACTIVE_CHECK_INTERVAL_MS =
-  20 * 60 * 1000;
+  5 * 60 * 1000;
 
 const PROACTIVE_FIRST_CHECK_DELAY_MS =
-  2 * 60 * 1000;
+  30 * 1000;
 
 const REMINDER_CHECK_INTERVAL_MS =
   60 * 1000;
@@ -442,6 +447,133 @@ function getBerlinHour() {
   return new Date()
     .getHours();
 }
+
+
+
+/* =========================================================
+   MOBILE SCREEN WAKE LOCK
+   Verhindert automatisches Display-Standby, solange JARVIS läuft.
+   Wenn das iPhone manuell gesperrt wird, darf iOS Browser/WebRTC
+   trotzdem pausieren.
+   ========================================================= */
+
+async function requestScreenWakeLock() {
+
+  try {
+
+    if (
+      !("wakeLock" in navigator) ||
+      document.visibilityState !==
+        "visible"
+    ) {
+      return false;
+    }
+
+
+    if (
+      screenWakeLock
+    ) {
+      return true;
+    }
+
+
+    screenWakeLock =
+      await navigator.wakeLock
+        .request(
+          "screen"
+        );
+
+
+    screenWakeLock.addEventListener(
+      "release",
+      () => {
+
+        screenWakeLock =
+          null;
+      }
+    );
+
+
+    return true;
+
+
+  } catch (
+    error
+  ) {
+
+    console.warn(
+      "Wake Lock nicht verfügbar:",
+      error
+    );
+
+
+    screenWakeLock =
+      null;
+
+
+    return false;
+  }
+}
+
+
+async function releaseScreenWakeLock() {
+
+  if (
+    !screenWakeLock
+  ) {
+    return;
+  }
+
+
+  try {
+
+    await screenWakeLock
+      .release();
+
+  } catch {}
+
+
+  screenWakeLock =
+    null;
+}
+
+
+document.addEventListener(
+  "visibilitychange",
+  () => {
+
+    if (
+      document.visibilityState !==
+      "visible"
+    ) {
+      return;
+    }
+
+
+    if (
+      active
+    ) {
+
+      requestScreenWakeLock();
+
+
+      /*
+        Wenn iOS die Seite im Hintergrund pausiert hat,
+        beim Zurückkehren sofort den Server prüfen.
+      */
+
+      setTimeout(
+        () => {
+
+          runProactiveCheck();
+          runReminderCheck();
+
+        },
+        700
+      );
+    }
+  }
+);
 
 
 /* =========================================================
@@ -2505,6 +2637,138 @@ function normalizeTextForSpeech(
 
 
   /*
+    DATUM
+    17.08.2026 -> siebzehnter August zweitausendsechsundzwanzig
+    am 17.08.2026 -> am siebzehnten August zweitausendsechsundzwanzig
+  */
+
+  const germanMonths = {
+
+    1: "Januar",
+    2: "Februar",
+    3: "März",
+    4: "April",
+    5: "Mai",
+    6: "Juni",
+    7: "Juli",
+    8: "August",
+    9: "September",
+    10: "Oktober",
+    11: "November",
+    12: "Dezember"
+  };
+
+
+  const germanOrdinalNominative = {
+
+    1:"erster",2:"zweiter",3:"dritter",4:"vierter",5:"fünfter",
+    6:"sechster",7:"siebter",8:"achter",9:"neunter",10:"zehnter",
+    11:"elfter",12:"zwölfter",13:"dreizehnter",14:"vierzehnter",
+    15:"fünfzehnter",16:"sechzehnter",17:"siebzehnter",
+    18:"achtzehnter",19:"neunzehnter",20:"zwanzigster",
+    21:"einundzwanzigster",22:"zweiundzwanzigster",
+    23:"dreiundzwanzigster",24:"vierundzwanzigster",
+    25:"fünfundzwanzigster",26:"sechsundzwanzigster",
+    27:"siebenundzwanzigster",28:"achtundzwanzigster",
+    29:"neunundzwanzigster",30:"dreißigster",
+    31:"einunddreißigster"
+  };
+
+
+  const germanOrdinalDative = {
+
+    1:"ersten",2:"zweiten",3:"dritten",4:"vierten",5:"fünften",
+    6:"sechsten",7:"siebten",8:"achten",9:"neunten",10:"zehnten",
+    11:"elften",12:"zwölften",13:"dreizehnten",14:"vierzehnten",
+    15:"fünfzehnten",16:"sechzehnten",17:"siebzehnten",
+    18:"achtzehnten",19:"neunzehnten",20:"zwanzigsten",
+    21:"einundzwanzigsten",22:"zweiundzwanzigsten",
+    23:"dreiundzwanzigsten",24:"vierundzwanzigsten",
+    25:"fünfundzwanzigsten",26:"sechsundzwanzigsten",
+    27:"siebenundzwanzigsten",28:"achtundzwanzigsten",
+    29:"neunundzwanzigsten",30:"dreißigsten",
+    31:"einunddreißigsten"
+  };
+
+
+  value =
+    value.replace(
+      /\bam\s+(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/gi,
+      (
+        match,
+        day,
+        month,
+        year
+      ) => {
+
+        const d =
+          Number(day);
+
+        const m =
+          Number(month);
+
+
+        return `am ${germanOrdinalDative[d] || germanIntegerToWords(d)} ${germanMonths[m] || germanIntegerToWords(m)} ${germanIntegerToWords(year)}`;
+      }
+    );
+
+
+  value =
+    value.replace(
+      /\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/g,
+      (
+        match,
+        day,
+        month,
+        year
+      ) => {
+
+        const d =
+          Number(day);
+
+        const m =
+          Number(month);
+
+
+        return `${germanOrdinalNominative[d] || germanIntegerToWords(d)} ${germanMonths[m] || germanIntegerToWords(m)} ${germanIntegerToWords(year)}`;
+      }
+    );
+
+
+  /*
+    UHRZEIT
+    Muss vor Sportergebnissen laufen, sonst wird 23:10 als 23 zu 10 gelesen.
+  */
+
+  value =
+    value.replace(
+      /\b(\d{1,2}):(\d{2})\s*Uhr\b/gi,
+      (
+        match,
+        hour,
+        minute
+      ) => {
+
+        return `${germanIntegerToWords(hour)} Uhr${Number(minute) === 0 ? "" : ` ${germanIntegerToWords(minute)}`}`;
+      }
+    );
+
+
+  value =
+    value.replace(
+      /\bum\s+(\d{1,2}):(\d{2})\b/gi,
+      (
+        match,
+        hour,
+        minute
+      ) => {
+
+        return `um ${germanIntegerToWords(hour)} Uhr${Number(minute) === 0 ? "" : ` ${germanIntegerToWords(minute)}`}`;
+      }
+    );
+
+
+  /*
     SPORTERGEBNISSE
     0:0 -> null zu null
     2:1 -> zwei zu eins
@@ -4455,6 +4719,9 @@ async function startJarvis() {
       true;
 
 
+    await requestScreenWakeLock();
+
+
     setStatus(
       "Online"
     );
@@ -4559,6 +4826,9 @@ async function stopJarvis(
 
   active =
     false;
+
+
+  await releaseScreenWakeLock();
 
 
   greetingInProgress =
