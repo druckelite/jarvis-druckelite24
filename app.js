@@ -1896,10 +1896,10 @@ async function connectElevenLabs() {
                 generation_config: {
 
                   chunk_length_schedule: [
-                    40,
-                    60,
-                    90,
-                    120
+                  50,
+  70,
+  100,
+  140
                   ]
                 }
               })
