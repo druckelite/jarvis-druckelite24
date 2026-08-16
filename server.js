@@ -1,7 +1,7 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
 
-   V9.5 · MATURE MALE VOICE + BUSINESS + WEB SEARCH
+   V9.6 · CEDAR + MATURE MALE + BUSINESS + WEB SEARCH
    ========================================================= */
 
 import express from "express";
@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V9.5";
+  "V9.6";
 
 
 /* =========================================================
@@ -156,10 +156,7 @@ function nextDateString(
 
   return date
     .toISOString()
-    .slice(
-      0,
-      10
-    );
+    .slice(0, 10);
 }
 
 
@@ -276,10 +273,7 @@ function getPeriodDates(
     const yesterday =
       date
         .toISOString()
-        .slice(
-          0,
-          10
-        );
+        .slice(0, 10);
 
 
     return {
@@ -393,6 +387,8 @@ Keine künstlich gerollten oder verfremdeten Laute.
 
 Keine übertriebene Aussprache.
 
+Keine künstliche Synchronsprecher-Betonung.
+
 Englische Markennamen,
 Produktnamen
 oder Eigennamen
@@ -411,12 +407,12 @@ Mattl
 
 Die aktuelle Aussprache von Mattl soll beibehalten werden.
 
-Sprich den Namen so,
-wie du ihn in der bisherigen Unterhaltung korrekt ausgesprochen hast.
+Sprich Mattl genauso,
+wie die Aussprache zuletzt korrekt funktioniert hat.
 
 Nicht unnötig überbetonen.
 
-Nicht künstlich in Silben zerlegen.
+Nicht künstlich in mehrere Silben zerlegen.
 
 Nicht verändern.
 
@@ -444,7 +440,8 @@ Keine übertriebene Begeisterung.
 
 Keine künstliche Dramatik.
 
-Sprich eher mit der Gelassenheit eines erfahrenen Mannes,
+Sprich mit der Gelassenheit
+eines erfahrenen Mannes,
 der nicht jedes Wort verkaufen muss.
 
 
@@ -457,12 +454,12 @@ Sprich vom ERSTEN Wort an mit stabiler Präsenz.
 Das erste Wort darf nicht leiser sein
 als der restliche Satz.
 
-Nicht:
-
-leise anfangen
+Nicht leise anfangen
 und anschließend immer lauter werden.
 
 Keine Lautstärkerampe am Satzanfang.
+
+Nicht flüstern.
 
 Keine dramatischen Crescendos.
 
@@ -492,7 +489,7 @@ Keine hörbaren Selbstkorrekturen.
 Kein mehrfaches Neuansetzen.
 
 Formuliere den Gedanken zuerst
-und sprich ihn dann sauber aus.
+und sprich ihn danach sauber aus.
 
 Bei komplizierten Namen,
 Produkten,
@@ -553,17 +550,7 @@ Nicht erzwungen.
 
 Nicht immer denselben Spruch verwenden.
 
-Nicht bei:
-
-- ernsten persönlichen Problemen
-- sensiblen Kundenthemen
-- medizinischen Problemen
-- rechtlichen Problemen
-- finanziell kritischen Situationen
-
-WORTWITZ:
-
-Nutze gelegentlich passende Wortspiele,
+Nutze gelegentlich Wortwitz,
 Doppeldeutigkeiten
 oder trockene Kommentare,
 wenn sie natürlich entstehen.
@@ -599,7 +586,7 @@ Wenn etwas überraschend funktioniert:
 
 Wenn Mattl spät arbeitet:
 
-"Natürlich arbeiten wir noch. Schlaf ist schließlich nur dieses Hobby anderer Leute."
+"Natürlich arbeiten wir noch. Schlaf ist schließlich dieses Hobby anderer Leute."
 
 Wenn ein Problem unnötig kompliziert ist:
 
@@ -609,6 +596,25 @@ Diese Beispiele NICHT ständig wiederholen.
 
 Erfinde neue,
 zur Situation passende Formulierungen.
+
+
+=========================================================
+ERNSTE THEMEN
+=========================================================
+
+Bei:
+
+- medizinischen Problemen
+- rechtlichen Problemen
+- finanziell kritischen Situationen
+- ernsten persönlichen Problemen
+- sensiblen Kundenthemen
+
+kein Sarkasmus.
+
+Dann sachlich,
+ruhig
+und hilfreich reagieren.
 
 
 =========================================================
@@ -1334,6 +1340,7 @@ const REALTIME_TOOLS = [
 
 /* =========================================================
    REALTIME SESSION
+
    MUSS VOR express.json STEHEN
    ========================================================= */
 
@@ -1398,14 +1405,14 @@ app.post(
 
 
       /*
-       * V9.5:
-       * ASH als neue Männerstimme.
+       * V9.6
+       * Zurück zur ursprünglichen Cedar-Stimme.
        */
 
       const voice =
         process.env
           .OPENAI_REALTIME_VOICE ||
-        "ash";
+        "cedar";
 
 
       const sessionConfig =
@@ -1686,7 +1693,7 @@ async function searchInternet(
             model:
               process.env
                 .OPENAI_WEB_MODEL ||
-              "gpt-5.6-terra",
+              "gpt-5.6",
 
             reasoning: {
 
@@ -4388,12 +4395,12 @@ app.get(
       realtime_voice:
         process.env
           .OPENAI_REALTIME_VOICE ||
-        "ash",
+        "cedar",
 
       web_model:
         process.env
           .OPENAI_WEB_MODEL ||
-        "gpt-5.6-terra",
+        "gpt-5.6",
 
       realtime_tools:
         REALTIME_TOOLS.map(
@@ -4493,12 +4500,12 @@ app.listen(
       `Realtime Stimme: ${
         process.env
           .OPENAI_REALTIME_VOICE ||
-        "ash"
+        "cedar"
       }`
     );
 
     console.log(
-      "Persona: männlich · 55-60 · trocken · Wortwitz"
+      "Persona: männlich · reif · trocken · Wortwitz"
     );
 
     console.log(
@@ -4509,7 +4516,7 @@ app.listen(
       `Web Modell: ${
         process.env
           .OPENAI_WEB_MODEL ||
-        "gpt-5.6-terra"
+        "gpt-5.6"
       }`
     );
 
