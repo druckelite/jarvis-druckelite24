@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V10.1-ELEVENLABS-GMAIL-CONTEXT";
+  "V10.1-ELEVENLABS-GMAIL-AUTO-BEARBEITET";
 
 
 /* =========================================================
@@ -465,6 +465,12 @@ Dann → send_email_draft.
 Ohne diesen ausdrücklichen Sende-Befehl darf send_email_draft NIEMALS verwendet werden.
 Nach einem Entwurf fragst du kurz, ob er ihn senden möchte.
 
+E-MAIL BEARBEITET:
+Wenn Mattl sagt „verschiebe die Mail nach Bearbeitet“, „markiere sie als bearbeitet“, „die ist erledigt“ oder sinngleich:
+→ move_email_to_bearbeitet
+Nutze die aktuell ausgewählte Mail. Niemals eine andere Mail raten.
+Eindeutige Werbe-/Newsletter-Mails werden im Hintergrund nur bei sehr hoher Sicherheit automatisch nach „Bearbeitet“ verschoben. Kunden-, Bestell-, Rechnungs-, Zahlungs-, Versand-, Reklamations-, Angebots-, Sicherheits- und sonstige Geschäftsmails dürfen niemals automatisch verschoben werden.
+
 Der E-Mail-Entwurf wird im HUD angezeigt.
 
 NOTIZEN:
@@ -751,6 +757,33 @@ const REALTIME_TOOLS = [
       required: [
         "confirmation_text"
       ],
+
+      additionalProperties:
+        false
+    }
+  },
+
+
+  {
+    type:
+      "function",
+
+    name:
+      "move_email_to_bearbeitet",
+
+    description:
+      "Verschiebt die aktuell ausgewählte Gmail-Nachricht aus dem Posteingang in das Gmail-Label Bearbeitet. Nur auf ausdrücklichen Wunsch von Mattl.",
+
+    parameters: {
+      type:
+        "object",
+
+      properties: {
+        message_id: {
+          type:
+            "string"
+        }
+      },
 
       additionalProperties:
         false
@@ -2997,6 +3030,539 @@ function looksLikeOffer(
 }
 
 
+
+let bearbeitetLabelCache = {
+  id: null,
+  at: 0
+};
+
+const advertisingCheckedEmailIds =
+  new Set();
+
+
+async function getBearbeitetLabelId() {
+
+  const now =
+    Date.now();
+
+
+  if (
+    bearbeitetLabelCache.id &&
+    now - bearbeitetLabelCache.at < 10 * 60 * 1000
+  ) {
+    return bearbeitetLabelCache.id;
+  }
+
+
+  const token =
+    await getGmailAccessToken();
+
+
+  const listResponse =
+    await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/labels",
+      {
+        headers: {
+          Authorization:
+            `Bearer ${token}`
+        },
+        signal:
+          timeoutSignal(10000)
+      }
+    );
+
+
+  const listData =
+    await listResponse.json();
+
+
+  if (!listResponse.ok) {
+    throw new Error(
+      listData?.error?.message ||
+      "Gmail-Labels konnten nicht geladen werden."
+    );
+  }
+
+
+  let label =
+    (listData.labels || []).find(
+      item =>
+        String(item?.name || "")
+          .trim()
+          .toLowerCase() ===
+        "bearbeitet"
+    );
+
+
+  if (!label) {
+
+    const createResponse =
+      await fetch(
+        "https://gmail.googleapis.com/gmail/v1/users/me/labels",
+        {
+          method:
+            "POST",
+          headers: {
+            Authorization:
+              `Bearer ${token}`,
+            "Content-Type":
+              "application/json"
+          },
+          body:
+            JSON.stringify({
+              name:
+                "Bearbeitet",
+              labelListVisibility:
+                "labelShow",
+              messageListVisibility:
+                "show"
+            }),
+          signal:
+            timeoutSignal(10000)
+        }
+      );
+
+
+    const createData =
+      await createResponse.json();
+
+
+    if (!createResponse.ok) {
+      throw new Error(
+        createData?.error?.message ||
+        "Gmail-Label Bearbeitet konnte nicht erstellt werden."
+      );
+    }
+
+
+    label =
+      createData;
+  }
+
+
+  bearbeitetLabelCache = {
+    id:
+      label.id,
+    at:
+      now
+  };
+
+
+  return label.id;
+}
+
+
+async function moveGmailMessageToBearbeitet(messageId) {
+
+  const id =
+    String(messageId || "")
+      .trim();
+
+
+  if (!id) {
+    throw new Error(
+      "Keine E-Mail zum Verschieben ausgewählt."
+    );
+  }
+
+
+  const token =
+    await getGmailAccessToken();
+
+
+  const labelId =
+    await getBearbeitetLabelId();
+
+
+  const response =
+    await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}/modify`,
+      {
+        method:
+          "POST",
+        headers: {
+          Authorization:
+            `Bearer ${token}`,
+          "Content-Type":
+            "application/json"
+        },
+        body:
+          JSON.stringify({
+            addLabelIds: [
+              labelId
+            ],
+            removeLabelIds: [
+              "INBOX"
+            ]
+          }),
+        signal:
+          timeoutSignal(12000)
+      }
+    );
+
+
+  const data =
+    await response.json();
+
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error?.message ||
+      "E-Mail konnte nicht nach Bearbeitet verschoben werden."
+    );
+  }
+
+
+  return {
+    moved:
+      true,
+    message_id:
+      id,
+    label:
+      "Bearbeitet"
+  };
+}
+
+
+function getAdvertisingHeader(headers, name) {
+
+  return (
+    headers || []
+  ).find(
+    header =>
+      String(header?.name || "")
+        .toLowerCase() ===
+      String(name || "")
+        .toLowerCase()
+  )?.value || "";
+}
+
+
+function classifyObviousAdvertising(email) {
+
+  const subject =
+    normalize(email.subject || "");
+
+  const from =
+    normalize(email.from || "");
+
+  const snippet =
+    normalize(email.snippet || "");
+
+  const combined =
+    `${subject} ${from} ${snippet}`;
+
+
+  const protectedSignals = [
+    "bestellung",
+    "bestellbestatigung",
+    "auftragsbestatigung",
+    "auftrag",
+    "rechnung",
+    "invoice",
+    "zahlung",
+    "payment",
+    "versand",
+    "sendungsverfolgung",
+    "tracking",
+    "lieferung",
+    "retoure",
+    "reklamation",
+    "kundenanfrage",
+    "anfrage",
+    "preisanfrage",
+    "kostenvoranschlag",
+    "angebot anfordern",
+    "passwort",
+    "password",
+    "sicherheitswarnung",
+    "security alert",
+    "verifizierung",
+    "verification",
+    "login",
+    "konto",
+    "account",
+    "shopify",
+    "paypal",
+    "klarna",
+    "billie",
+    "dhl"
+  ];
+
+
+  if (
+    protectedSignals.some(
+      signal =>
+        combined.includes(signal)
+    )
+  ) {
+    return {
+      advertising:
+        false,
+      score:
+        0,
+      reason:
+        "geschuetztes Geschaefts-Signal"
+    };
+  }
+
+
+  let score =
+    0;
+
+  const reasons =
+    [];
+
+
+  if (email.listUnsubscribe) {
+    score += 3;
+    reasons.push(
+      "List-Unsubscribe"
+    );
+  }
+
+
+  if (email.listId) {
+    score += 2;
+    reasons.push(
+      "List-ID"
+    );
+  }
+
+
+  if (
+    /\b(bulk|list)\b/i.test(
+      email.precedence || ""
+    )
+  ) {
+    score += 2;
+    reasons.push(
+      "Bulk/List"
+    );
+  }
+
+
+  const strongMarketingSignals = [
+    "newsletter",
+    "unsubscribe",
+    "abbestellen",
+    "sale",
+    "rabatt",
+    "gutschein",
+    "jetzt sparen",
+    "nur heute",
+    "black friday",
+    "summer sale",
+    "special offer",
+    "exklusiver deal",
+    "deal der woche",
+    "prozent sparen",
+    "% sparen",
+    "% rabatt"
+  ];
+
+
+  const marketingHits =
+    strongMarketingSignals.filter(
+      signal =>
+        combined.includes(signal)
+    );
+
+
+  if (marketingHits.length) {
+    score += Math.min(
+      3,
+      marketingHits.length * 2
+    );
+    reasons.push(
+      ...marketingHits.slice(0, 2)
+    );
+  }
+
+
+  const advertising =
+    score >= 5;
+
+
+  return {
+    advertising,
+    score,
+    reason:
+      reasons.join(", ") ||
+      "keine eindeutigen Werbe-Signale"
+  };
+}
+
+
+async function autoMoveObviousAdvertising() {
+
+  const token =
+    await getGmailAccessToken();
+
+
+  const listResponse =
+    await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in%3Ainbox%20is%3Aunread&maxResults=10",
+      {
+        headers: {
+          Authorization:
+            `Bearer ${token}`
+        },
+        signal:
+          timeoutSignal(10000)
+      }
+    );
+
+
+  const listData =
+    await listResponse.json();
+
+
+  if (!listResponse.ok) {
+    throw new Error(
+      "Werbe-Mail-Prüfung konnte den Posteingang nicht lesen."
+    );
+  }
+
+
+  const moved =
+    [];
+
+
+  for (
+    const ref of
+    listData.messages || []
+  ) {
+
+    if (
+      advertisingCheckedEmailIds.has(
+        ref.id
+      )
+    ) {
+      continue;
+    }
+
+
+    advertisingCheckedEmailIds.add(
+      ref.id
+    );
+
+
+    try {
+
+      const response =
+        await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${ref.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=List-Unsubscribe&metadataHeaders=List-Id&metadataHeaders=Precedence`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`
+            },
+            signal:
+              timeoutSignal(10000)
+          }
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if (!response.ok) {
+        continue;
+      }
+
+
+      const headers =
+        data.payload?.headers || [];
+
+
+      const email = {
+        id:
+          ref.id,
+        subject:
+          getAdvertisingHeader(
+            headers,
+            "Subject"
+          ) || "(kein Betreff)",
+        from:
+          getAdvertisingHeader(
+            headers,
+            "From"
+          ) || "unbekannt",
+        snippet:
+          data.snippet || "",
+        listUnsubscribe:
+          getAdvertisingHeader(
+            headers,
+            "List-Unsubscribe"
+          ),
+        listId:
+          getAdvertisingHeader(
+            headers,
+            "List-Id"
+          ),
+        precedence:
+          getAdvertisingHeader(
+            headers,
+            "Precedence"
+          )
+      };
+
+
+      const classification =
+        classifyObviousAdvertising(
+          email
+        );
+
+
+      if (
+        !classification.advertising
+      ) {
+        continue;
+      }
+
+
+      await moveGmailMessageToBearbeitet(
+        email.id
+      );
+
+
+      moved.push({
+        id:
+          email.id,
+        from:
+          email.from,
+        subject:
+          email.subject,
+        score:
+          classification.score,
+        reason:
+          classification.reason
+      });
+
+
+      console.log(
+        "[GMAIL AUTO-WERBUNG] → Bearbeitet:",
+        email.subject,
+        classification.reason
+      );
+
+    } catch (error) {
+
+      console.warn(
+        "[GMAIL AUTO-WERBUNG ERROR]",
+        ref.id,
+        error
+      );
+    }
+  }
+
+
+  return moved;
+}
+
+
 async function getUnreadEmails() {
 
   const token =
@@ -4575,6 +5141,37 @@ app.post(
         }
 
 
+        case "move_email_to_bearbeitet": {
+
+          if (!args.message_id) {
+            throw new Error(
+              "Keine aktuelle Mail ausgewählt."
+            );
+          }
+
+
+          const moved =
+            await moveGmailMessageToBearbeitet(
+              args.message_id
+            );
+
+
+          return res.json({
+            ok:
+              true,
+            moved,
+            result: {
+              moved:
+                true,
+              label:
+                "Bearbeitet",
+              instruction:
+                "Die ausgewählte Mail wurde nach Bearbeitet verschoben. Bestätige das Mattl kurz."
+            }
+          });
+        }
+
+
         case "get_weather":
 
           data =
@@ -4919,6 +5516,10 @@ app.post(
 
         try {
 
+          const autoMovedAdvertising =
+            await autoMoveObviousAdvertising();
+
+
           const emails =
             await getUnreadEmails();
 
@@ -4971,7 +5572,34 @@ app.post(
                   offerCount
                     ? ` ${offerCount} davon sieht nach einer Angebots- oder Preisanfrage aus.`
                     : ""
+                }${
+                  autoMovedAdvertising.length
+                    ? ` Zusätzlich habe ich ${autoMovedAdvertising.length} eindeutige ${
+                        autoMovedAdvertising.length === 1
+                          ? "Werbemail"
+                          : "Werbemails"
+                      } nach Bearbeitet verschoben.`
+                    : ""
                 }`
+            });
+          }
+
+
+          if (
+            autoMovedAdvertising.length
+          ) {
+
+            return res.json({
+              ok:
+                true,
+              hasNotice:
+                true,
+              text:
+                `Mattl, ich habe ${autoMovedAdvertising.length} eindeutige ${
+                  autoMovedAdvertising.length === 1
+                    ? "Werbemail"
+                    : "Werbemails"
+                } automatisch nach Bearbeitet verschoben.`
             });
           }
 
