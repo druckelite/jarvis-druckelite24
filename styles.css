@@ -3100,3 +3100,139 @@ audio { display: none; }
 .shopify-icon.brand-logo-icon img{
   filter:none;
 }
+
+/* =========================================================
+   GMAIL DASHBOARD · KOMPAKTE LETZTE 5
+   Nur Darstellung – restliches Dashboard bleibt unverändert.
+   Die app.js erzeugt .email-row/.email-sender/.email-copy usw.
+   ========================================================= */
+
+.mail-panel-clean #inboxList,
+#inboxList.email-list,
+#inboxList {
+  display: grid;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#inboxList .email-row {
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: 29px minmax(82px, 115px) minmax(0, 1fr) 48px;
+  gap: .48rem;
+  align-items: center;
+  padding: .28rem 0;
+  border-bottom: 1px solid rgba(255,255,255,.055);
+  font-family: var(--font-body);
+  overflow: hidden;
+}
+
+#inboxList .email-row:last-child {
+  border-bottom: none;
+}
+
+#inboxList .avatar {
+  width: 27px;
+  height: 27px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg,#25252c,#15151a);
+  border: 1px solid rgba(231,7,121,.22);
+  color: #f4f4f6;
+  font: 600 .58rem var(--font-display);
+  letter-spacing: .03em;
+  overflow: hidden;
+}
+
+#inboxList .email-sender {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font: 600 .64rem var(--font-body);
+}
+
+#inboxList .email-copy {
+  min-width: 0;
+  overflow: hidden;
+}
+
+#inboxList .email-subject {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font: 600 .65rem var(--font-body);
+  line-height: 1.18;
+}
+
+#inboxList .email-snippet {
+  display: block;
+  min-width: 0;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font: 400 .56rem var(--font-body);
+  line-height: 1.15;
+}
+
+#inboxList .email-time {
+  min-width: 0;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font: .50rem var(--font-mono);
+  letter-spacing: .02em;
+}
+
+/* Ungelesen-Markierung aus app.js bleibt dezent magenta */
+#inboxList .email-subject {
+  text-shadow: none;
+}
+
+/* Kompakt genug, damit fünf Mails sauber in den bestehenden Kasten passen */
+.mail-panel-clean {
+  min-height: 0;
+}
+
+.mail-panel-clean #inboxList {
+  flex: 1;
+}
+
+/* Kleine Desktop-Breiten */
+@media (max-width: 1400px) and (min-width: 761px) {
+  #inboxList .email-row {
+    grid-template-columns: 27px minmax(70px, 96px) minmax(0,1fr) 42px;
+    gap: .4rem;
+  }
+}
+
+/* Mobile: Absender separat ausblenden, Betreff/Vorschau behalten */
+@media (max-width: 760px) {
+  #inboxList .email-row {
+    min-height: 48px;
+    grid-template-columns: 28px minmax(0,1fr) 44px;
+    gap: .45rem;
+  }
+
+  #inboxList .email-sender {
+    display: none;
+  }
+
+  #inboxList .email-subject {
+    font-size: .67rem;
+  }
+
+  #inboxList .email-snippet {
+    font-size: .57rem;
+  }
+}
+
+
