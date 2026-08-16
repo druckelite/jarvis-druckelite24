@@ -185,10 +185,10 @@ let currentGmailDraftId =
 
 
 const PROACTIVE_CHECK_INTERVAL_MS =
-  5 * 60 * 1000;
+  5 * 1000;
 
 const PROACTIVE_FIRST_CHECK_DELAY_MS =
-  30 * 1000;
+  5 * 1000;
 
 const REMINDER_CHECK_INTERVAL_MS =
   60 * 1000;
@@ -5005,7 +5005,7 @@ function startInboxDashboardRefresh() {
       () => {
         loadInboxDashboard();
       },
-      60 * 1000
+      5 * 1000
     );
 }
 
@@ -5756,7 +5756,7 @@ console.log(
 
 
 console.log(
-  "JARVIS APP V10.4 · GMAIL CONTEXT"
+  "JARVIS APP V10.4 · GMAIL + PROAKTIV 5S"
 );
 
 
