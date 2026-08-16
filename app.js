@@ -3244,7 +3244,9 @@ async function executeRealtimeTool(
       toolName ===
         "get_email_message" ||
       toolName ===
-        "create_email_reply_draft"
+        "create_email_reply_draft" ||
+      toolName ===
+        "move_email_to_bearbeitet"
     ) &&
     !args.message_id &&
     currentSelectedEmailId
@@ -3374,6 +3376,28 @@ async function executeRealtimeTool(
     ) {
       currentGmailDraftId =
         null;
+
+      loadInboxDashboard();
+    }
+
+
+    if (
+      toolResult?.moved?.moved ===
+        true ||
+      toolResult?.result?.moved ===
+        true
+    ) {
+      currentSelectedEmailId =
+        null;
+
+      currentSelectedEmail =
+        null;
+
+      document.getElementById(
+        "gmailMailModal"
+      )?.classList.remove(
+        "open"
+      );
 
       loadInboxDashboard();
     }
@@ -5756,7 +5780,7 @@ console.log(
 
 
 console.log(
-  "JARVIS APP V10.4 · GMAIL + PROAKTIV 5S"
+  "JARVIS APP V10.4 · GMAIL AUTO-BEARBEITET"
 );
 
 
