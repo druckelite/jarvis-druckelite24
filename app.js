@@ -174,6 +174,16 @@ let screenWakeLock =
   null;
 
 
+let currentSelectedEmailId =
+  null;
+
+let currentSelectedEmail =
+  null;
+
+let currentGmailDraftId =
+  null;
+
+
 const PROACTIVE_CHECK_INTERVAL_MS =
   5 * 60 * 1000;
 
@@ -3229,6 +3239,32 @@ async function executeRealtimeTool(
   }
 
 
+  if (
+    (
+      toolName ===
+        "get_email_message" ||
+      toolName ===
+        "create_email_reply_draft"
+    ) &&
+    !args.message_id &&
+    currentSelectedEmailId
+  ) {
+    args.message_id =
+      currentSelectedEmailId;
+  }
+
+
+  if (
+    toolName ===
+      "send_email_draft" &&
+    !args.draft_id &&
+    currentGmailDraftId
+  ) {
+    args.draft_id =
+      currentGmailDraftId;
+  }
+
+
   console.log(
     "[TOOL]",
     toolName,
@@ -3310,6 +3346,36 @@ async function executeRealtimeTool(
       showDraft(
         toolResult.draft
       );
+    }
+
+
+    if (
+      toolResult?.email
+    ) {
+      showGmailMail(
+        toolResult.email
+      );
+    }
+
+
+    if (
+      toolResult?.gmail_draft_id ||
+      toolResult?.draft?.gmail_draft_id
+    ) {
+      currentGmailDraftId =
+        toolResult.gmail_draft_id ||
+        toolResult.draft.gmail_draft_id;
+    }
+
+
+    if (
+      toolResult?.sent?.sent ===
+        true
+    ) {
+      currentGmailDraftId =
+        null;
+
+      loadInboxDashboard();
     }
 
   } catch (error) {
@@ -4280,6 +4346,287 @@ function speakProactiveMessage(
 
 
 /* =========================================================
+   GMAIL · MAIL-VOLLANSICHT / AKTUELLER KONTEXT
+   ========================================================= */
+
+function ensureGmailMailModal() {
+
+  let modal =
+    document.getElementById(
+      "gmailMailModal"
+    );
+
+
+  if (modal) {
+    return modal;
+  }
+
+
+  modal =
+    document.createElement(
+      "div"
+    );
+
+
+  modal.id =
+    "gmailMailModal";
+
+
+  modal.className =
+    "gmail-mail-modal";
+
+
+  modal.innerHTML = `
+    <div class="gmail-mail-card" role="dialog" aria-modal="true" aria-label="E-Mail">
+      <div class="gmail-mail-top">
+        <div>
+          <span class="gmail-mail-kicker">GMAIL · AKTUELLE MAIL</span>
+          <strong id="gmailMailSubject">E-Mail</strong>
+        </div>
+        <button type="button" id="gmailMailClose" class="gmail-mail-close">×</button>
+      </div>
+      <div class="gmail-mail-meta">
+        <div><span>VON</span><b id="gmailMailFrom">—</b></div>
+        <div><span>DATUM</span><b id="gmailMailDate">—</b></div>
+      </div>
+      <div id="gmailMailBody" class="gmail-mail-body"></div>
+      <div class="gmail-mail-actions">
+        <button type="button" id="gmailMailReadBtn">VORLESEN</button>
+        <button type="button" id="gmailMailCloseBtn">SCHLIESSEN</button>
+      </div>
+      <div class="gmail-mail-hint">Sag z. B. „Antworte darauf, dass …“ · Gesendet wird erst nach deinem ausdrücklichen „Senden“.</div>
+    </div>`;
+
+
+  document.body.appendChild(
+    modal
+  );
+
+
+  const close =
+    () => {
+      modal.classList.remove(
+        "open"
+      );
+    };
+
+
+  modal.querySelector(
+    "#gmailMailClose"
+  )?.addEventListener(
+    "click",
+    close
+  );
+
+
+  modal.querySelector(
+    "#gmailMailCloseBtn"
+  )?.addEventListener(
+    "click",
+    close
+  );
+
+
+  modal.addEventListener(
+    "click",
+    event => {
+      if (
+        event.target === modal
+      ) {
+        close();
+      }
+    }
+  );
+
+
+  modal.querySelector(
+    "#gmailMailReadBtn"
+  )?.addEventListener(
+    "click",
+    () => {
+
+      if (
+        !currentSelectedEmail?.body
+      ) {
+        return;
+      }
+
+
+      if (
+        active &&
+        elevenReady
+      ) {
+        speakTextWithElevenLabs(
+          `E-Mail von ${getSenderDisplayName(currentSelectedEmail.from)}. Betreff: ${currentSelectedEmail.subject}. ${currentSelectedEmail.body}`
+        );
+      }
+    }
+  );
+
+
+  return modal;
+}
+
+
+function showGmailMail(email) {
+
+  if (!email?.id) {
+    return;
+  }
+
+
+  currentSelectedEmailId =
+    email.id;
+
+
+  currentSelectedEmail =
+    email;
+
+
+  const modal =
+    ensureGmailMailModal();
+
+
+  const subject =
+    modal.querySelector(
+      "#gmailMailSubject"
+    );
+
+
+  const from =
+    modal.querySelector(
+      "#gmailMailFrom"
+    );
+
+
+  const date =
+    modal.querySelector(
+      "#gmailMailDate"
+    );
+
+
+  const body =
+    modal.querySelector(
+      "#gmailMailBody"
+    );
+
+
+  if (subject) {
+    subject.textContent =
+      email.subject ||
+      "(kein Betreff)";
+  }
+
+
+  if (from) {
+    from.textContent =
+      email.from ||
+      "unbekannt";
+  }
+
+
+  if (date) {
+    const parsed =
+      email.date
+        ? new Date(email.date)
+        : null;
+
+
+    date.textContent =
+      parsed &&
+      !Number.isNaN(parsed.getTime())
+        ? new Intl.DateTimeFormat(
+            "de-DE",
+            {
+              timeZone:
+                "Europe/Berlin",
+              dateStyle:
+                "medium",
+              timeStyle:
+                "short"
+            }
+          ).format(parsed)
+        : "—";
+  }
+
+
+  if (body) {
+    body.textContent =
+      email.body ||
+      email.snippet ||
+      "Kein Textinhalt verfügbar.";
+  }
+
+
+  modal.classList.add(
+    "open"
+  );
+}
+
+
+async function openGmailMessage(messageId) {
+
+  const id =
+    String(messageId || "")
+      .trim();
+
+
+  if (!id) {
+    return;
+  }
+
+
+  try {
+
+    const response =
+      await fetch(
+        `/api/gmail-message/${encodeURIComponent(id)}`,
+        {
+          method:
+            "GET",
+          cache:
+            "no-store"
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    if (
+      !response.ok ||
+      !data?.ok ||
+      !data?.email
+    ) {
+      throw new Error(
+        data?.error ||
+        "E-Mail konnte nicht geöffnet werden."
+      );
+    }
+
+
+    showGmailMail(
+      data.email
+    );
+
+  } catch (error) {
+
+    console.warn(
+      "Gmail Mail öffnen Fehler:",
+      error
+    );
+
+
+    setLog(
+      error.message ||
+      "E-Mail konnte nicht geöffnet werden."
+    );
+  }
+}
+
+
+/* =========================================================
    GMAIL DASHBOARD · LETZTE 5 POSTEINGANG
    Läuft unabhängig davon, ob JARVIS gerade zuhört.
    ========================================================= */
@@ -4528,6 +4875,48 @@ function renderInboxEmails(emails) {
           </div>`;
       }
     ).join("");
+
+
+  list.querySelectorAll(
+    ".email-row[data-mail-id]"
+  ).forEach(
+    row => {
+      row.setAttribute(
+        "role",
+        "button"
+      );
+      row.setAttribute(
+        "tabindex",
+        "0"
+      );
+      row.title =
+        "Mail öffnen";
+
+      const open =
+        () =>
+          openGmailMessage(
+            row.dataset.mailId
+          );
+
+      row.addEventListener(
+        "click",
+        open
+      );
+
+      row.addEventListener(
+        "keydown",
+        event => {
+          if (
+            event.key === "Enter" ||
+            event.key === " "
+          ) {
+            event.preventDefault();
+            open();
+          }
+        }
+      );
+    }
+  );
 }
 
 
@@ -5367,7 +5756,7 @@ console.log(
 
 
 console.log(
-  "JARVIS APP V10.4 · GMAIL DASHBOARD"
+  "JARVIS APP V10.4 · GMAIL CONTEXT"
 );
 
 
