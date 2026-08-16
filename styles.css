@@ -2518,3 +2518,392 @@ audio { display: none; }
     gap: .45rem;
   }
 }
+
+
+/* =========================================================
+   V5.3.2 — DESKTOP 100% VIEWPORT FIT
+   Kein Scrollen bei normalem Desktop-Browserzoom.
+   ========================================================= */
+@media (min-width: 1181px){
+
+  html,
+  body{
+    width:100%;
+    height:100%;
+    min-height:0;
+    overflow:hidden !important;
+  }
+
+  .hud{
+    width:100%;
+    max-width:none;
+    height:100vh;
+    min-height:0;
+    margin:0;
+    padding:6px 12px 7px;
+    gap:5px;
+    overflow:hidden;
+  }
+
+  .topbar{
+    flex:0 0 55px;
+    height:55px;
+    min-height:55px;
+    padding-bottom:5px;
+  }
+
+  .brand-logo{
+    height:27px;
+  }
+
+  .top-title{
+    font-size:.82rem;
+  }
+
+  .top-sub{
+    font-size:.48rem;
+  }
+
+  .top-clock{
+    font-size:1rem;
+  }
+
+  .top-date{
+    font-size:.57rem;
+  }
+
+  .status-pill{
+    font-size:.61rem;
+    padding:.38em .8em .38em 1.65em;
+  }
+
+  .ticker{
+    flex:0 0 20px;
+    height:20px;
+    min-height:20px;
+    padding:.28em 0;
+    font-size:.51rem;
+  }
+
+  .cockpit.cockpit-clean{
+    flex:0 0 auto;
+    height:calc(100vh - 55px - 20px - 10px - 46px - 27px);
+    min-height:0;
+    overflow:hidden;
+    grid-template-columns:minmax(330px,1fr) minmax(300px,.86fr) minmax(330px,1fr);
+    gap:7px;
+  }
+
+  .zone{
+    height:100%;
+    min-height:0;
+    gap:7px;
+    overflow:hidden;
+  }
+
+  .zone-left{
+    grid-template-rows:minmax(0,1.22fr) minmax(0,.78fr);
+  }
+
+  .zone-right{
+    grid-template-rows:minmax(0,1.06fr) minmax(0,.82fr) 57px;
+  }
+
+  .panel{
+    min-height:0;
+    padding:9px 10px;
+    gap:6px;
+    overflow:hidden;
+  }
+
+  .panel-head{
+    flex:0 0 30px;
+    height:30px;
+    min-height:30px;
+    padding-bottom:5px;
+  }
+
+  /* Shopify */
+  .modern-shopify{
+    padding:9px 10px 7px;
+  }
+
+  .modern-shop-grid{
+    min-height:0;
+    height:calc(100% - 57px);
+    grid-template-columns:minmax(0,1.52fr) minmax(145px,.72fr);
+    gap:7px;
+  }
+
+  .shop-main-card{
+    height:100%;
+    min-height:0;
+  }
+
+  .shop-main-copy{
+    padding:9px 10px 0;
+  }
+
+  .shop-main-copy b{
+    font-size:1.82rem;
+  }
+
+  .shop-main-chart{
+    bottom:4px;
+    height:54%;
+  }
+
+  .shop-kpi-column{
+    height:100%;
+    min-height:0;
+    grid-template-rows:1fr 1fr 64px;
+    gap:6px;
+  }
+
+  .modern-kpi{
+    min-height:0;
+    padding:7px 8px;
+  }
+
+  .kpi-icon{
+    width:20px;
+    height:20px;
+  }
+
+  .kpi-copy{
+    margin-top:4px;
+  }
+
+  .kpi-copy b{
+    font-size:1.18rem;
+  }
+
+  .kpi-yesterday{
+    min-height:0;
+  }
+
+  .modern-shop-footer{
+    flex:0 0 17px;
+    height:17px;
+    min-height:17px;
+  }
+
+  /* Mail / WhatsApp */
+  .modern-mail,
+  .modern-whatsapp{
+    padding:8px 10px;
+  }
+
+  .modern-message-list{
+    height:calc(100% - 34px);
+    min-height:0;
+    overflow:hidden;
+  }
+
+  .modern-message-row,
+  .message-row{
+    min-height:0;
+    height:20%;
+    grid-template-columns:27px minmax(0,1fr) 28px;
+    gap:7px;
+  }
+
+  .sender-avatar,
+  .msg-avatar{
+    width:23px;
+    height:23px;
+  }
+
+  .msg-copy b{
+    font-size:.60rem;
+  }
+
+  .msg-copy span{
+    font-size:.48rem;
+  }
+
+  /* Center reactor */
+  .stage{
+    height:100%;
+    min-height:0;
+    padding:0;
+    gap:5px;
+    justify-content:center;
+    overflow:hidden;
+  }
+
+  .stage-title{
+    flex:0 0 auto;
+  }
+
+  .stage-title .eyebrow{
+    font-size:.43rem;
+  }
+
+  .stage-title h1{
+    font-size:clamp(1.65rem,2.55vw,2.55rem);
+  }
+
+  .voice-panel{
+    gap:7px;
+  }
+
+  .voice-button{
+    width:min(220px,16vw);
+  }
+
+  .voice-log{
+    font-size:.61rem;
+  }
+
+  .stage-foot{
+    gap:2px;
+  }
+
+  .core-state{
+    font-size:.52rem;
+  }
+
+  .core-loc{
+    font-size:.43rem;
+  }
+
+  /* Weather + News */
+  .right-bottom-grid{
+    min-height:0;
+    height:100%;
+    gap:7px;
+    grid-template-columns:.86fr 1.14fr;
+  }
+
+  .weather-panel-clean,
+  .news-panel-clean{
+    height:100%;
+    min-height:0;
+  }
+
+  .weather-modern-main{
+    padding:4px 0 2px;
+  }
+
+  .weather-emoji{
+    font-size:1.35rem;
+  }
+
+  .wx-temp{
+    font-size:1.65rem;
+  }
+
+  .wx-desc{
+    font-size:.52rem;
+  }
+
+  .modern-wx-grid{
+    gap:3px;
+  }
+
+  .wx-cell{
+    padding:4px 2px;
+  }
+
+  .wx-cell span{
+    font-size:.76rem;
+  }
+
+  .wx-cell label{
+    font-size:.36rem;
+  }
+
+  .news-modern-list{
+    min-height:0;
+    height:calc(100% - 34px);
+    gap:4px;
+  }
+
+  .news-modern-item{
+    min-height:0;
+    height:calc((100% - 8px)/3);
+    grid-template-columns:45px minmax(0,1fr);
+    gap:6px;
+    padding:4px;
+  }
+
+  .news-thumb{
+    width:45px;
+    height:100%;
+    min-height:34px;
+  }
+
+  .news-modern-item b{
+    font-size:.56rem;
+  }
+
+  .news-modern-item span{
+    font-size:.46rem;
+  }
+
+  .news-modern-item small{
+    font-size:.36rem;
+  }
+
+  /* System strip */
+  .system-strip{
+    height:57px;
+    min-height:57px;
+    padding:7px 8px;
+  }
+
+  .compact-sys{
+    height:100%;
+    gap:5px;
+  }
+
+  .compact-sys .sys-line{
+    padding:4px 2px;
+  }
+
+  .compact-sys .sys-line span{
+    font-size:.36rem;
+  }
+
+  .compact-sys .sys-line b{
+    font-size:.52rem;
+  }
+
+  /* Quick commands: one compact row */
+  .command-bar{
+    flex:0 0 46px;
+    height:46px;
+    min-height:46px;
+    margin:0;
+    padding:4px 0 0;
+    gap:6px;
+    flex-wrap:nowrap;
+    overflow:hidden;
+  }
+
+  .command-chip{
+    flex:1 1 0;
+    min-width:0;
+    height:38px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0 7px;
+    font-size:.54rem;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  #draftPanel{
+    max-height:65vh;
+  }
+}
+
+/* Handy: den zusätzlichen Startblock weiterhin komplett entfernen */
+@media (max-width:760px){
+  .mobile-core-launch{
+    display:none !important;
+  }
+}
