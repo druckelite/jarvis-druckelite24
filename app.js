@@ -2,7 +2,7 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V10 · OPENAI REALTIME TEXT + ELEVENLABS STREAMING
+   V10.1 · OPENAI REALTIME TEXT + ELEVENLABS STREAMING
    ========================================================= */
 
 
@@ -458,89 +458,74 @@ function getGreeting() {
   const hour =
     getBerlinHour();
 
+  // Mattl, Meister und Chef häufig.
+  // Daddy bewusst selten.
+  const name =
+    pickRandom([
+      "Mattl",
+      "Mattl",
+      "Mattl",
+      "Meister",
+      "Meister",
+      "Chef",
+      "Chef",
+      "Daddy"
+    ]);
+
   if (
     hour >= 5 &&
-    hour < 8
-  ) {
-
-    return pickRandom([
-      "Morgen, Mattl. Ich bin da. Wir starten ruhig, der Tag wird noch lang genug.",
-      "Morgen, Mattl. Ich bin wach. Das sollte für uns beide erstmal reichen.",
-      "Guten Morgen, Mattl. Schauen wir mal, was heute auf uns wartet.",
-      "Morgen, Mattl. Kaffee wäre vermutlich keine schlechte Idee. Ich bin jedenfalls bereit."
-    ]);
-  }
-
-  if (
-    hour >= 8 &&
     hour < 11
   ) {
 
     return pickRandom([
-      "Morgen, Mattl. Ich bin da. Was steht an?",
-      "Morgen, Mattl. Dann schauen wir mal, was heute wieder brennt.",
-      "Guten Morgen, Mattl. Was nehmen wir uns zuerst vor?",
-      "Mattl, guten Morgen. Ich bin bereit. Der ruhige Teil des Tages dürfte damit vorbei sein."
+      `Guten Morgen, ${name}. JARVIS ist online. Die Systeme laufen, der Tag kann kommen.`,
+      `Morgen, ${name}. Kommandozentrale aktiv. Mal sehen, wer heute zuerst nervt.`,
+      `${name}, willkommen zurück. Kaffee organisierst du, den Rest kriegen wir hin.`,
+      `Guten Morgen, ${name}. Systeme bereit. Zeit, aus Chaos wieder Umsatz zu machen.`,
+      `${name}, JARVIS meldet sich dienstbereit. Der Tag gehört uns – bis die erste wilde E-Mail reinkommt.`,
+      `Morgen, ${name}. Alles hochgefahren. Vernunft später, zuerst machen wir Geschäft.`
     ]);
   }
+
 
   if (
     hour >= 11 &&
-    hour < 14
-  ) {
-
-    return pickRandom([
-      "Hey Mattl. Da bin ich. Was machen wir?",
-      "Mattl, ich bin da. Was steht an?",
-      "Hey Mattl. Was gibt's?",
-      "Da bist du ja, Mattl. Ich hatte kurz Hoffnung auf einen entspannten Vormittag."
-    ]);
-  }
-
-  if (
-    hour >= 14 &&
     hour < 18
   ) {
 
     return pickRandom([
-      "Hey Mattl. Was steht heute noch an?",
-      "Mattl, da bin ich. Dann retten wir mal den Rest des Tages.",
-      "Hey Mattl. Was nehmen wir uns als Nächstes vor?",
-      "Mattl, ich bin bereit. Langweilig wird's vermutlich wieder nicht."
+      `${name}, JARVIS ist online. Was reißen wir als Nächstes ab?`,
+      `Da ist er ja, ${name}. Systeme bereit. Gib mir ein Ziel.`,
+      `${name}, willkommen zurück in der Kommandozentrale. Wo brennt es diesmal?`,
+      `JARVIS meldet sich dienstbereit, ${name}. Zeit, ein bisschen Unordnung in Produktivität zu verwandeln.`,
+      `${name}, alles bereit. Sag mir, wen oder was wir heute noch auseinandernehmen.`,
+      `Willkommen zurück, ${name}. Maschinen wach, JARVIS wach. Das kann nur interessant werden.`
     ]);
   }
+
 
   if (
     hour >= 18 &&
-    hour < 21
+    hour < 23
   ) {
 
     return pickRandom([
-      "Abend, Mattl. Was liegt noch an?",
-      "Mattl, ich bin da. Feierabend hat offenbar noch etwas Zeit.",
-      "Hey Mattl. Noch eine Runde? Was machen wir?",
-      "Abend, Mattl. Schauen wir mal, was wir heute noch erledigt bekommen."
+      `Guten Abend, ${name}. Andere machen Feierabend. Wir offenbar nicht.`,
+      `${name}, JARVIS ist online. Der Abend kann beginnen – oder die nächste Schicht.`,
+      `Willkommen zurück, ${name}. Systeme bereit. Vernunft wurde für heute offenbar abgewählt.`,
+      `${name}, ich bin da. Sagen wir einfach, das hier zählt noch als normale Arbeitszeit.`,
+      `Abend, ${name}. Die Kommandozentrale ist wieder besetzt. Was steht an?`,
+      `${name}, Systeme aktiv. Wenn heute noch etwas eskaliert, sind wir wenigstens vorbereitet.`
     ]);
   }
 
-  if (
-    hour >= 21 &&
-    hour < 24
-  ) {
-
-    return pickRandom([
-      "Abend, Mattl. Feierabend scheint heute wieder eher ein theoretisches Konzept zu sein.",
-      "Mattl, ich bin da. Andere nennen das jetzt vermutlich Feierabend.",
-      "Hey Mattl. Noch nicht genug für heute? Na gut, was liegt an?",
-      "Mattl, da bin ich. Wir ignorieren die Uhr einfach gemeinsam."
-    ]);
-  }
 
   return pickRandom([
-    "Mattl ... ernsthaft? Na gut. Ich bin da.",
-    "Mattl, Schlaf wird offenbar weiterhin überschätzt. Was machen wir?",
-    "Na gut, Mattl. Dann tun wir so, als wäre das eine normale Arbeitszeit.",
-    "Mattl, es ist spät. Natürlich arbeiten wir noch. Was sonst."
+    `${name} … beeindruckend. Andere schlafen. Wir bauen weiter.`,
+    `Willkommen zurück, ${name}. Die Uhr sagt nein, JARVIS sagt los.`,
+    `${name}, mitten in der Nacht. Natürlich. Ich hätte mit nichts anderem gerechnet.`,
+    `JARVIS online, ${name}. Schlaf ist offenbar weiterhin optional.`,
+    `${name}, Systeme bereit. Falls jemand fragt: Das hier ist Forschung.`
   ]);
 }
 
@@ -1116,8 +1101,9 @@ function clearElevenAudioQueue() {
     currentElevenObjectUrl =
       null;
   }
-}
-
+}/* =========================================================
+   ELEVENLABS AUDIO PLAYBACK
+   ========================================================= */
 
 async function playNextElevenAudio() {
 
@@ -1127,8 +1113,10 @@ async function playNextElevenAudio() {
     return;
   }
 
+
   const next =
     elevenAudioQueue.shift();
+
 
   if (
     !next
@@ -1159,23 +1147,28 @@ async function playNextElevenAudio() {
     return;
   }
 
+
   elevenAudioPlaying =
     true;
 
   assistantSpeaking =
     true;
 
+
   setJarvisState(
     "speaking"
   );
+
 
   setLog(
     "JARVIS spricht."
   );
 
+
   setMicrophoneEnabled(
     false
   );
+
 
   const blob =
     base64ToBlob(
@@ -1183,18 +1176,22 @@ async function playNextElevenAudio() {
       "audio/mpeg"
     );
 
+
   currentElevenObjectUrl =
     URL.createObjectURL(
       blob
     );
+
 
   currentElevenAudio =
     new Audio(
       currentElevenObjectUrl
     );
 
+
   currentElevenAudio.volume =
     1;
+
 
   currentElevenAudio.onended =
     () => {
@@ -1207,14 +1204,18 @@ async function playNextElevenAudio() {
 
       } catch {}
 
+
       currentElevenObjectUrl =
         null;
+
 
       currentElevenAudio =
         null;
 
+
       elevenAudioPlaying =
         false;
+
 
       if (
         elevenAudioQueue.length
@@ -1227,6 +1228,7 @@ async function playNextElevenAudio() {
         assistantSpeaking =
           false;
 
+
         if (
           greetingInProgress
         ) {
@@ -1234,6 +1236,7 @@ async function playNextElevenAudio() {
           greetingInProgress =
             false;
         }
+
 
         if (
           active &&
@@ -1246,9 +1249,11 @@ async function playNextElevenAudio() {
             "listening"
           );
 
+
           setLog(
             "JARVIS hört zu."
           );
+
 
           setTimeout(
             () => {
@@ -1271,6 +1276,7 @@ async function playNextElevenAudio() {
       }
     };
 
+
   currentElevenAudio.onerror =
     error => {
 
@@ -1279,14 +1285,18 @@ async function playNextElevenAudio() {
         error
       );
 
+
       elevenAudioPlaying =
         false;
+
 
       currentElevenAudio =
         null;
 
+
       playNextElevenAudio();
     };
+
 
   try {
 
@@ -1302,8 +1312,10 @@ async function playNextElevenAudio() {
       error
     );
 
+
     elevenAudioPlaying =
       false;
+
 
     currentElevenAudio =
       null;
@@ -1320,28 +1332,37 @@ function disconnectElevenLabs() {
   elevenConnected =
     false;
 
+
   elevenReady =
     false;
 
+
   elevenClosing =
     true;
+
 
   if (
     elevenSocket
   ) {
 
     try {
+
       elevenSocket.close();
+
     } catch {}
+
 
     elevenSocket =
       null;
   }
 
+
   clearElevenAudioQueue();
+
 
   elevenTokenData =
     null;
+
 
   elevenClosing =
     false;
@@ -1352,53 +1373,76 @@ async function connectElevenLabs() {
 
   disconnectElevenLabs();
 
+
   const config =
     await fetchElevenLabsToken();
+
 
   const token =
     config.token;
 
+
   const voiceId =
     config.voice_id;
+
 
   const modelId =
     config.model_id ||
     "eleven_flash_v2_5";
 
+
   const languageCode =
     config.language_code ||
     "de";
+
 
   const url =
     new URL(
       `wss://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream-input`
     );
 
+
   url.searchParams.set(
     "model_id",
     modelId
   );
+
 
   url.searchParams.set(
     "output_format",
     "mp3_44100_128"
   );
 
+
+  /* =======================================================
+     WICHTIGE V10.1 KORREKTUR
+     ======================================================= */
+
   url.searchParams.set(
-    "authorization",
-    `Bearer ${token}`
+    "single_use_token",
+    token
   );
+
 
   url.searchParams.set(
     "language_code",
     languageCode
   );
 
+
+  url.searchParams.set(
+    "inactivity_timeout",
+    "180"
+  );
+
+
   elevenSessionId +=
     1;
 
+
   const sessionId =
     elevenSessionId;
+
 
   return new Promise(
     (
@@ -1406,13 +1450,16 @@ async function connectElevenLabs() {
       reject
     ) => {
 
+
       const socket =
         new WebSocket(
           url.toString()
         );
 
+
       elevenSocket =
         socket;
+
 
       const timeout =
         setTimeout(
@@ -1423,8 +1470,11 @@ async function connectElevenLabs() {
             ) {
 
               try {
+
                 socket.close();
+
               } catch {}
+
 
               reject(
                 new Error(
@@ -1437,12 +1487,14 @@ async function connectElevenLabs() {
           10000
         );
 
+
       socket.onopen =
         () => {
 
           clearTimeout(
             timeout
           );
+
 
           if (
             sessionId !==
@@ -1451,18 +1503,23 @@ async function connectElevenLabs() {
             return;
           }
 
+
           elevenConnected =
             true;
+
 
           elevenReady =
             true;
 
+
           socket.send(
             JSON.stringify({
+
               text:
                 " ",
 
               voice_settings: {
+
                 stability:
                   0.52,
 
@@ -1477,28 +1534,30 @@ async function connectElevenLabs() {
               },
 
               generation_config: {
+
                 chunk_length_schedule: [
                   40,
                   60,
                   90,
                   120
                 ]
-              },
-
-              xi_api_key:
-                undefined
+              }
             })
           );
+
 
           console.log(
             "ElevenLabs WebSocket verbunden."
           );
 
+
           resolve();
         };
 
+
       socket.onmessage =
         event => {
+
 
           if (
             sessionId !==
@@ -1507,16 +1566,19 @@ async function connectElevenLabs() {
             return;
           }
 
+
           const data =
             safeJsonParse(
               event.data
             );
+
 
           if (
             !data
           ) {
             return;
           }
+
 
           if (
             data.audio
@@ -1526,8 +1588,10 @@ async function connectElevenLabs() {
               data.audio
             );
 
+
             playNextElevenAudio();
           }
+
 
           if (
             data.isFinal
@@ -1537,7 +1601,19 @@ async function connectElevenLabs() {
               "ElevenLabs Antwort fertig."
             );
           }
+
+
+          if (
+            data.error
+          ) {
+
+            console.error(
+              "ElevenLabs Serverfehler:",
+              data.error
+            );
+          }
         };
+
 
       socket.onerror =
         error => {
@@ -1547,6 +1623,7 @@ async function connectElevenLabs() {
             error
           );
 
+
           if (
             !elevenConnected
           ) {
@@ -1554,6 +1631,7 @@ async function connectElevenLabs() {
             clearTimeout(
               timeout
             );
+
 
             reject(
               new Error(
@@ -1563,21 +1641,26 @@ async function connectElevenLabs() {
           }
         };
 
+
       socket.onclose =
-        () => {
+        event => {
 
           elevenConnected =
             false;
 
+
           elevenReady =
             false;
+
 
           if (
             !elevenClosing
           ) {
 
             console.log(
-              "ElevenLabs WebSocket geschlossen."
+              "ElevenLabs WebSocket geschlossen.",
+              event.code,
+              event.reason
             );
           }
         };
@@ -1600,11 +1683,13 @@ function sendTextToElevenLabs(
       ""
     );
 
+
   if (
     !clean
   ) {
     return;
   }
+
 
   if (
     !elevenSocket ||
@@ -1620,10 +1705,12 @@ function sendTextToElevenLabs(
     return;
   }
 
+
   try {
 
     elevenSocket.send(
       JSON.stringify({
+
         text:
           clean,
 
@@ -1631,6 +1718,7 @@ function sendTextToElevenLabs(
           true
       })
     );
+
 
   } catch (
     error
@@ -1654,14 +1742,17 @@ function flushElevenLabs() {
     return;
   }
 
+
   try {
 
     elevenSocket.send(
       JSON.stringify({
+
         text:
           ""
       })
     );
+
 
   } catch (
     error
@@ -1690,27 +1781,34 @@ function speakTextWithElevenLabs(
     )
       .trim();
 
+
   if (
     !clean
   ) {
     return false;
   }
 
+
   responseInProgress =
     true;
+
 
   setMicrophoneEnabled(
     false
   );
 
+
   sendTextToElevenLabs(
     `${clean} `
   );
 
+
   flushElevenLabs();
+
 
   responseInProgress =
     false;
+
 
   return true;
 }
@@ -1730,11 +1828,13 @@ async function executeRealtimeTool(
       ""
     );
 
+
   const toolName =
     String(
       event.name ||
       ""
     );
+
 
   if (
     !callId ||
@@ -1749,6 +1849,7 @@ async function executeRealtimeTool(
     return;
   }
 
+
   if (
     runningToolCalls.has(
       callId
@@ -1757,24 +1858,30 @@ async function executeRealtimeTool(
     return;
   }
 
+
   runningToolCalls.add(
     callId
   );
+
 
   setJarvisState(
     "thinking"
   );
 
+
   setLog(
     `${toolName} wird ausgeführt …`
   );
+
 
   setMicrophoneEnabled(
     false
   );
 
+
   let args =
     {};
+
 
   try {
 
@@ -1791,13 +1898,16 @@ async function executeRealtimeTool(
       {};
   }
 
+
   console.log(
     "[TOOL]",
     toolName,
     args
   );
 
+
   let toolResult;
+
 
   try {
 
@@ -1805,16 +1915,19 @@ async function executeRealtimeTool(
       await fetch(
         "/api/realtime-tool",
         {
+
           method:
             "POST",
 
           headers: {
+
             "Content-Type":
               "application/json"
           },
 
           body:
             JSON.stringify({
+
               name:
                 toolName,
 
@@ -1824,8 +1937,10 @@ async function executeRealtimeTool(
         }
       );
 
+
     const raw =
       await response.text();
+
 
     try {
 
@@ -1837,6 +1952,7 @@ async function executeRealtimeTool(
     } catch {
 
       toolResult = {
+
         ok:
           false,
 
@@ -1846,16 +1962,20 @@ async function executeRealtimeTool(
       };
     }
 
+
     if (
       !response.ok
     ) {
 
       toolResult = {
+
         ...toolResult,
+
         ok:
           false
       };
     }
+
 
     if (
       toolResult?.draft
@@ -1866,6 +1986,7 @@ async function executeRealtimeTool(
       );
     }
 
+
   } catch (
     error
   ) {
@@ -1875,7 +1996,9 @@ async function executeRealtimeTool(
       error
     );
 
+
     toolResult = {
+
       ok:
         false,
 
@@ -1885,11 +2008,14 @@ async function executeRealtimeTool(
     };
   }
 
+
   sendRealtimeEvent({
+
     type:
       "conversation.item.create",
 
     item: {
+
       type:
         "function_call_output",
 
@@ -1903,19 +2029,24 @@ async function executeRealtimeTool(
     }
   });
 
+
   responseInProgress =
     true;
 
+
   sendRealtimeEvent({
+
     type:
       "response.create",
 
     response: {
+
       output_modalities: [
         "text"
       ]
     }
   });
+
 
   runningToolCalls.delete(
     callId
@@ -1937,10 +2068,12 @@ function handleRealtimeEvent(
     return;
   }
 
+
   console.log(
     "[REALTIME]",
     event.type
   );
+
 
   switch (
     event.type
@@ -1975,9 +2108,11 @@ function handleRealtimeEvent(
         return;
       }
 
+
       setJarvisState(
         "hearing"
       );
+
 
       setLog(
         "Ich höre zu …"
@@ -1995,13 +2130,16 @@ function handleRealtimeEvent(
         return;
       }
 
+
       setJarvisState(
         "thinking"
       );
 
+
       setLog(
         "Denke nach …"
       );
+
 
       setMicrophoneEnabled(
         false
@@ -2024,12 +2162,15 @@ function handleRealtimeEvent(
       responseInProgress =
         true;
 
+
       currentResponseText =
         "";
+
 
       setJarvisState(
         "thinking"
       );
+
 
       setLog(
         "JARVIS denkt …"
@@ -2049,8 +2190,10 @@ function handleRealtimeEvent(
             event.delta
           );
 
+
         currentResponseText +=
           delta;
+
 
         sendTextToElevenLabs(
           delta
@@ -2072,6 +2215,7 @@ function handleRealtimeEvent(
         );
       }
 
+
       flushElevenLabs();
 
       break;
@@ -2081,6 +2225,7 @@ function handleRealtimeEvent(
 
       responseInProgress =
         false;
+
 
       const hasFunctionCall =
         Array.isArray(
@@ -2095,6 +2240,7 @@ function handleRealtimeEvent(
               "function_call"
           );
 
+
       if (
         hasFunctionCall
       ) {
@@ -2103,18 +2249,22 @@ function handleRealtimeEvent(
           "thinking"
         );
 
+
         setLog(
           "Live-Daten werden geladen …"
         );
 
+
         break;
       }
+
 
       if (
         !elevenAudioPlaying &&
         elevenAudioQueue.length ===
           0
       ) {
+
 
         if (
           greetingInProgress
@@ -2124,6 +2274,7 @@ function handleRealtimeEvent(
             false;
         }
 
+
         if (
           active
         ) {
@@ -2132,9 +2283,11 @@ function handleRealtimeEvent(
             "listening"
           );
 
+
           setLog(
             "JARVIS hört zu."
           );
+
 
           setTimeout(
             () => {
@@ -2167,16 +2320,20 @@ function handleRealtimeEvent(
         event
       );
 
+
       responseInProgress =
         false;
 
+
       assistantSpeaking =
         false;
+
 
       setLog(
         event.error?.message ||
         "Realtime Fehler."
       );
+
 
       if (
         active
@@ -2193,6 +2350,7 @@ function handleRealtimeEvent(
               setMicrophoneEnabled(
                 true
               );
+
 
               setJarvisState(
                 "listening"
@@ -2497,16 +2655,14 @@ function disconnectRealtime() {
 function cancelCurrentResponse() {
 
   if (
-    !responseInProgress
+    responseInProgress
   ) {
-    return;
+
+    sendRealtimeEvent({
+      type:
+        "response.cancel"
+    });
   }
-
-
-  sendRealtimeEvent({
-    type:
-      "response.cancel"
-  });
 
 
   responseInProgress =
@@ -2519,19 +2675,23 @@ function cancelCurrentResponse() {
   clearElevenAudioQueue();
 
 
-  setJarvisState(
-    "listening"
-  );
-
-
-  setLog(
-    "JARVIS hört zu."
-  );
+  assistantSpeaking =
+    false;
 
 
   if (
     active
   ) {
+
+    setJarvisState(
+      "listening"
+    );
+
+
+    setLog(
+      "JARVIS hört zu."
+    );
+
 
     setMicrophoneEnabled(
       true
@@ -2578,6 +2738,7 @@ function requestExactSpeech(
 
   currentResponseText =
     "";
+
 
   responseInProgress =
     true;
@@ -2936,9 +3097,6 @@ function stopBackgroundChecks() {
 
 /* =========================================================
    USER INTERRUPTION
-
-   Wenn Mattl spricht, während ElevenLabs noch redet,
-   Audio sofort stoppen und alte Antwort abbrechen.
    ========================================================= */
 
 function handleUserInterruption() {
@@ -2972,6 +3130,7 @@ function handleUserInterruption() {
   assistantSpeaking =
     false;
 
+
   greetingInProgress =
     false;
 
@@ -2994,9 +3153,6 @@ function handleUserInterruption() {
 
 /* =========================================================
    MICROPHONE SPEECH INTERRUPTION
-
-   OpenAI sendet speech_started.
-   Wir hängen zusätzlich einen Listener in den Handler ein.
    ========================================================= */
 
 const originalHandleRealtimeEvent =
@@ -3046,6 +3202,7 @@ async function startJarvis() {
   starting =
     true;
 
+
   stopping =
     false;
 
@@ -3072,8 +3229,7 @@ async function startJarvis() {
 
   try {
 
-    /* Intro muss direkt aus dem Klick-Kontext starten,
-       damit Browser Audio erlauben. */
+    /* Intro direkt aus dem Klick-Kontext starten */
 
     const introPromise =
       startIntro();
@@ -3084,7 +3240,7 @@ async function startJarvis() {
     await createMicrophoneStream();
 
 
-    /* ElevenLabs zuerst verbinden */
+    /* ElevenLabs */
 
     setLog(
       "ElevenLabs wird verbunden …"
@@ -3094,7 +3250,7 @@ async function startJarvis() {
     await connectElevenLabs();
 
 
-    /* OpenAI Realtime */
+    /* OpenAI */
 
     setLog(
       "OpenAI Realtime wird verbunden …"
@@ -3184,11 +3340,14 @@ async function stopJarvis(
   active =
     false;
 
+
   greetingInProgress =
     false;
 
+
   assistantSpeaking =
     false;
+
 
   responseInProgress =
     false;
@@ -3342,7 +3501,7 @@ console.log(
 
 
 console.log(
-  "JARVIS APP V10 · OPENAI REALTIME + ELEVENLABS"
+  "JARVIS APP V10.1 · OPENAI REALTIME + ELEVENLABS"
 );
 
 
@@ -3353,6 +3512,16 @@ console.log(
 
 console.log(
   "Voice Engine: ElevenLabs"
+);
+
+
+console.log(
+  "WebSocket Auth: single_use_token"
+);
+
+
+console.log(
+  "Inactivity Timeout: 180 Sekunden"
 );
 
 
