@@ -2907,3 +2907,181 @@ audio { display: none; }
     display:none !important;
   }
 }
+
+
+/* =========================================================
+   V5.3.3 — CLEAN LINES + ORIGINAL BRAND LOGOS
+   Behebt verrutschte Linien bei Mail / WhatsApp.
+   ========================================================= */
+
+.brand-logo-icon{
+  padding:4px !important;
+  background:#fff !important;
+  overflow:hidden;
+  border-radius:8px;
+}
+
+.brand-logo-icon img{
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:contain;
+}
+
+.whatsapp-icon.brand-logo-icon{
+  background:#25D366 !important;
+  border-color:rgba(37,211,102,.38) !important;
+  box-shadow:0 0 14px rgba(37,211,102,.16);
+}
+
+.whatsapp-icon.brand-logo-icon img{
+  filter:none;
+}
+
+.gmail-icon.brand-logo-icon{
+  background:#fff !important;
+  border-color:rgba(255,255,255,.25) !important;
+  box-shadow:0 0 14px rgba(255,255,255,.08);
+}
+
+/* Panels Mail + WhatsApp mit sauberer, gerader Innenstruktur */
+.modern-mail,
+.modern-whatsapp{
+  clip-path:none !important;
+  border-radius:10px !important;
+  overflow:hidden !important;
+  isolation:isolate;
+}
+
+/* Entfernt den wandernden Licht-Sweep aus diesen zwei Widgets,
+   weil er optisch wie eine verrutschte Linie wirkt */
+.modern-mail::before,
+.modern-whatsapp::before{
+  display:none !important;
+}
+
+/* Header exakt bündig */
+.modern-mail .panel-head,
+.modern-whatsapp .panel-head{
+  position:relative;
+  z-index:2;
+  width:100%;
+  min-width:0;
+  margin:0 !important;
+  padding-left:0 !important;
+  padding-right:0 !important;
+  border-bottom:1px solid rgba(255,255,255,.10) !important;
+}
+
+/* Die Liste sitzt exakt innerhalb der Panelbreite */
+.modern-mail .modern-message-list,
+.modern-whatsapp .modern-message-list{
+  width:100%;
+  min-width:0;
+  margin:0 !important;
+  padding:0 !important;
+  overflow:hidden;
+}
+
+/* Jede Zeile bekommt eine gerade, exakt begrenzte Trennlinie */
+.modern-mail .modern-message-row,
+.modern-whatsapp .modern-message-row{
+  position:relative;
+  width:100%;
+  min-width:0;
+  margin:0 !important;
+  border-bottom:0 !important;
+}
+
+.modern-mail .modern-message-row::after,
+.modern-whatsapp .modern-message-row::after{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  bottom:0;
+  height:1px;
+  background:rgba(255,255,255,.065);
+  pointer-events:none;
+}
+
+.modern-mail .modern-message-row:last-child::after,
+.modern-whatsapp .modern-message-row:last-child::after{
+  display:none;
+}
+
+/* WhatsApp-Linien etwas grünlicher, aber dezent */
+.modern-whatsapp .modern-message-row::after{
+  background:rgba(37,211,102,.10);
+}
+
+/* Keine abgeschnittenen / überstehenden Kind-Elemente */
+.modern-mail .msg-copy,
+.modern-whatsapp .msg-copy{
+  min-width:0;
+  overflow:hidden;
+}
+
+.modern-mail .msg-copy b,
+.modern-mail .msg-copy span,
+.modern-whatsapp .msg-copy b,
+.modern-whatsapp .msg-copy span{
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+/* Die grüne obere Linie bei WhatsApp exakt innerhalb des Panels */
+.modern-whatsapp::after{
+  left:0 !important;
+  right:0 !important;
+  top:0 !important;
+  width:auto !important;
+  height:1px !important;
+  background:linear-gradient(90deg,transparent,rgba(37,211,102,.9),transparent) !important;
+}
+
+/* Mail obere Akzentlinie */
+.modern-mail::after{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  top:0;
+  height:1px;
+  background:linear-gradient(90deg,transparent,rgba(231,7,121,.75),transparent);
+  pointer-events:none;
+}
+
+/* Bei 100%-Desktop noch etwas mehr optische Ruhe */
+@media (min-width:1181px){
+  .modern-mail,
+  .modern-whatsapp{
+    padding:8px 11px !important;
+  }
+
+  .modern-mail .panel-head,
+  .modern-whatsapp .panel-head{
+    height:31px !important;
+    min-height:31px !important;
+    flex:0 0 31px !important;
+  }
+
+  .modern-mail .modern-message-list,
+  .modern-whatsapp .modern-message-list{
+    height:calc(100% - 31px) !important;
+  }
+}
+
+@media (max-width:760px){
+  .brand-logo-icon{
+    width:30px !important;
+    height:30px !important;
+  }
+
+  .modern-mail,
+  .modern-whatsapp{
+    border-radius:9px !important;
+  }
+}
