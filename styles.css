@@ -2187,3 +2187,334 @@ audio { display: none; }
     height:54px;
   }
 }
+
+
+/* =========================================================
+   V5.3.1 FIT-UPDATE
+   Ziel: Desktop bei 100% kompakter + mobile Startleiste weg
+   ========================================================= */
+
+@media (min-width: 761px){
+  .hud{
+    max-width: 1660px;
+    min-height: auto;
+    padding: .48rem .62rem .72rem;
+    gap: .45rem;
+  }
+
+  .topbar{
+    gap: .75rem;
+    padding-bottom: .42rem;
+  }
+
+  .top-title{
+    font-size: .90rem;
+    letter-spacing: .30em;
+  }
+
+  .top-sub{
+    font-size: .53rem;
+    letter-spacing: .24em;
+  }
+
+  .top-clock{
+    font-size: 1.08rem;
+  }
+
+  .ticker{
+    height: 20px;
+    font-size: .56rem;
+  }
+
+  .cockpit.cockpit-clean{
+    grid-template-columns: minmax(350px, 1fr) minmax(310px, .82fr) minmax(350px, 1fr);
+    gap: .58rem;
+  }
+
+  .zone{
+    gap: .58rem;
+  }
+
+  .zone-left{
+    grid-template-rows: minmax(360px, .94fr) minmax(235px, .68fr);
+  }
+
+  .zone-right{
+    grid-template-rows: minmax(225px, .76fr) minmax(188px, .58fr) auto;
+  }
+
+  .panel{
+    padding: .76rem .82rem .82rem;
+    gap: .55rem;
+  }
+
+  .panel-head{
+    font-size: .56rem;
+    letter-spacing: .16em;
+    padding-bottom: .38rem;
+  }
+
+  .brand-icon{
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+    font-size: .64rem;
+  }
+
+  .head-brand{
+    gap: .45rem;
+  }
+
+  .head-brand small{
+    font-size: .40rem;
+    letter-spacing: .12em;
+  }
+
+  .modern-shop-grid{
+    gap: .52rem;
+    grid-template-columns: minmax(0,1.48fr) minmax(150px,.72fr);
+  }
+
+  .shop-main-card{
+    min-height: 0;
+  }
+
+  .shop-main-copy{
+    padding: .58rem .62rem 0;
+  }
+
+  .shop-main-copy span{
+    font-size: .46rem;
+  }
+
+  .shop-main-copy b{
+    margin-top: .10rem;
+    font-size: 2rem;
+  }
+
+  .shop-main-copy em{
+    font-size: .44rem;
+  }
+
+  .shop-main-chart{
+    left: .45rem;
+    right: .45rem;
+    width: calc(100% - .9rem);
+    bottom: .35rem;
+    height: 51%;
+  }
+
+  .shop-kpi-column{
+    gap: .44rem;
+  }
+
+  .modern-kpi{
+    padding: .48rem .52rem;
+  }
+
+  .kpi-icon{
+    width: 22px;
+    height: 22px;
+    font-size: .66rem;
+  }
+
+  .kpi-copy{
+    margin-top: .34rem;
+  }
+
+  .kpi-copy span{
+    font-size: .43rem;
+  }
+
+  .kpi-copy b{
+    font-size: 1.28rem;
+  }
+
+  .kpi-copy em{
+    font-size: .42rem;
+  }
+
+  .mini-bars{
+    bottom: .45rem;
+    height: 32%;
+  }
+
+  .mini-spark{
+    bottom: .38rem;
+    height: 30%;
+  }
+
+  .kpi-yesterday{
+    min-height: 58px;
+  }
+
+  .modern-shop-footer{
+    font-size: .41rem;
+    padding-top: 0;
+  }
+
+  .modern-message-row,
+  .message-row{
+    min-height: 38px;
+    grid-template-columns: 28px minmax(0,1fr) 30px;
+    gap: .45rem;
+  }
+
+  .sender-avatar,
+  .msg-avatar{
+    width: 24px;
+    height: 24px;
+    font-size: .52rem;
+    border-radius: 8px;
+  }
+
+  .msg-copy b,
+  .modern-message-row .msg-copy b{
+    font-size: .65rem;
+  }
+
+  .msg-copy span,
+  .modern-message-row .msg-copy span{
+    margin-top: 0;
+    font-size: .53rem;
+  }
+
+  .message-row time,
+  .modern-message-row time{
+    font-size: .47rem;
+  }
+
+  .stage{
+    min-height: 0;
+    padding: .04rem 0 .1rem;
+    gap: .55rem;
+    justify-content: center;
+  }
+
+  .stage-title .eyebrow{
+    font-size: .48rem;
+    letter-spacing: .34em;
+  }
+
+  .stage-title h1{
+    font-size: clamp(1.85rem, 3.1vw, 2.85rem);
+  }
+
+  .voice-button{
+    width: min(250px, 18vw);
+  }
+
+  .voice-log{
+    font-size: .68rem;
+    min-height: 1.2em;
+  }
+
+  .core-state{
+    font-size: .58rem;
+  }
+
+  .core-loc{
+    font-size: .48rem;
+  }
+
+  .weather-modern-main{
+    gap: .52rem;
+    padding: .34rem 0 .22rem;
+  }
+
+  .weather-emoji{
+    font-size: 1.55rem;
+  }
+
+  .wx-temp{
+    font-size: 1.9rem;
+  }
+
+  .wx-desc{
+    font-size: .62rem;
+  }
+
+  .wx-cell span{
+    font-size: .95rem;
+  }
+
+  .wx-cell label{
+    font-size: .42rem;
+  }
+
+  .news-modern-list{
+    gap: .30rem;
+  }
+
+  .news-modern-item{
+    min-height: 50px;
+    padding: .30rem;
+    gap: .45rem;
+  }
+
+  .news-thumb{
+    width: 50px;
+    height: 42px;
+  }
+
+  .news-modern-item b{
+    font-size: .62rem;
+  }
+
+  .news-modern-item span{
+    font-size: .53rem;
+  }
+
+  .news-modern-item small{
+    font-size: .42rem;
+  }
+
+  .system-strip{
+    padding: .52rem .64rem;
+  }
+
+  .compact-sys{
+    gap: .42rem;
+  }
+
+  .compact-sys .sys-line{
+    padding: .28rem .15rem;
+  }
+
+  .compact-sys .sys-line span{
+    font-size: .42rem;
+  }
+
+  .compact-sys .sys-line b{
+    font-size: .62rem;
+  }
+
+  .command-bar{
+    gap: .42rem;
+    padding-top: .1rem;
+  }
+
+  .command-chip{
+    padding: .55rem .75rem;
+    font-size: .62rem;
+  }
+}
+
+@media (max-width: 760px){
+  .mobile-core-launch{
+    display: none !important;
+  }
+
+  .stage{
+    order: 1;
+    min-height: 350px;
+  }
+
+  .topbar{
+    padding-bottom: .3rem;
+  }
+
+  .cockpit.cockpit-clean{
+    gap: .45rem;
+  }
+}
