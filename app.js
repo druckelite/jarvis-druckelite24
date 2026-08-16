@@ -2,682 +2,61 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V9.4 · AUDIO LEVELING + LONG INTRO FADE
+   V9.4 · REALTIME + BUSINESS TOOLS + STABLE AUDIO
    ========================================================= */
+
+const button = document.querySelector("#toggle");
+const statusEl = document.querySelector("#status");
+const logEl = document.querySelector("#log");
+const remoteAudio = document.querySelector("#remoteAudio");
+
+let active = false;
+let starting = false;
+let stopping = false;
+
+let peerConnection = null;
+let dataChannel = null;
+let micStream = null;
+
+let realtimeConnected = false;
+let assistantSpeaking = false;
+let responseInProgress = false;
+let greetingInProgress = false;
+
+const runningToolCalls = new Set();
 
 
 /* =========================================================
-   DOM
+   AUDIO OUTPUT · GLEICHMÄSSIG + LAUT
    ========================================================= */
 
-const button =
-  document.querySelector("#toggle");
+let playbackAudioContext = null;
+let playbackSourceNode = null;
+let playbackPreGain = null;
+let playbackCompressor = null;
+let playbackLimiter = null;
+let playbackGain = null;
 
-const statusEl =
-  document.querySelector("#status");
+let lastPlaybackStreamId = null;
 
-const logEl =
-  document.querySelector("#log");
+const PLAYBACK_PRE_GAIN = 1.45;
+const PLAYBACK_OUTPUT_GAIN = 1.18;
 
-const remoteAudio =
-  document.querySelector("#remoteAudio");
-
-
-/* =========================================================
-   STATE
-   ========================================================= */
-
-let active =
-  false;
-
-let starting =
-  false;
-
-let stopping =
-  false;
-
-let peerConnection =
-  null;
-
-let dataChannel =
-  null;
-
-let micStream =
-  null;
-
-let realtimeConnected =
-  false;
-
-let assistantSpeaking =
-  false;
-
-let greetingInProgress =
-  false;
-
-const runningToolCalls =
-  new Set();
-
-
-/* =========================================================
-   BACKGROUND CHECKS
-   ========================================================= */
-
-let proactiveCheckTimer =
-  null;
-
-let proactiveFirstCheckTimer =
-  null;
-
-let reminderCheckTimer =
-  null;
-
-
-const PROACTIVE_CHECK_INTERVAL_MS =
-  20 * 60 * 1000;
-
-
-const PROACTIVE_FIRST_CHECK_DELAY_MS =
-  2 * 60 * 1000;
-
-
-const REMINDER_CHECK_INTERVAL_MS =
-  60 * 1000;
-
-
-/* =========================================================
-   INTRO SOUND
-   ========================================================= */
-
-let introAudio =
-  null;
-
-let introFadeTimer =
-  null;
-
-
-/*
- * Musik beginnt bei Sekunde 4.
- */
-const INTRO_START =
-  4;
-
-
-/*
- * Anfangslautstärke der Musik.
- */
-const INTRO_START_VOLUME =
-  0.26;
-
-
-/*
- * Nur kurze Wartezeit,
- * bevor JARVIS begrüßt.
- */
-const INTRO_VOICE_DELAY_MS =
-  900;
-
-
-/*
- * Sobald JARVIS spricht,
- * Musik sehr leise im Hintergrund.
- */
-const INTRO_BACKGROUND_VOLUME =
-  0.018;
-
-
-/*
- * Wie schnell die Musik
- * für die Stimme abgesenkt wird.
- */
-const INTRO_DUCK_DURATION_MS =
-  650;
-
-
-/*
- * NACH Ende der Begrüßung:
- * Musik blendet über volle
- * 15 Sekunden langsam aus.
- */
-const INTRO_POST_GREETING_FADE_MS =
-  15000;
-
-
-/* =========================================================
-   REALTIME AUDIO LEVELING
-   ========================================================= */
-
-/*
- * Diese Audio-Kette sorgt dafür,
- * dass JARVIS nicht mit einem
- * sehr leisen ersten Wort beginnt
- * und danach plötzlich lauter wird.
- *
- * Signal:
- *
- * Realtime Audio
- *      ↓
- * Vorverstärkung
- *      ↓
- * Kompressor
- *      ↓
- * Limiter
- *      ↓
- * Lautsprecher
- */
-
-let playbackAudioContext =
-  null;
-
-let playbackSourceNode =
-  null;
-
-let playbackPreGain =
-  null;
-
-let playbackCompressor =
-  null;
-
-let playbackLimiter =
-  null;
-
-let playbackOutputGain =
-  null;
-
-
-/* =========================================================
-   HELPERS
-   ========================================================= */
-
-function sleep(ms) {
-
-  return new Promise(
-    resolve =>
-      setTimeout(
-        resolve,
-        ms
-      )
-  );
-}
-
-
-function safeJsonParse(
-  value
-) {
-
-  try {
-
-    return JSON.parse(
-      value
-    );
-
-  } catch {
-
-    return null;
-  }
-}
-
-
-/* =========================================================
-   UI
-   ========================================================= */
-
-function setStatus(
-  text
-) {
-
-  if (!statusEl) {
-    return;
-  }
-
-
-  statusEl.textContent =
-    text;
-
-
-  statusEl.classList.toggle(
-    "online",
-    text === "Online"
-  );
-}
-
-
-function setLog(
-  text
-) {
-
-  if (!logEl) {
-    return;
-  }
-
-
-  logEl.textContent =
-    text;
-}
-
-
-function setButtonActive(
-  value
-) {
-
-  if (!button) {
-    return;
-  }
-
-
-  button.classList.toggle(
-    "active",
-    Boolean(value)
-  );
-}
-
-
-function setJarvisState(
-  state
-) {
-
-  document.body.dataset.jarvisState =
-    state;
-}
-
-
-/* =========================================================
-   DRAFT PANEL
-   ========================================================= */
-
-function showDraft(
-  draft
-) {
-
-  const panel =
-    document.getElementById(
-      "draftPanel"
-    );
-
-
-  const subjectEl =
-    document.getElementById(
-      "draftSubject"
-    );
-
-
-  const bodyEl =
-    document.getElementById(
-      "draftBody"
-    );
-
-
-  if (
-    !panel ||
-    !subjectEl ||
-    !bodyEl
-  ) {
-
-    return;
-  }
-
-
-  subjectEl.textContent =
-    draft?.subject
-      ? `Betreff: ${draft.subject}`
-      : "";
-
-
-  bodyEl.textContent =
-    draft?.body || "";
-
-
-  panel.style.display =
-    "flex";
-}
-
-
-const draftCopyBtn =
-  document.getElementById(
-    "draftCopyBtn"
-  );
-
-
-if (draftCopyBtn) {
-
-  draftCopyBtn.addEventListener(
-    "click",
-
-    async () => {
-
-      const subjectEl =
-        document.getElementById(
-          "draftSubject"
-        );
-
-
-      const bodyEl =
-        document.getElementById(
-          "draftBody"
-        );
-
-
-      const fullText =
-        `${subjectEl?.textContent || ""}\n\n${bodyEl?.textContent || ""}`.trim();
-
-
-      try {
-
-        await navigator.clipboard
-          .writeText(
-            fullText
-          );
-
-
-        const original =
-          draftCopyBtn.textContent;
-
-
-        draftCopyBtn.textContent =
-          "Kopiert!";
-
-
-        setTimeout(
-          () => {
-
-            draftCopyBtn.textContent =
-              original;
-
-          },
-          1500
-        );
-
-
-      } catch (error) {
-
-        console.warn(
-          "Kopieren fehlgeschlagen:",
-          error
-        );
-      }
-    }
-  );
-}
-
-
-/* =========================================================
-   BERLIN TIME
-   ========================================================= */
-
-function getBerlinHour() {
-
-  try {
-
-    const formatter =
-      new Intl.DateTimeFormat(
-        "de-DE",
-        {
-
-          timeZone:
-            "Europe/Berlin",
-
-          hour:
-            "numeric",
-
-          hourCycle:
-            "h23"
-        }
-      );
-
-
-    const parts =
-      formatter.formatToParts(
-        new Date()
-      );
-
-
-    const hourPart =
-      parts.find(
-        part =>
-          part.type ===
-          "hour"
-      );
-
-
-    const hour =
-      Number(
-        hourPart?.value
-      );
-
-
-    if (
-      !Number.isNaN(
-        hour
-      )
-    ) {
-
-      return hour;
-    }
-
-
-  } catch (error) {
-
-    console.warn(
-      "Berlin-Zeit Fehler:",
-      error
-    );
-  }
-
-
-  return new Date()
-    .getHours();
-}
-
-
-/* =========================================================
-   GREETING
-   ========================================================= */
-
-function pickRandom(
-  items
-) {
-
-  return items[
-    Math.floor(
-      Math.random() *
-      items.length
-    )
-  ];
-}
-
-
-function getGreeting() {
-
-  const hour =
-    getBerlinHour();
-
-
-  /*
-   * FRÜHER MORGEN
-   */
-
-  if (
-    hour >= 5 &&
-    hour < 8
-  ) {
-
-    return pickRandom([
-
-      "Guten Morgen, Mattl. Ich bin da. Schauen wir mal, was heute auf uns wartet.",
-
-      "Morgen, Mattl. Ich bin bereit. Der Tag kann also anfangen.",
-
-      "Guten Morgen, Mattl. Dann schauen wir mal, was heute wieder los ist.",
-
-      "Morgen, Mattl. Ich bin wach. Das sollte fürs Erste reichen."
-
-    ]);
-  }
-
-
-  /*
-   * MORGEN
-   */
-
-  if (
-    hour >= 8 &&
-    hour < 11
-  ) {
-
-    return pickRandom([
-
-      "Guten Morgen, Mattl. Was steht an?",
-
-      "Morgen, Mattl. Dann schauen wir mal, was heute wieder brennt.",
-
-      "Guten Morgen, Mattl. Was nehmen wir uns zuerst vor?",
-
-      "Morgen, Mattl. Ich bin da. Ruhig wird es vermutlich ohnehin nicht."
-
-    ]);
-  }
-
-
-  /*
-   * MITTAG
-   */
-
-  if (
-    hour >= 11 &&
-    hour < 14
-  ) {
-
-    return pickRandom([
-
-      "Hey Mattl. Ich bin da. Was machen wir?",
-
-      "Mattl, da bin ich. Was steht an?",
-
-      "Hey Mattl. Was gibt es?",
-
-      "Da bist du ja, Mattl. Ich hatte kurz Hoffnung auf einen ruhigen Vormittag."
-
-    ]);
-  }
-
-
-  /*
-   * NACHMITTAG
-   */
-
-  if (
-    hour >= 14 &&
-    hour < 18
-  ) {
-
-    return pickRandom([
-
-      "Hey Mattl. Was steht heute noch an?",
-
-      "Mattl, ich bin da. Dann retten wir mal den Rest des Tages.",
-
-      "Hey Mattl. Was nehmen wir uns als Nächstes vor?",
-
-      "Mattl, da bin ich. Langweilig wird es vermutlich wieder nicht."
-
-    ]);
-  }
-
-
-  /*
-   * ABEND
-   */
-
-  if (
-    hour >= 18 &&
-    hour < 21
-  ) {
-
-    return pickRandom([
-
-      "Guten Abend, Mattl. Was liegt noch an?",
-
-      "Mattl, ich bin da. Feierabend hat offenbar noch etwas Zeit.",
-
-      "Abend, Mattl. Was machen wir noch?",
-
-      "Guten Abend, Mattl. Schauen wir mal, was wir heute noch erledigt bekommen."
-
-    ]);
-  }
-
-
-  /*
-   * SPÄTER ABEND
-   */
-
-  if (
-    hour >= 21 &&
-    hour < 24
-  ) {
-
-    return pickRandom([
-
-      "Abend, Mattl. Feierabend scheint heute wieder eher ein theoretisches Konzept zu sein.",
-
-      "Mattl, ich bin da. Andere Menschen nennen das vermutlich Feierabend.",
-
-      "Hey Mattl. Noch nicht genug für heute? Na gut, was liegt an?",
-
-      "Mattl, da bin ich. Wir ignorieren die Uhr einfach gemeinsam."
-
-    ]);
-  }
-
-
-  /*
-   * NACHT
-   */
-
-  return pickRandom([
-
-    "Mattl ... ernsthaft? Na gut. Ich bin da.",
-
-    "Mattl, Schlaf wird offenbar weiterhin überschätzt. Was machen wir?",
-
-    "Na gut, Mattl. Dann tun wir so, als wäre das eine normale Arbeitszeit.",
-
-    "Mattl, es ist spät. Natürlich arbeiten wir noch. Was sonst."
-
-  ]);
-}
-
-
-/* =========================================================
-   AUDIO CONTEXT
-   ========================================================= */
 
 async function ensurePlaybackAudioContext() {
 
-  if (
-    !playbackAudioContext
-  ) {
+  if (!playbackAudioContext) {
 
     const AudioContextClass =
       window.AudioContext ||
       window.webkitAudioContext;
 
-
-    if (
-      !AudioContextClass
-    ) {
-
-      console.warn(
-        "Web Audio API nicht verfügbar."
-      );
-
-
+    if (!AudioContextClass) {
       return null;
     }
 
-
     playbackAudioContext =
       new AudioContextClass({
-
         latencyHint:
           "interactive"
       });
@@ -697,7 +76,7 @@ async function ensurePlaybackAudioContext() {
     } catch (error) {
 
       console.warn(
-        "AudioContext konnte nicht fortgesetzt werden:",
+        "AudioContext resume:",
         error
       );
     }
@@ -735,31 +114,20 @@ function disconnectProcessedPlayback() {
 
 
   try {
-    playbackOutputGain
+    playbackGain
       ?.disconnect();
   } catch {}
 
 
-  playbackSourceNode =
-    null;
+  playbackSourceNode = null;
+  playbackPreGain = null;
+  playbackCompressor = null;
+  playbackLimiter = null;
+  playbackGain = null;
 
-  playbackPreGain =
-    null;
-
-  playbackCompressor =
-    null;
-
-  playbackLimiter =
-    null;
-
-  playbackOutputGain =
-    null;
+  lastPlaybackStreamId = null;
 }
 
-
-/* =========================================================
-   AUDIO LEVELING
-   ========================================================= */
 
 async function connectProcessedPlayback(
   stream
@@ -774,136 +142,157 @@ async function connectProcessedPlayback(
   }
 
 
+  const streamId =
+    stream?.id ||
+    null;
+
+
+  /*
+   * Verhindert doppelte Audio-Ausgabe.
+   */
+
+  if (
+    streamId &&
+    streamId ===
+      lastPlaybackStreamId &&
+    playbackSourceNode
+  ) {
+
+    return true;
+  }
+
+
   disconnectProcessedPlayback();
 
 
+  lastPlaybackStreamId =
+    streamId;
+
+
   playbackSourceNode =
-    context.createMediaStreamSource(
-      stream
-    );
+    context
+      .createMediaStreamSource(
+        stream
+      );
 
 
   /*
    * Vorverstärkung:
-   * hebt auch das erste,
-   * leisere Wort an.
+   * leise Stimme wird angehoben.
    */
 
   playbackPreGain =
     context.createGain();
 
 
-  playbackPreGain.gain.value =
-    1.5;
+  playbackPreGain
+    .gain.value =
+    PLAYBACK_PRE_GAIN;
 
 
   /*
    * Hauptkompressor:
-   * fängt lautere Bereiche ab.
+   * sorgt für gleichmäßigere Stimme.
    */
 
   playbackCompressor =
-    context.createDynamicsCompressor();
+    context
+      .createDynamicsCompressor();
 
 
-  playbackCompressor.threshold.value =
-    -34;
+  playbackCompressor
+    .threshold.value =
+    -32;
 
 
-  playbackCompressor.knee.value =
-    12;
+  playbackCompressor
+    .knee.value =
+    14;
 
 
-  playbackCompressor.ratio.value =
+  playbackCompressor
+    .ratio.value =
     8;
 
 
-  playbackCompressor.attack.value =
-    0.002;
+  playbackCompressor
+    .attack.value =
+    0.003;
 
 
-  playbackCompressor.release.value =
+  playbackCompressor
+    .release.value =
     0.20;
 
 
   /*
-   * Zweiter Kompressor
-   * als weicher Limiter.
+   * Limiter:
+   * verhindert plötzlich sehr laute Stellen.
    */
 
   playbackLimiter =
-    context.createDynamicsCompressor();
+    context
+      .createDynamicsCompressor();
 
 
-  playbackLimiter.threshold.value =
-    -10;
+  playbackLimiter
+    .threshold.value =
+    -7;
 
 
-  playbackLimiter.knee.value =
-    3;
+  playbackLimiter
+    .knee.value =
+    2;
 
 
-  playbackLimiter.ratio.value =
-    18;
+  playbackLimiter
+    .ratio.value =
+    20;
 
 
-  playbackLimiter.attack.value =
+  playbackLimiter
+    .attack.value =
     0.001;
 
 
-  playbackLimiter.release.value =
+  playbackLimiter
+    .release.value =
     0.10;
 
 
   /*
-   * Finale Lautstärke.
+   * Ausgangslautstärke
    */
 
-  playbackOutputGain =
+  playbackGain =
     context.createGain();
 
 
-  playbackOutputGain.gain.value =
-    1.08;
+  playbackGain
+    .gain.value =
+    PLAYBACK_OUTPUT_GAIN;
 
 
   /*
-   * Audio-Kette verbinden.
+   * AUDIO CHAIN
    */
 
   playbackSourceNode
     .connect(
       playbackPreGain
-    );
-
-
-  playbackPreGain
+    )
     .connect(
       playbackCompressor
-    );
-
-
-  playbackCompressor
+    )
     .connect(
       playbackLimiter
-    );
-
-
-  playbackLimiter
+    )
     .connect(
-      playbackOutputGain
-    );
-
-
-  playbackOutputGain
+      playbackGain
+    )
     .connect(
       context.destination
     );
-
-
-  console.log(
-    "JARVIS Audio-Leveling aktiv."
-  );
 
 
   return true;
@@ -911,10 +300,70 @@ async function connectProcessedPlayback(
 
 
 /* =========================================================
-   INTRO CONTROL
+   BACKGROUND CHECKS
    ========================================================= */
 
-function clearIntroFadeTimer() {
+let proactiveCheckTimer = null;
+
+let proactiveFirstCheckTimer =
+  null;
+
+let reminderCheckTimer =
+  null;
+
+
+const PROACTIVE_CHECK_INTERVAL_MS =
+  20 *
+  60 *
+  1000;
+
+
+const PROACTIVE_FIRST_CHECK_DELAY_MS =
+  2 *
+  60 *
+  1000;
+
+
+const REMINDER_CHECK_INTERVAL_MS =
+  60 *
+  1000;
+
+
+/* =========================================================
+   INTRO
+   ========================================================= */
+
+let introAudio = null;
+
+let introFadeTimer =
+  null;
+
+
+const INTRO_START =
+  4;
+
+
+const INTRO_START_VOLUME =
+  0.26;
+
+
+const INTRO_VOICE_DELAY_MS =
+  900;
+
+
+const INTRO_BACKGROUND_VOLUME =
+  0.018;
+
+
+const INTRO_DUCK_DURATION_MS =
+  650;
+
+
+const INTRO_FADE_DURATION_MS =
+  15000;
+
+
+function stopIntro() {
 
   if (
     introFadeTimer
@@ -924,16 +373,9 @@ function clearIntroFadeTimer() {
       introFadeTimer
     );
 
-
     introFadeTimer =
       null;
   }
-}
-
-
-function stopIntro() {
-
-  clearIntroFadeTimer();
 
 
   if (
@@ -942,14 +384,16 @@ function stopIntro() {
 
     try {
 
-      introAudio.pause();
+      introAudio
+        .pause();
 
     } catch {}
 
 
     try {
 
-      introAudio.currentTime =
+      introAudio
+        .currentTime =
         0;
 
     } catch {}
@@ -990,7 +434,9 @@ async function startIntro() {
       const done =
         () => {
 
-          if (resolved) {
+          if (
+            resolved
+          ) {
             return;
           }
 
@@ -1018,7 +464,8 @@ async function startIntro() {
             }
 
 
-            introAudio.currentTime =
+            introAudio
+              .currentTime =
               INTRO_START;
 
 
@@ -1029,7 +476,9 @@ async function startIntro() {
             done();
 
 
-          } catch (error) {
+          } catch (
+            error
+          ) {
 
             console.warn(
               "Intro Fehler:",
@@ -1042,26 +491,31 @@ async function startIntro() {
         };
 
 
-      introAudio.addEventListener(
-        "loadedmetadata",
-        play,
-        {
-          once: true
-        }
-      );
+      introAudio
+        .addEventListener(
+          "loadedmetadata",
+          play,
+          {
+            once:
+              true
+          }
+        );
 
 
-      introAudio.addEventListener(
-        "error",
-        done,
-        {
-          once: true
-        }
-      );
+      introAudio
+        .addEventListener(
+          "error",
+          done,
+          {
+            once:
+              true
+          }
+        );
 
 
       if (
-        introAudio.readyState >=
+        introAudio
+          .readyState >=
         1
       ) {
 
@@ -1069,15 +523,12 @@ async function startIntro() {
       }
 
 
-      introAudio.load();
+      introAudio
+        .load();
     }
   );
 }
 
-
-/* =========================================================
-   DUCK INTRO WHILE JARVIS SPEAKS
-   ========================================================= */
 
 function duckIntro() {
 
@@ -1090,14 +541,25 @@ function duckIntro() {
   }
 
 
-  clearIntroFadeTimer();
+  if (
+    introFadeTimer
+  ) {
+
+    clearInterval(
+      introFadeTimer
+    );
 
 
-  const originalVolume =
+    introFadeTimer =
+      null;
+  }
+
+
+  const original =
     introAudio.volume;
 
 
-  const startTime =
+  const start =
     performance.now();
 
 
@@ -1109,7 +571,14 @@ function duckIntro() {
           !introAudio
         ) {
 
-          clearIntroFadeTimer();
+          clearInterval(
+            introFadeTimer
+          );
+
+
+          introFadeTimer =
+            null;
+
 
           return;
         }
@@ -1120,8 +589,9 @@ function duckIntro() {
 
             (
               performance.now() -
-              startTime
+              start
             ) /
+
             INTRO_DUCK_DURATION_MS,
 
             1
@@ -1129,8 +599,10 @@ function duckIntro() {
 
 
         const smooth =
+
           progress *
           progress *
+
           (
             3 -
             2 *
@@ -1139,31 +611,32 @@ function duckIntro() {
 
 
         introAudio.volume =
-          originalVolume -
+
+          original -
+
           (
-            originalVolume -
+            original -
             INTRO_BACKGROUND_VOLUME
           ) *
+
           smooth;
 
 
         if (
-          progress >= 1
+          progress >=
+          1
         ) {
 
-          clearIntroFadeTimer();
+          clearInterval(
+            introFadeTimer
+          );
 
 
-          /*
-           * Wichtig:
-           *
-           * Musik bleibt jetzt
-           * auf dieser sehr leisen
-           * Lautstärke stehen.
-           *
-           * Sie wird NICHT sofort
-           * ausgeblendet.
-           */
+          introFadeTimer =
+            null;
+
+
+          fadeIntroOut();
         }
 
       },
@@ -1172,11 +645,7 @@ function duckIntro() {
 }
 
 
-/* =========================================================
-   FADE INTRO AFTER GREETING
-   ========================================================= */
-
-function fadeIntroAfterGreeting() {
+function fadeIntroOut() {
 
   if (
     !introAudio ||
@@ -1187,18 +656,12 @@ function fadeIntroAfterGreeting() {
   }
 
 
-  clearIntroFadeTimer();
-
-
-  const startVolume =
-    Math.max(
-      introAudio.volume,
-      INTRO_BACKGROUND_VOLUME
-    );
-
-
-  const startTime =
+  const start =
     performance.now();
+
+
+  const volume =
+    introAudio.volume;
 
 
   introFadeTimer =
@@ -1209,76 +672,527 @@ function fadeIntroAfterGreeting() {
           !introAudio
         ) {
 
-          clearIntroFadeTimer();
+          clearInterval(
+            introFadeTimer
+          );
+
+
+          introFadeTimer =
+            null;
+
 
           return;
         }
 
 
-        const elapsed =
-          performance.now() -
-          startTime;
-
-
         const progress =
           Math.min(
 
-            elapsed /
-            INTRO_POST_GREETING_FADE_MS,
+            (
+              performance.now() -
+              start
+            ) /
+
+            INTRO_FADE_DURATION_MS,
 
             1
           );
 
 
-        /*
-         * Sehr weicher Fade.
-         *
-         * Anfang bleibt noch hörbar,
-         * danach immer langsamer weg.
-         */
-
-        const curve =
-          Math.pow(
-            1 -
-            progress,
-            1.55
-          );
-
-
         introAudio.volume =
           Math.max(
+
             0,
-            startVolume *
-            curve
+
+            volume *
+
+            Math.pow(
+              1 -
+              progress,
+              1.7
+            )
           );
 
 
         if (
-          progress >= 1
+          progress >=
+          1
         ) {
 
-          clearIntroFadeTimer();
+          clearInterval(
+            introFadeTimer
+          );
+
+
+          introFadeTimer =
+            null;
 
 
           try {
 
-            introAudio.pause();
+            introAudio
+              .pause();
 
           } catch {}
 
 
           introAudio =
             null;
-
-
-          console.log(
-            "Intro nach Begrüßung vollständig ausgeblendet."
-          );
         }
 
       },
-      50
+      60
     );
+}
+
+
+/* =========================================================
+   HELPERS
+   ========================================================= */
+
+function sleep(
+  ms
+) {
+
+  return new Promise(
+    resolve =>
+      setTimeout(
+        resolve,
+        ms
+      )
+  );
+}
+
+
+function safeJsonParse(
+  value
+) {
+
+  try {
+
+    return JSON.parse(
+      value
+    );
+
+  } catch {
+
+    return null;
+  }
+}
+
+
+/* =========================================================
+   UI
+   ========================================================= */
+
+function setStatus(
+  text
+) {
+
+  if (
+    !statusEl
+  ) {
+    return;
+  }
+
+
+  statusEl.textContent =
+    text;
+
+
+  statusEl.classList
+    .toggle(
+
+      "online",
+
+      text ===
+        "Online"
+    );
+}
+
+
+function setLog(
+  text
+) {
+
+  if (
+    !logEl
+  ) {
+    return;
+  }
+
+
+  logEl.textContent =
+    text;
+}
+
+
+function setButtonActive(
+  value
+) {
+
+  if (
+    !button
+  ) {
+    return;
+  }
+
+
+  button.classList
+    .toggle(
+
+      "active",
+
+      Boolean(
+        value
+      )
+    );
+}
+
+
+function setJarvisState(
+  state
+) {
+
+  document.body
+    .dataset
+    .jarvisState =
+    state;
+}
+
+
+/* =========================================================
+   DRAFT PANEL
+   ========================================================= */
+
+function showDraft(
+  draft
+) {
+
+  const panel =
+    document
+      .getElementById(
+        "draftPanel"
+      );
+
+
+  const subjectEl =
+    document
+      .getElementById(
+        "draftSubject"
+      );
+
+
+  const bodyEl =
+    document
+      .getElementById(
+        "draftBody"
+      );
+
+
+  if (
+    !panel ||
+    !subjectEl ||
+    !bodyEl
+  ) {
+
+    return;
+  }
+
+
+  subjectEl.textContent =
+
+    draft?.subject
+
+      ? `Betreff: ${draft.subject}`
+
+      : "";
+
+
+  bodyEl.textContent =
+    draft?.body ||
+    "";
+
+
+  panel.style.display =
+    "flex";
+}
+
+
+const draftCopyBtn =
+  document
+    .getElementById(
+      "draftCopyBtn"
+    );
+
+
+if (
+  draftCopyBtn
+) {
+
+  draftCopyBtn
+    .addEventListener(
+      "click",
+
+      async () => {
+
+        const subjectEl =
+          document
+            .getElementById(
+              "draftSubject"
+            );
+
+
+        const bodyEl =
+          document
+            .getElementById(
+              "draftBody"
+            );
+
+
+        const fullText =
+
+          `${subjectEl?.textContent || ""}
+
+${bodyEl?.textContent || ""}`
+
+            .trim();
+
+
+        try {
+
+          await navigator
+            .clipboard
+            .writeText(
+              fullText
+            );
+
+
+          const original =
+            draftCopyBtn
+              .textContent;
+
+
+          draftCopyBtn
+            .textContent =
+            "Kopiert!";
+
+
+          setTimeout(
+            () => {
+
+              draftCopyBtn
+                .textContent =
+                original;
+
+            },
+            1500
+          );
+
+
+        } catch (
+          error
+        ) {
+
+          console.warn(
+            "Kopieren fehlgeschlagen:",
+            error
+          );
+        }
+      }
+    );
+}
+
+
+/* =========================================================
+   BERLIN TIME
+   ========================================================= */
+
+function getBerlinHour() {
+
+  try {
+
+    const formatter =
+      new Intl
+        .DateTimeFormat(
+          "de-DE",
+          {
+
+            timeZone:
+              "Europe/Berlin",
+
+            hour:
+              "numeric",
+
+            hourCycle:
+              "h23"
+          }
+        );
+
+
+    const parts =
+      formatter
+        .formatToParts(
+          new Date()
+        );
+
+
+    const hourPart =
+      parts.find(
+        part =>
+          part.type ===
+          "hour"
+      );
+
+
+    const hour =
+      Number(
+        hourPart?.value
+      );
+
+
+    if (
+      !Number.isNaN(
+        hour
+      )
+    ) {
+
+      return hour;
+    }
+
+
+  } catch (
+    error
+  ) {
+
+    console.warn(
+      "Berlin-Zeit Fehler:",
+      error
+    );
+  }
+
+
+  return new Date()
+    .getHours();
+}
+
+
+/* =========================================================
+   GREETING
+   ========================================================= */
+
+function pickRandom(
+  items
+) {
+
+  return items[
+
+    Math.floor(
+
+      Math.random() *
+
+      items.length
+    )
+  ];
+}
+
+
+function getGreeting() {
+
+  const hour =
+    getBerlinHour();
+
+
+  if (
+    hour >= 5 &&
+    hour < 8
+  ) {
+
+    return pickRandom([
+      "Morgen, Mattl. Ich bin da. Wir starten ruhig, der Tag wird noch lang genug.",
+      "Morgen, Mattl. Ich bin wach. Das sollte für uns beide erstmal reichen.",
+      "Guten Morgen, Mattl. Schauen wir mal, was heute auf uns wartet.",
+      "Morgen, Mattl. Kaffee wäre vermutlich keine schlechte Idee. Ich bin jedenfalls bereit."
+    ]);
+  }
+
+
+  if (
+    hour >= 8 &&
+    hour < 11
+  ) {
+
+    return pickRandom([
+      "Morgen, Mattl. Ich bin da. Was steht an?",
+      "Morgen, Mattl. Dann schauen wir mal, was heute wieder brennt.",
+      "Guten Morgen, Mattl. Was nehmen wir uns zuerst vor?",
+      "Mattl, guten Morgen. Ich bin bereit. Der ruhige Teil des Tages dürfte damit vorbei sein."
+    ]);
+  }
+
+
+  if (
+    hour >= 11 &&
+    hour < 14
+  ) {
+
+    return pickRandom([
+      "Hey Mattl. Da bin ich. Was machen wir?",
+      "Mattl, ich bin da. Was steht an?",
+      "Hey Mattl. Was gibt's?",
+      "Da bist du ja, Mattl. Ich hatte kurz Hoffnung auf einen entspannten Vormittag."
+    ]);
+  }
+
+
+  if (
+    hour >= 14 &&
+    hour < 18
+  ) {
+
+    return pickRandom([
+      "Hey Mattl. Was steht heute noch an?",
+      "Mattl, da bin ich. Dann retten wir mal den Rest des Tages.",
+      "Hey Mattl. Was nehmen wir uns als Nächstes vor?",
+      "Mattl, ich bin bereit. Langweilig wird's vermutlich wieder nicht."
+    ]);
+  }
+
+
+  if (
+    hour >= 18 &&
+    hour < 21
+  ) {
+
+    return pickRandom([
+      "Abend, Mattl. Was liegt noch an?",
+      "Mattl, ich bin da. Feierabend hat offenbar noch etwas Zeit.",
+      "Hey Mattl. Noch eine Runde? Was machen wir?",
+      "Abend, Mattl. Schauen wir mal, was wir heute noch erledigt bekommen."
+    ]);
+  }
+
+
+  if (
+    hour >= 21 &&
+    hour < 24
+  ) {
+
+    return pickRandom([
+      "Abend, Mattl. Feierabend scheint heute wieder eher ein theoretisches Konzept zu sein.",
+      "Mattl, ich bin da. Andere nennen das jetzt vermutlich Feierabend.",
+      "Hey Mattl. Noch nicht genug für heute? Na gut, was liegt an?",
+      "Mattl, da bin ich. Wir ignorieren die Uhr einfach gemeinsam."
+    ]);
+  }
+
+
+  return pickRandom([
+    "Mattl ... ernsthaft? Na gut. Ich bin da.",
+    "Mattl, Schlaf wird offenbar weiterhin überschätzt. Was machen wir?",
+    "Na gut, Mattl. Dann tun wir so, als wäre das eine normale Arbeitszeit.",
+    "Mattl, es ist spät. Natürlich arbeiten wir noch. Was sonst."
+  ]);
 }
 
 
@@ -1289,8 +1203,11 @@ function fadeIntroAfterGreeting() {
 async function createMicrophoneStream() {
 
   if (
-    !navigator.mediaDevices ||
-    !navigator.mediaDevices
+    !navigator
+      .mediaDevices ||
+
+    !navigator
+      .mediaDevices
       .getUserMedia
   ) {
 
@@ -1301,7 +1218,9 @@ async function createMicrophoneStream() {
 
 
   micStream =
-    await navigator.mediaDevices
+
+    await navigator
+      .mediaDevices
       .getUserMedia({
 
         audio: {
@@ -1321,6 +1240,11 @@ async function createMicrophoneStream() {
       });
 
 
+  /*
+   * Beim Start bleibt Mikro aus,
+   * bis Begrüßung fertig ist.
+   */
+
   setMicrophoneEnabled(
     false
   );
@@ -1337,14 +1261,14 @@ function setMicrophoneEnabled(
   if (
     !micStream
   ) {
-
     return;
   }
 
 
   for (
     const track of
-    micStream.getAudioTracks()
+    micStream
+      .getAudioTracks()
   ) {
 
     track.enabled =
@@ -1360,7 +1284,6 @@ function stopMicrophone() {
   if (
     !micStream
   ) {
-
     return;
   }
 
@@ -1369,7 +1292,8 @@ function stopMicrophone() {
 
     for (
       const track of
-      micStream.getTracks()
+      micStream
+        .getTracks()
     ) {
 
       track.stop();
@@ -1393,8 +1317,9 @@ function sendRealtimeEvent(
 
   if (
     !dataChannel ||
+
     dataChannel.readyState !==
-    "open"
+      "open"
   ) {
 
     console.warn(
@@ -1419,7 +1344,9 @@ function sendRealtimeEvent(
     return true;
 
 
-  } catch (error) {
+  } catch (
+    error
+  ) {
 
     console.error(
       "Realtime Sendefehler:",
@@ -1442,13 +1369,22 @@ function speakExactText(
 
   const clean =
     String(
-      text || ""
-    ).trim();
+      text ||
+      ""
+    )
+      .trim();
 
 
-  if (!clean) {
+  if (
+    !clean
+  ) {
+
     return false;
   }
+
+
+  responseInProgress =
+    true;
 
 
   return sendRealtimeEvent({
@@ -1463,9 +1399,19 @@ function speakExactText(
       ],
 
       instructions:
-        `Sprich jetzt genau diese kurze Begrüßung aus. ` +
-        `Sprich vom ersten Wort an mit stabiler Lautstärke. ` +
-        `Sprich ruhig, natürlich und flüssig auf Deutsch. ` +
+
+        `Sprich ausschließlich diese Begrüßung. ` +
+
+        `Nutze neutrales deutsches Hochdeutsch wie ein deutscher Muttersprachler. ` +
+
+        `Keine englische oder fremdsprachige Satzmelodie. ` +
+
+        `Beginne bereits beim ersten Wort mit normaler voller Sprechlautstärke ` +
+
+        `und halte die Lautstärke bis zum letzten Wort möglichst konstant. ` +
+
+        `Sprich ruhig, tief, natürlich und flüssig. ` +
+
         `Füge nichts hinzu: ${clean}`
     }
   });
@@ -1478,13 +1424,36 @@ function speakProactiveNotice(
 
   const clean =
     String(
-      text || ""
-    ).trim();
+      text ||
+      ""
+    )
+      .trim();
 
 
-  if (!clean) {
+  if (
+    !clean
+  ) {
+
     return false;
   }
+
+
+  /*
+   * Nie eine neue Ansage starten,
+   * solange JARVIS noch antwortet.
+   */
+
+  if (
+    responseInProgress ||
+    assistantSpeaking
+  ) {
+
+    return false;
+  }
+
+
+  responseInProgress =
+    true;
 
 
   return sendRealtimeEvent({
@@ -1499,9 +1468,17 @@ function speakProactiveNotice(
       ],
 
       instructions:
-        `Melde dich selbstständig kurz. ` +
-        `Sprich vom ersten Wort an mit stabiler Lautstärke. ` +
-        `Sprich folgenden Hinweis natürlich aus. ` +
+
+        `Melde dich selbstständig kurz bei Mattl. ` +
+
+        `Sprich neutrales deutsches Hochdeutsch wie ein deutscher Muttersprachler. ` +
+
+        `Keine fremde Satzmelodie. ` +
+
+        `Beginne beim ersten Wort mit normaler voller Lautstärke und halte sie konstant. ` +
+
+        `Sprich tief, ruhig und flüssig. ` +
+
         `Keine technische Erklärung und keine zusätzliche Frage: ${clean}`
     }
   });
@@ -1545,19 +1522,25 @@ async function executeRealtimeTool(
   }
 
 
+  /*
+   * verhindert Tool-Doppelaufruf
+   */
+
   if (
-    runningToolCalls.has(
-      callId
-    )
+    runningToolCalls
+      .has(
+        callId
+      )
   ) {
 
     return;
   }
 
 
-  runningToolCalls.add(
-    callId
-  );
+  runningToolCalls
+    .add(
+      callId
+    );
 
 
   setJarvisState(
@@ -1570,8 +1553,7 @@ async function executeRealtimeTool(
   );
 
 
-  let args =
-    {};
+  let args = {};
 
 
   try {
@@ -1585,10 +1567,10 @@ async function executeRealtimeTool(
 
         : {};
 
+
   } catch {
 
-    args =
-      {};
+    args = {};
   }
 
 
@@ -1605,6 +1587,7 @@ async function executeRealtimeTool(
   try {
 
     const response =
+
       await fetch(
         "/api/realtime-tool",
         {
@@ -1642,6 +1625,7 @@ async function executeRealtimeTool(
           raw
         );
 
+
     } catch {
 
       toolResult = {
@@ -1650,7 +1634,9 @@ async function executeRealtimeTool(
           false,
 
         error:
+
           raw ||
+
           "Ungültige Tool-Antwort."
       };
     }
@@ -1670,8 +1656,13 @@ async function executeRealtimeTool(
     }
 
 
+    /*
+     * Mail-Entwurf anzeigen
+     */
+
     if (
-      toolResult?.draft
+      toolResult
+        ?.draft
     ) {
 
       showDraft(
@@ -1680,7 +1671,9 @@ async function executeRealtimeTool(
     }
 
 
-  } catch (error) {
+  } catch (
+    error
+  ) {
 
     console.error(
       "Tool Request Fehler:",
@@ -1694,11 +1687,17 @@ async function executeRealtimeTool(
         false,
 
       error:
+
         error.message ||
+
         "Tool konnte nicht ausgeführt werden."
     };
   }
 
+
+  /*
+   * Tool-Ergebnis zurück
+   */
 
   sendRealtimeEvent({
 
@@ -1721,6 +1720,15 @@ async function executeRealtimeTool(
   });
 
 
+  /*
+   * Genau EINE Antwort
+   * auf Tool-Ergebnis erzeugen.
+   */
+
+  responseInProgress =
+    true;
+
+
   sendRealtimeEvent({
 
     type:
@@ -1735,9 +1743,10 @@ async function executeRealtimeTool(
   });
 
 
-  runningToolCalls.delete(
-    callId
-  );
+  runningToolCalls
+    .delete(
+      callId
+    );
 }
 
 
@@ -1752,7 +1761,6 @@ function handleRealtimeEvent(
   if (
     !event?.type
   ) {
-
     return;
   }
 
@@ -1786,7 +1794,12 @@ function handleRealtimeEvent(
       break;
 
 
+    /* =====================================================
+       USER STARTS SPEAKING
+       ===================================================== */
+
     case "input_audio_buffer.speech_started":
+
 
       if (
         !active ||
@@ -1810,7 +1823,12 @@ function handleRealtimeEvent(
       break;
 
 
+    /* =====================================================
+       USER STOPS SPEAKING
+       ===================================================== */
+
     case "input_audio_buffer.speech_stopped":
+
 
       if (
         !active ||
@@ -1834,7 +1852,12 @@ function handleRealtimeEvent(
       break;
 
 
+    /* =====================================================
+       TOOL CALL
+       ===================================================== */
+
     case "response.function_call_arguments.done":
+
 
       executeRealtimeTool(
         event
@@ -1844,9 +1867,14 @@ function handleRealtimeEvent(
       break;
 
 
+    /* =====================================================
+       RESPONSE START
+       ===================================================== */
+
     case "response.created":
 
-      assistantSpeaking =
+
+      responseInProgress =
         true;
 
 
@@ -1863,9 +1891,20 @@ function handleRealtimeEvent(
       break;
 
 
+    /* =====================================================
+       AUDIO START
+       ===================================================== */
+
+    case "output_audio_buffer.started":
+
     case "response.output_audio.delta":
 
+
       assistantSpeaking =
+        true;
+
+
+      responseInProgress =
         true;
 
 
@@ -1882,7 +1921,28 @@ function handleRealtimeEvent(
       break;
 
 
+    /* =====================================================
+       AUDIO STOP
+       ===================================================== */
+
+    case "output_audio_buffer.stopped":
+
+    case "output_audio_buffer.cleared":
+
+
+      assistantSpeaking =
+        false;
+
+
+      break;
+
+
+    /* =====================================================
+       TRANSCRIPT
+       ===================================================== */
+
     case "response.output_audio_transcript.done":
+
 
       if (
         event.transcript
@@ -1898,21 +1958,40 @@ function handleRealtimeEvent(
       break;
 
 
+    /* =====================================================
+       RESPONSE DONE
+       ===================================================== */
+
     case "response.done": {
+
 
       assistantSpeaking =
         false;
 
 
+      responseInProgress =
+        false;
+
+
+      /*
+       * War Response ein Tool Call?
+       */
+
       const hasFunctionCall =
+
         Array.isArray(
-          event.response?.output
+          event.response
+            ?.output
         ) &&
-        event.response.output.some(
-          item =>
-            item?.type ===
-            "function_call"
-        );
+
+        event.response
+          .output
+          .some(
+
+            item =>
+              item?.type ===
+              "function_call"
+          );
 
 
       if (
@@ -1934,7 +2013,7 @@ function handleRealtimeEvent(
 
 
       /*
-       * Begrüßung gerade beendet.
+       * Begrüßung beendet
        */
 
       if (
@@ -1945,21 +2024,9 @@ function handleRealtimeEvent(
           false;
 
 
-        /*
-         * Mikrofon sofort aktivieren.
-         */
-
         setMicrophoneEnabled(
           true
         );
-
-
-        /*
-         * Musik beginnt JETZT
-         * ihren 15-Sekunden-Fade.
-         */
-
-        fadeIntroAfterGreeting();
 
 
         setJarvisState(
@@ -1973,7 +2040,7 @@ function handleRealtimeEvent(
 
 
         console.log(
-          "Begrüßung fertig. Mikrofon aktiv. Intro blendet 15 Sekunden aus."
+          "Begrüßung fertig. Mikrofon aktiv."
         );
 
 
@@ -1981,10 +2048,16 @@ function handleRealtimeEvent(
       }
 
 
+      /*
+       * normale Antwort beendet
+       */
+
       if (
         active &&
-        runningToolCalls.size ===
-        0
+
+        runningToolCalls
+          .size ===
+          0
       ) {
 
         setJarvisState(
@@ -2002,7 +2075,12 @@ function handleRealtimeEvent(
     }
 
 
+    /* =====================================================
+       ERROR
+       ===================================================== */
+
     case "error":
+
 
       console.error(
         "Realtime Fehler:",
@@ -2010,8 +2088,19 @@ function handleRealtimeEvent(
       );
 
 
+      assistantSpeaking =
+        false;
+
+
+      responseInProgress =
+        false;
+
+
       setLog(
-        event.error?.message ||
+
+        event.error
+          ?.message ||
+
         "Realtime Fehler."
       );
 
@@ -2044,7 +2133,7 @@ async function connectRealtime() {
 
   if (
     typeof RTCPeerConnection ===
-    "undefined"
+      "undefined"
   ) {
 
     throw new Error(
@@ -2061,29 +2150,33 @@ async function connectRealtime() {
      REMOTE AUDIO
      ======================================================= */
 
-  peerConnection.ontrack =
-    async event => {
+  peerConnection
+    .ontrack =
+    event => {
+
 
       if (
         !remoteAudio
       ) {
 
-        throw new Error(
+        console.error(
           "#remoteAudio fehlt in index.html."
         );
+
+
+        return;
       }
 
 
       const stream =
-        event.streams?.[0] ||
+
+        event.streams
+          ?.[0] ||
+
         new MediaStream([
           event.track
         ]);
 
-
-      /*
-       * Stream weiterhin am Element hinterlegen.
-       */
 
       remoteAudio.srcObject =
         stream;
@@ -2097,66 +2190,92 @@ async function connectRealtime() {
         true;
 
 
-      /*
-       * Erst versuchen wir
-       * unsere eigene Audio-Kette.
-       */
+      connectProcessedPlayback(
+        stream
+      )
 
-      const processed =
-        await connectProcessedPlayback(
-          stream
-        );
+        .then(
+          processed => {
 
 
-      if (
-        processed
-      ) {
+            if (
+              processed
+            ) {
 
-        /*
-         * Wichtig:
-         * HTML-Audio stumm,
-         * sonst hören wir alles doppelt.
-         */
+              /*
+               * HTML AUDIO AUS.
+               * Sonst Stimme doppelt.
+               */
 
-        remoteAudio.muted =
-          true;
-
-
-        remoteAudio.volume =
-          0;
+              remoteAudio.muted =
+                true;
 
 
-        console.log(
-          "Remote Audio läuft über JARVIS Audio-Leveling."
-        );
+              remoteAudio.volume =
+                0;
 
 
-      } else {
-
-        /*
-         * Fallback.
-         */
-
-        remoteAudio.muted =
-          false;
-
-
-        remoteAudio.volume =
-          1;
-
-
-        remoteAudio
-          .play()
-          .catch(
-            error => {
-
-              console.warn(
-                "Remote Audio autoplay:",
-                error
+              console.log(
+                "Realtime Audio: Compressor + Limiter aktiv."
               );
+
+
+              return;
             }
-          );
-      }
+
+
+            /*
+             * Fallback
+             */
+
+            remoteAudio.muted =
+              false;
+
+
+            remoteAudio.volume =
+              1;
+
+
+            remoteAudio
+              .play()
+
+              .catch(
+                error => {
+
+                  console.warn(
+                    "Remote Audio autoplay:",
+                    error
+                  );
+                }
+              );
+          }
+        )
+
+        .catch(
+          error => {
+
+
+            console.warn(
+              "Audio-Processing Fehler:",
+              error
+            );
+
+
+            remoteAudio.muted =
+              false;
+
+
+            remoteAudio.volume =
+              1;
+
+
+            remoteAudio
+              .play()
+              .catch(
+                () => {}
+              );
+          }
+        );
     };
 
 
@@ -2167,6 +2286,7 @@ async function connectRealtime() {
   peerConnection
     .onconnectionstatechange =
     () => {
+
 
       const state =
         peerConnection
@@ -2180,13 +2300,17 @@ async function connectRealtime() {
 
 
       if (
+
         (
           state ===
             "failed" ||
+
           state ===
             "disconnected"
         ) &&
+
         active &&
+
         !stopping
       ) {
 
@@ -2208,7 +2332,7 @@ async function connectRealtime() {
 
 
   /* =======================================================
-     MICROPHONE
+     MICROPHONE TRACK
      ======================================================= */
 
   const audioTracks =
@@ -2226,10 +2350,13 @@ async function connectRealtime() {
   }
 
 
-  peerConnection.addTrack(
-    audioTracks[0],
-    micStream
-  );
+  peerConnection
+    .addTrack(
+
+      audioTracks[0],
+
+      micStream
+    );
 
 
   /* =======================================================
@@ -2243,44 +2370,51 @@ async function connectRealtime() {
       );
 
 
-  dataChannel.addEventListener(
-    "message",
+  dataChannel
+    .addEventListener(
 
-    event => {
+      "message",
 
-      const data =
-        safeJsonParse(
-          event.data
+      event => {
+
+        const data =
+          safeJsonParse(
+            event.data
+          );
+
+
+        if (
+          !data
+        ) {
+
+          return;
+        }
+
+
+        handleRealtimeEvent(
+          data
         );
-
-
-      if (
-        !data
-      ) {
-
-        return;
       }
-
-
-      handleRealtimeEvent(
-        data
-      );
-    }
-  );
+    );
 
 
   const channelReady =
+
     new Promise(
+
       (
         resolve,
         reject
       ) => {
 
+
         const timeout =
+
           setTimeout(
             () => {
 
               reject(
+
                 new Error(
                   "Realtime DataChannel wurde nicht geöffnet."
                 )
@@ -2291,73 +2425,86 @@ async function connectRealtime() {
           );
 
 
-        dataChannel.addEventListener(
-          "open",
+        dataChannel
+          .addEventListener(
 
-          () => {
+            "open",
 
-            clearTimeout(
-              timeout
-            );
+            () => {
 
 
-            realtimeConnected =
-              true;
+              clearTimeout(
+                timeout
+              );
 
 
-            console.log(
-              "Realtime DataChannel offen."
-            );
+              realtimeConnected =
+                true;
 
 
-            resolve();
-          },
-
-          {
-            once: true
-          }
-        );
+              console.log(
+                "Realtime DataChannel offen."
+              );
 
 
-        dataChannel.addEventListener(
-          "error",
+              resolve();
+            },
 
-          () => {
+            {
+              once:
+                true
+            }
+          );
 
-            clearTimeout(
-              timeout
-            );
+
+        dataChannel
+          .addEventListener(
+
+            "error",
+
+            () => {
 
 
-            reject(
-              new Error(
-                "Realtime DataChannel Fehler."
-              )
-            );
-          },
+              clearTimeout(
+                timeout
+              );
 
-          {
-            once: true
-          }
-        );
+
+              reject(
+
+                new Error(
+                  "Realtime DataChannel Fehler."
+                )
+              );
+
+            },
+
+            {
+              once:
+                true
+            }
+          );
       }
     );
 
 
   /* =======================================================
-     SDP
+     CREATE SDP OFFER
      ======================================================= */
 
   const offer =
+
     await peerConnection
       .createOffer();
 
 
   if (
     !offer?.sdp ||
-    !offer.sdp.startsWith(
-      "v=0"
-    )
+
+    !offer.sdp
+      .startsWith(
+        "v=0"
+      )
   ) {
 
     throw new Error(
@@ -2378,7 +2525,12 @@ async function connectRealtime() {
   );
 
 
+  /* =======================================================
+     SERVER SESSION
+     ======================================================= */
+
   const response =
+
     await fetch(
       "/api/realtime-session",
       {
@@ -2407,16 +2559,19 @@ async function connectRealtime() {
   ) {
 
     throw new Error(
+
       answerSdp ||
+
       `Realtime HTTP ${response.status}`
     );
   }
 
 
   if (
-    !answerSdp.startsWith(
-      "v=0"
-    )
+    !answerSdp
+      .startsWith(
+        "v=0"
+      )
   ) {
 
     throw new Error(
@@ -2455,7 +2610,16 @@ function disconnectRealtime() {
     false;
 
 
-  runningToolCalls.clear();
+  assistantSpeaking =
+    false;
+
+
+  responseInProgress =
+    false;
+
+
+  runningToolCalls
+    .clear();
 
 
   if (
@@ -2464,7 +2628,8 @@ function disconnectRealtime() {
 
     try {
 
-      dataChannel.close();
+      dataChannel
+        .close();
 
     } catch {}
 
@@ -2480,7 +2645,8 @@ function disconnectRealtime() {
 
     try {
 
-      peerConnection.close();
+      peerConnection
+        .close();
 
     } catch {}
 
@@ -2499,25 +2665,27 @@ function disconnectRealtime() {
 
     try {
 
-      remoteAudio.pause();
+      remoteAudio
+        .pause();
 
     } catch {}
 
 
     try {
 
-      remoteAudio.srcObject =
+      remoteAudio
+        .srcObject =
         null;
 
     } catch {}
 
 
     remoteAudio.muted =
-      true;
+      false;
 
 
     remoteAudio.volume =
-      0;
+      1;
   }
 }
 
@@ -2530,11 +2698,21 @@ async function runBackgroundCheck(
   endpointUrl
 ) {
 
+  /*
+   * Niemals proaktiv dazwischenreden.
+   */
+
   if (
     !active ||
+
     !realtimeConnected ||
+
     greetingInProgress ||
+
     assistantSpeaking ||
+
+    responseInProgress ||
+
     runningToolCalls.size
   ) {
 
@@ -2545,6 +2723,7 @@ async function runBackgroundCheck(
   try {
 
     const response =
+
       await fetch(
         endpointUrl,
         {
@@ -2578,7 +2757,9 @@ async function runBackgroundCheck(
 
     if (
       !data?.ok ||
+
       !data.hasNotice ||
+
       !data.text
     ) {
 
@@ -2591,7 +2772,9 @@ async function runBackgroundCheck(
     );
 
 
-  } catch (error) {
+  } catch (
+    error
+  ) {
 
     console.warn(
       "Background Check:",
@@ -2623,22 +2806,31 @@ function startProactiveChecks() {
 
 
   proactiveFirstCheckTimer =
+
     setTimeout(
+
       checkProactiveNotice,
+
       PROACTIVE_FIRST_CHECK_DELAY_MS
     );
 
 
   proactiveCheckTimer =
+
     setInterval(
+
       checkProactiveNotice,
+
       PROACTIVE_CHECK_INTERVAL_MS
     );
 
 
   reminderCheckTimer =
+
     setInterval(
+
       checkDueReminders,
+
       REMINDER_CHECK_INTERVAL_MS
     );
 }
@@ -2740,16 +2932,25 @@ async function startJarvis() {
 
   try {
 
+
     /*
-     * AudioContext direkt beim
-     * Benutzer-Klick aktivieren.
+     * Browser-AudioContext direkt
+     * durch Benutzer-Klick aktivieren.
      */
 
     await ensurePlaybackAudioContext();
 
 
+    /*
+     * Mikro
+     */
+
     await createMicrophoneStream();
 
+
+    /*
+     * Intro
+     */
 
     await startIntro();
 
@@ -2758,6 +2959,10 @@ async function startJarvis() {
       "Realtime-Verbindung wird aufgebaut …"
     );
 
+
+    /*
+     * Realtime
+     */
 
     await connectRealtime();
 
@@ -2772,8 +2977,7 @@ async function startJarvis() {
 
 
     /*
-     * Kürzer als vorher:
-     * JARVIS soll schneller sprechen.
+     * Nur kurze Intro-Verzögerung.
      */
 
     await sleep(
@@ -2790,11 +2994,15 @@ async function startJarvis() {
 
 
     /*
-     * Musik leise hinter Stimme.
+     * Intro absenken.
      */
 
     duckIntro();
 
+
+    /*
+     * Begrüßung
+     */
 
     greetingInProgress =
       true;
@@ -2811,6 +3019,7 @@ async function startJarvis() {
 
 
     const sent =
+
       speakExactText(
         getGreeting()
       );
@@ -2826,10 +3035,16 @@ async function startJarvis() {
     }
 
 
+    /*
+     * Hintergrundprüfungen
+     */
+
     startProactiveChecks();
 
 
-  } catch (error) {
+  } catch (
+    error
+  ) {
 
     console.error(
       "JARVIS Startfehler:",
@@ -2842,6 +3057,10 @@ async function startJarvis() {
 
 
     greetingInProgress =
+      false;
+
+
+    responseInProgress =
       false;
 
 
@@ -2878,6 +3097,7 @@ async function startJarvis() {
 
 
   } finally {
+
 
     starting =
       false;
@@ -2921,6 +3141,10 @@ async function stopJarvis() {
 
 
   assistantSpeaking =
+    false;
+
+
+  responseInProgress =
     false;
 
 
@@ -3011,9 +3235,8 @@ if (
 
 
   /*
-   * Standardmäßig stumm,
-   * weil die Wiedergabe über
-   * Web Audio läuft.
+   * Normale Ausgabe läuft
+   * über Web Audio.
    */
 
   remoteAudio.muted =
@@ -3033,31 +3256,42 @@ if (
   button
 ) {
 
-  button.addEventListener(
-    "click",
+  button
+    .addEventListener(
 
-    async () => {
+      "click",
 
-      if (
-        starting ||
-        stopping
-      ) {
+      async () => {
 
-        return;
+
+        if (
+          starting ||
+          stopping
+        ) {
+
+          return;
+        }
+
+
+        if (
+          active
+        ) {
+
+          await stopJarvis();
+
+
+        } else {
+
+          await startJarvis();
+        }
       }
+    );
 
 
-      if (
-        active
-      ) {
+} else {
 
-        await stopJarvis();
-
-      } else {
-
-        await startJarvis();
-      }
-    }
+  console.error(
+    "#toggle-Button nicht im DOM gefunden."
   );
 }
 
@@ -3066,11 +3300,13 @@ if (
    CLEANUP
    ========================================================= */
 
-window.addEventListener(
-  "pagehide",
+window
+  .addEventListener(
 
-  () => {
+    "pagehide",
 
-    stopJarvis();
-  }
-);
+    () => {
+
+      stopJarvis();
+    }
+  );
