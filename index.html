@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#030406" />
   <meta name="description" content="Druckelite24 JARVIS Business Voice Assistant" />
   <title>Druckelite24 · JARVIS</title>
-  <link rel="stylesheet" href="styles.css?v=7" />
+  <link rel="stylesheet" href="styles.css?v=8" />
 </head>
 <body data-jarvis-state="offline">
 
@@ -87,49 +87,16 @@
       </section>
 
       <section class="panel core-panel">
-        <div class="core-stage" id="voicePanel">
-          <div class="system-stack">
-            <div class="system-mini"><label>SYSTEM STATUS</label><b>ONLINE</b><div class="meter-line"></div></div>
-            <div class="system-mini"><label>VERBINDUNG</label><b>STABIL</b><div class="meter-line"></div></div>
-            <div class="system-mini"><label>DATENFLUSS</label><b>AKTIV</b><div class="meter-line"></div></div>
-            <div class="system-mini"><label>LETZTES UPDATE</label><b id="hudClock">LIVE</b></div>
+        <div class="core-exact" id="voicePanel">
+          <img class="core-exact-image" src="jarvis-core-v8.png" alt="JARVIS Herzstück des Systems" />
+          <div class="core-live-overlay">
+            <div class="core-live-state">JARVIS · <span id="hudState">STANDBY</span></div>
           </div>
-
-          <div class="system-stack right">
-            <div class="system-mini"><label>PERFORMANCE</label><b>OPTIMAL</b></div>
-            <div class="system-mini"><label>AUSLASTUNG</label><b>MODERAT</b></div>
-            <div class="system-mini"><label>SICHERHEIT</label><b>HOCH</b></div>
-            <div class="system-mini"><label>BACKUP</label><b>AKTIV</b></div>
-          </div>
-
-          <div class="shirt-wrap" aria-hidden="true">
-            <svg class="shirt-svg" viewBox="0 0 420 500">
-              <path class="shirt-shape" d="M128 58 L73 82 L22 132 L67 182 L91 163 L91 449 L329 449 L329 163 L353 182 L398 132 L347 82 L292 58 C270 92 246 108 210 108 C174 108 150 92 128 58 Z"/>
-              <path class="shirt-net" d="M128 58 L210 108 L292 58 M73 82 L91 163 L210 108 L329 163 L347 82 M22 132 L91 163 L67 182 M398 132 L329 163 L353 182 M91 163 L329 163 M91 220 L329 220 M91 280 L329 280 M91 340 L329 340 M91 400 L329 400"/>
-              <path class="shirt-net soft" d="M91 163 L210 449 M329 163 L210 449 M128 58 L91 449 M292 58 L329 449 M73 82 L329 340 M347 82 L91 340 M22 132 L329 280 M398 132 L91 280"/>
-              <path class="shirt-net soft" d="M103 145 L314 432 M116 103 L318 380 M80 119 L300 260 M340 116 L115 275 M103 432 L315 190 M91 250 L329 360"/>
-            </svg>
-            <img class="shirt-logo" src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252" alt="" />
-          </div>
-
-          <div class="holo-floor"></div>
-          <div class="core-caption">HERZSTÜCK DES SYSTEMS<strong>ALLE SYSTEME LAUFEN OPTIMAL</strong></div>
         </div>
       </section>
 
       <section class="side-stack">
-        <section class="panel news-panel">
-          <div class="panel-head"><span>◉ NEWS & UPDATES</span></div>
-          <div class="news-list">
-            <div class="news-row"><div class="news-thumb"></div><div><div class="news-title">Textildruck im Wandel</div><div class="news-sub">Nachhaltigkeit und Innovation im Fokus</div><div class="news-time">Heute</div></div></div>
-            <div class="news-row"><div class="news-thumb"></div><div><div class="news-title">Neuer Trend: Oversized Streetwear</div><div class="news-sub">Nachfrage steigt weiter an</div><div class="news-time">Heute</div></div></div>
-            <div class="news-row"><div class="news-thumb"></div><div><div class="news-title">DTG vs. Siebdruck</div><div class="news-sub">Was ist die beste Wahl fürs Business?</div><div class="news-time">Gestern</div></div></div>
-            <div class="news-row"><div class="news-thumb"></div><div><div class="news-title">Nachhaltige Textilien</div><div class="news-sub">Umweltbewusstsein beim Kunden wächst</div><div class="news-time">Gestern</div></div></div>
-          </div>
-          <div class="news-footer">ALLE NEWS ANZEIGEN →</div>
-        </section>
-
-        <section class="panel weather-panel">
+<section class="panel weather-panel">
           <div class="panel-head"><span>☁ WETTER</span><span class="panel-dot" id="wxDot"></span></div>
           <div class="weather-body">
             <div class="wx-location">Ludwigshafen am Rhein</div>
