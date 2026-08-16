@@ -531,8 +531,6 @@ function getGreetingAddress() {
 
 function getGreeting() {
 
-function getGreeting() {
-
   const hour =
     getBerlinHour();
 
