@@ -2,12 +2,12 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V10.3
+   V10.4 · ZAHLEN & TTS BUFFER FIX
    OPENAI REALTIME TEXT
    + ELEVENLABS WEBSOCKET
    + PCM 24 KHZ
    + WEB AUDIO
-   + DEBUG HUD
+   + OHNE DEBUG HUD
    ========================================================= */
 
 
@@ -32,75 +32,8 @@ const remoteAudio =
    DEBUG HUD
    ========================================================= */
 
-const debugHud =
-  document.createElement("div");
+// DEBUG HUD entfernt – debugSet() bleibt absichtlich als sichere No-op-Hilfe erhalten.
 
-debugHud.id =
-  "jarvisDebugHud";
-
-debugHud.style.position =
-  "fixed";
-
-debugHud.style.right =
-  "15px";
-
-debugHud.style.bottom =
-  "15px";
-
-debugHud.style.zIndex =
-  "99999";
-
-debugHud.style.background =
-  "rgba(0,0,0,0.92)";
-
-debugHud.style.color =
-  "#00ff88";
-
-debugHud.style.padding =
-  "14px 16px";
-
-debugHud.style.fontFamily =
-  "monospace";
-
-debugHud.style.fontSize =
-  "13px";
-
-debugHud.style.lineHeight =
-  "1.65";
-
-debugHud.style.border =
-  "1px solid #00ff88";
-
-debugHud.style.borderRadius =
-  "10px";
-
-debugHud.style.minWidth =
-  "310px";
-
-debugHud.style.maxWidth =
-  "430px";
-
-debugHud.style.wordBreak =
-  "break-word";
-
-debugHud.innerHTML = `
-  <strong>JARVIS DEBUG V10.3</strong><br>
-  OpenAI: <span id="dbgOpenAI">❌</span><br>
-  ElevenLabs: <span id="dbgEleven">❌</span><br>
-  Token: <span id="dbgToken">❌</span><br>
-  Voice ID: <span id="dbgVoice">-</span><br>
-  Socket: <span id="dbgSocket">-</span><br>
-  OpenAI Text: <span id="dbgText">❌</span><br>
-  ElevenLabs Audio: <span id="dbgAudio">❌</span><br>
-  Wiedergabe: <span id="dbgPlayback">❌</span><br>
-  Format: <span id="dbgFormat">pcm_24000</span><br>
-  Close Code: <span id="dbgClose">-</span><br>
-  Letztes Event: <span id="dbgEvent">Bereit</span>
-`;
-
-document.body.appendChild(
-  debugHud
-);
 
 
 function debugSet(
@@ -154,6 +87,24 @@ let responseInProgress =
 
 let currentResponseText =
   "";
+
+/* =========================================================
+   TTS TEXT BUFFER
+   Sammelt OpenAI-Text kurz, damit ElevenLabs keine Zahlen,
+   Abkürzungen oder Wörter in Einzelteilen bekommt.
+   ========================================================= */
+
+let ttsTextBuffer =
+  "";
+
+let ttsBufferTimer =
+  null;
+
+const TTS_BUFFER_DELAY_MS =
+  140;
+
+const TTS_BUFFER_MAX_CHARS =
+  140;
 
 const runningToolCalls =
   new Set();
@@ -2218,6 +2169,522 @@ async function connectElevenLabs() {
 
 
 /* =========================================================
+   DEUTSCHE ZAHLEN FÜR SPRACHAUSGABE
+   ========================================================= */
+
+function germanNumberUnder100(
+  number
+) {
+
+  const n =
+    Math.max(
+      0,
+      Math.floor(
+        Number(number) || 0
+      )
+    );
+
+  const ones = [
+    "null",
+    "eins",
+    "zwei",
+    "drei",
+    "vier",
+    "fünf",
+    "sechs",
+    "sieben",
+    "acht",
+    "neun"
+  ];
+
+  const special = {
+    10: "zehn",
+    11: "elf",
+    12: "zwölf",
+    13: "dreizehn",
+    14: "vierzehn",
+    15: "fünfzehn",
+    16: "sechzehn",
+    17: "siebzehn",
+    18: "achtzehn",
+    19: "neunzehn"
+  };
+
+  const tens = {
+    20: "zwanzig",
+    30: "dreißig",
+    40: "vierzig",
+    50: "fünfzig",
+    60: "sechzig",
+    70: "siebzig",
+    80: "achtzig",
+    90: "neunzig"
+  };
+
+  if (n < 10) {
+    return ones[n];
+  }
+
+  if (special[n]) {
+    return special[n];
+  }
+
+  const ten =
+    Math.floor(
+      n / 10
+    ) * 10;
+
+  const one =
+    n % 10;
+
+  if (one === 0) {
+    return tens[ten];
+  }
+
+  const oneWord =
+    one === 1
+      ? "ein"
+      : ones[one];
+
+  return `${oneWord}und${tens[ten]}`;
+}
+
+
+function germanIntegerToWords(
+  number
+) {
+
+  let n =
+    Math.floor(
+      Math.abs(
+        Number(number) || 0
+      )
+    );
+
+  if (n === 0) {
+    return "null";
+  }
+
+  const parts =
+    [];
+
+  const appendUnder1000 =
+    value => {
+
+      let x =
+        value;
+
+      let result =
+        "";
+
+      if (x >= 100) {
+
+        const hundreds =
+          Math.floor(
+            x / 100
+          );
+
+        result +=
+          hundreds === 1
+            ? "einhundert"
+            : `${germanNumberUnder100(hundreds)}hundert`;
+
+        x %=
+          100;
+      }
+
+      if (x > 0) {
+        result +=
+          germanNumberUnder100(
+            x
+          );
+      }
+
+      return result;
+    };
+
+
+  const billions =
+    Math.floor(
+      n / 1000000000
+    );
+
+  if (billions > 0) {
+
+    parts.push(
+      billions === 1
+        ? "eine Milliarde"
+        : `${germanIntegerToWords(billions)} Milliarden`
+    );
+
+    n %=
+      1000000000;
+  }
+
+
+  const millions =
+    Math.floor(
+      n / 1000000
+    );
+
+  if (millions > 0) {
+
+    parts.push(
+      millions === 1
+        ? "eine Million"
+        : `${germanIntegerToWords(millions)} Millionen`
+    );
+
+    n %=
+      1000000;
+  }
+
+
+  const thousands =
+    Math.floor(
+      n / 1000
+    );
+
+  if (thousands > 0) {
+
+    parts.push(
+      thousands === 1
+        ? "eintausend"
+        : `${appendUnder1000(thousands)}tausend`
+    );
+
+    n %=
+      1000;
+  }
+
+
+  if (n > 0) {
+    parts.push(
+      appendUnder1000(
+        n
+      )
+    );
+  }
+
+
+  return parts
+    .join(" ")
+    .trim();
+}
+
+
+function parseGermanInteger(
+  value
+) {
+
+  const cleaned =
+    String(
+      value || ""
+    )
+      .replace(
+        /\./g,
+        ""
+      )
+      .replace(
+        /\s/g,
+        ""
+      );
+
+  const number =
+    Number(cleaned);
+
+  return Number.isFinite(number)
+    ? Math.floor(number)
+    : 0;
+}
+
+
+function digitStringToGerman(
+  value
+) {
+
+  const digitWords = {
+    "0": "null",
+    "1": "eins",
+    "2": "zwei",
+    "3": "drei",
+    "4": "vier",
+    "5": "fünf",
+    "6": "sechs",
+    "7": "sieben",
+    "8": "acht",
+    "9": "neun"
+  };
+
+  return String(value)
+    .split("")
+    .map(
+      char =>
+        digitWords[char] ||
+        char
+    )
+    .join(" ");
+}
+
+
+function normalizeTextForSpeech(
+  text
+) {
+
+  let value =
+    String(
+      text || ""
+    );
+
+
+  /*
+    EUROBETRÄGE
+    7,69 €   -> sieben Euro neunundsechzig Cent
+    12,50 €  -> zwölf Euro fünfzig Cent
+    1.249,05 € -> eintausendzweihundertneunundvierzig Euro fünf Cent
+  */
+
+  value =
+    value.replace(
+      /(\d{1,3}(?:\.\d{3})*|\d+),(\d{2})\s*(?:€|EUR)(?!\w)/gi,
+      (
+        match,
+        euroValue,
+        centValue
+      ) => {
+
+        const euro =
+          parseGermanInteger(
+            euroValue
+          );
+
+        const cent =
+          Number(
+            centValue
+          );
+
+        const euroWord =
+          euro === 1
+            ? "ein Euro"
+            : `${germanIntegerToWords(euro)} Euro`;
+
+        const centWord =
+          cent === 0
+            ? ""
+            : cent === 1
+              ? " ein Cent"
+              : ` ${germanIntegerToWords(cent)} Cent`;
+
+        return `${euroWord}${centWord}`;
+      }
+    );
+
+
+  /*
+    Ganze Eurobeträge
+  */
+
+  value =
+    value.replace(
+      /(\d{1,3}(?:\.\d{3})*|\d+)\s*(?:€|EUR)(?!\w)/gi,
+      (
+        match,
+        euroValue
+      ) => {
+
+        const euro =
+          parseGermanInteger(
+            euroValue
+          );
+
+        return euro === 1
+          ? "ein Euro"
+          : `${germanIntegerToWords(euro)} Euro`;
+      }
+    );
+
+
+  /*
+    SPORTERGEBNISSE
+    0:0 -> null zu null
+    2:1 -> zwei zu eins
+  */
+
+  value =
+    value.replace(
+      /\b(\d{1,3})\s*:\s*(\d{1,3})\b/g,
+      (
+        match,
+        left,
+        right
+      ) =>
+        `${germanIntegerToWords(left)} zu ${germanIntegerToWords(right)}`
+    );
+
+
+  /*
+    PROZENT
+    12,5 % -> zwölf Komma fünf Prozent
+    45 %   -> fünfundvierzig Prozent
+  */
+
+  value =
+    value.replace(
+      /\b(\d+),(\d+)\s*%/g,
+      (
+        match,
+        whole,
+        decimal
+      ) =>
+        `${germanIntegerToWords(whole)} Komma ${digitStringToGerman(decimal)} Prozent`
+    );
+
+
+  value =
+    value.replace(
+      /\b(\d+)\s*%/g,
+      (
+        match,
+        whole
+      ) =>
+        `${germanIntegerToWords(whole)} Prozent`
+    );
+
+
+  return value;
+}
+
+
+/* =========================================================
+   TTS TEXT BUFFER
+   ========================================================= */
+
+function clearTtsTextBuffer() {
+
+  if (
+    ttsBufferTimer
+  ) {
+
+    clearTimeout(
+      ttsBufferTimer
+    );
+
+    ttsBufferTimer =
+      null;
+  }
+
+  ttsTextBuffer =
+    "";
+}
+
+
+function flushTtsTextBuffer() {
+
+  if (
+    ttsBufferTimer
+  ) {
+
+    clearTimeout(
+      ttsBufferTimer
+    );
+
+    ttsBufferTimer =
+      null;
+  }
+
+
+  const buffered =
+    ttsTextBuffer;
+
+  ttsTextBuffer =
+    "";
+
+
+  const clean =
+    normalizeTextForSpeech(
+      buffered
+    ).trim();
+
+
+  if (!clean) {
+    return;
+  }
+
+
+  sendTextToElevenLabs(
+    `${clean} `
+  );
+}
+
+
+function bufferTextForElevenLabs(
+  delta
+) {
+
+  const text =
+    String(
+      delta || ""
+    );
+
+
+  if (!text) {
+    return;
+  }
+
+
+  ttsTextBuffer +=
+    text;
+
+
+  if (
+    ttsBufferTimer
+  ) {
+
+    clearTimeout(
+      ttsBufferTimer
+    );
+  }
+
+
+  /*
+    Erst an sinnvollen Grenzen senden.
+    Dadurch bekommt ElevenLabs z.B. "12,50 €"
+    als Einheit und nicht "12" / "," / "50" / "€".
+  */
+
+  const hasNaturalBreak =
+    /(?:[.!?;]\s*|\n+)$/.test(
+      ttsTextBuffer
+    );
+
+  const isLongEnough =
+    ttsTextBuffer.length >=
+      TTS_BUFFER_MAX_CHARS;
+
+
+  if (
+    hasNaturalBreak ||
+    isLongEnough
+  ) {
+
+    flushTtsTextBuffer();
+    return;
+  }
+
+
+  ttsBufferTimer =
+    setTimeout(
+      () => {
+
+        flushTtsTextBuffer();
+
+      },
+      TTS_BUFFER_DELAY_MS
+    );
+}
+
+
+/* =========================================================
    ELEVENLABS TEXT SEND
    ========================================================= */
 
@@ -2393,7 +2860,7 @@ function speakTextWithElevenLabs(
 
 
   sendTextToElevenLabs(
-    `${clean} `
+    `${normalizeTextForSpeech(clean)} `
   );
 
 
@@ -2784,6 +3251,9 @@ function handleRealtimeEvent(
         true;
 
 
+      clearTtsTextBuffer();
+
+
       currentResponseText =
         "";
 
@@ -2832,7 +3302,7 @@ function handleRealtimeEvent(
         );
 
 
-        sendTextToElevenLabs(
+        bufferTextForElevenLabs(
           delta
         );
       }
@@ -2851,12 +3321,22 @@ function handleRealtimeEvent(
       }
 
 
-      flushElevenLabs();
+      flushTtsTextBuffer();
+
+
+      setTimeout(
+        () => {
+
+          flushElevenLabs();
+
+        },
+        60
+      );
 
 
       debugSet(
         "dbgEvent",
-        "OpenAI Text fertig · ElevenLabs Flush"
+        "OpenAI Text fertig · TTS-Puffer geleert"
       );
 
       break;
@@ -3339,6 +3819,9 @@ function cancelCurrentResponse() {
 
   currentResponseText =
     "";
+
+
+  clearTtsTextBuffer();
 
 
   clearElevenAudio();
@@ -4098,6 +4581,9 @@ async function stopJarvis(
   );
 
 
+  clearTtsTextBuffer();
+
+
   clearElevenAudio();
 
 
@@ -4260,7 +4746,7 @@ console.log(
 
 
 console.log(
-  "JARVIS APP V10.3"
+  "JARVIS APP V10.4 · ZAHLEN FIX"
 );
 
 
