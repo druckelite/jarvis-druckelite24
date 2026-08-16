@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V10.1-ELEVENLABS-GMAIL-AUTO-BEARBEITET";
+  "V10.1-ELEVENLABS-GMAIL-DRAFT-FIX";
 
 
 /* =========================================================
@@ -453,10 +453,11 @@ Wenn Mattl sagt „lies die Mail“, „lies die letzte Mail“, „was will der
 Nutze message_id, wenn die aktuell ausgewählte Mail bekannt ist. Sonst sender_query oder search_query.
 
 Wenn Mattl auf die aktuelle/ausgewählte Mail antworten möchte:
-→ create_email_reply_draft
-Das erstellt einen echten Gmail-Entwurf, sendet aber NICHT.
+→ IMMER create_email_reply_draft
+NIEMALS create_email_draft für eine Antwort auf eine vorhandene Mail verwenden.
+create_email_reply_draft erstellt einen echten Gmail-Entwurf mit Gmail-Draft-ID, sendet aber NICHT.
 
-Wenn Mattl eine neue allgemeine E-Mail formulieren möchte:
+Nur wenn Mattl ausdrücklich eine komplett neue, unabhängige E-Mail formulieren möchte:
 → create_email_draft
 
 E-MAIL SENDEN:
@@ -700,7 +701,7 @@ const REALTIME_TOOLS = [
       "create_email_reply_draft",
 
     description:
-      "Erstellt für eine vorhandene Gmail-Nachricht einen echten Antwortentwurf in Gmail. Sendet nichts.",
+      "Pflicht-Tool für Antworten auf eine vorhandene oder aktuell ausgewählte Gmail-Nachricht. Erstellt einen echten Gmail-Antwortentwurf inklusive Gmail-Draft-ID. Sendet nichts.",
 
     parameters: {
       type:
@@ -959,7 +960,7 @@ const REALTIME_TOOLS = [
       "create_email_draft",
 
     description:
-      "Erstellt einen deutschen E-Mail-Entwurf mit Betreff und Text. Versendet nichts.",
+      "Erstellt NUR eine neue, unabhängige E-Mail. Niemals für eine Antwort auf eine vorhandene/ausgewählte Gmail-Nachricht verwenden. Für Antworten immer create_email_reply_draft nutzen. Versendet nichts.",
 
     parameters: {
       type:
@@ -3031,6 +3032,10 @@ function looksLikeOffer(
 
 
 
+let lastCreatedGmailDraftId =
+  null;
+
+
 let bearbeitetLabelCache = {
   id: null,
   at: 0
@@ -4474,6 +4479,10 @@ async function createGmailReplyDraft(
   }
 
 
+  lastCreatedGmailDraftId =
+    draftData.id;
+
+
   return {
     gmail_draft_id:
       draftData.id,
@@ -4500,7 +4509,11 @@ async function sendGmailDraft(
 ) {
 
   const id =
-    String(draftId || "")
+    String(
+      draftId ||
+      lastCreatedGmailDraftId ||
+      ""
+    )
       .trim();
 
 
@@ -4564,6 +4577,15 @@ async function sendGmailDraft(
       data?.error?.message ||
       "E-Mail konnte nicht gesendet werden."
     );
+  }
+
+
+  if (
+    id ===
+      lastCreatedGmailDraftId
+  ) {
+    lastCreatedGmailDraftId =
+      null;
   }
 
 
@@ -5122,7 +5144,8 @@ app.post(
 
           const sent =
             await sendGmailDraft(
-              args.draft_id,
+              args.draft_id ||
+                lastCreatedGmailDraftId,
               args.confirmation_text
             );
 
