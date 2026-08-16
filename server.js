@@ -1,22 +1,27 @@
-/* =========================================================
-   DRUCKELITE24 · JARVIS SERVER
-
-   V9.2 · REALTIME + BUSINESS + WEB SEARCH
-   ========================================================= */
+/* DRUCKELITE24 · JARVIS SERVER V9.3 */
 
 import express from "express";
 
-const app = express();
+
+const app =
+  express();
+
 
 const PORT =
-  process.env.PORT || 3000;
+  process.env.PORT ||
+  3000;
+
 
 const JARVIS_VERSION =
-  "V9.2";
+  "V9.3";
+
+
+const TZ =
+  "Europe/Berlin";
 
 
 /* =========================================================
-   PUBLIC FILES
+   PUBLIC
    ========================================================= */
 
 const PUBLIC_FILES =
@@ -30,22 +35,29 @@ const PUBLIC_FILES =
 
 app.get(
   "/:file",
-  (req, res, next) => {
+
+  (
+    req,
+    res,
+    next
+  ) => {
 
     if (
-      !PUBLIC_FILES.has(
+      PUBLIC_FILES.has(
         req.params.file
       )
     ) {
-      return next();
+
+      return res.sendFile(
+        req.params.file,
+        {
+          root: "."
+        }
+      );
     }
 
-    return res.sendFile(
-      req.params.file,
-      {
-        root: "."
-      }
-    );
+
+    next();
   }
 );
 
@@ -54,8 +66,27 @@ app.get(
    HELPERS
    ========================================================= */
 
+function timeoutSignal(ms) {
+
+  try {
+
+    return AbortSignal
+      ?.timeout?.(
+        ms
+      );
+
+  } catch {
+
+    return undefined;
+  }
+}
+
+
 function normalize(text) {
-  return String(text || "")
+
+  return String(
+    text || ""
+  )
     .toLowerCase()
     .replace(
       /[.,!?;:]/g,
@@ -69,36 +100,17 @@ function normalize(text) {
 }
 
 
-function timeoutSignal(ms) {
-  try {
-    if (
-      typeof AbortSignal !==
-        "undefined" &&
-      typeof AbortSignal.timeout ===
-        "function"
-    ) {
-      return AbortSignal.timeout(
-        ms
-      );
-    }
-  } catch {}
-
-  return undefined;
-}
-
-
-/* =========================================================
-   BERLIN TIME
-   ========================================================= */
-
 function berlinDate(
-  date = new Date()
+  date =
+    new Date()
 ) {
+
   return new Intl.DateTimeFormat(
     "en-CA",
     {
+
       timeZone:
-        "Europe/Berlin",
+        TZ,
 
       year:
         "numeric",
@@ -109,16 +121,20 @@ function berlinDate(
       day:
         "2-digit"
     }
-  ).format(date);
+  ).format(
+    date
+  );
 }
 
 
 function berlinDateTimeText() {
+
   return new Intl.DateTimeFormat(
     "de-DE",
     {
+
       timeZone:
-        "Europe/Berlin",
+        TZ,
 
       dateStyle:
         "full",
@@ -135,43 +151,54 @@ function berlinDateTimeText() {
 function nextDateString(
   dateString
 ) {
+
   const date =
     new Date(
       `${dateString}T12:00:00Z`
     );
 
+
   date.setUTCDate(
-    date.getUTCDate() + 1
+    date.getUTCDate() +
+    1
   );
+
 
   return date
     .toISOString()
-    .slice(0, 10);
+    .slice(
+      0,
+      10
+    );
 }
 
 
 function berlinUtcOffsetMinutes(
   date
 ) {
-  const parts =
+
+  const label =
     new Intl.DateTimeFormat(
       "en-US",
       {
+
         timeZone:
-          "Europe/Berlin",
+          TZ,
 
         timeZoneName:
           "shortOffset"
       }
-    ).formatToParts(date);
-
-
-  const label =
-    parts.find(
-      part =>
-        part.type ===
-        "timeZoneName"
-    )?.value || "GMT+0";
+    )
+      .formatToParts(
+        date
+      )
+      .find(
+        part =>
+          part.type ===
+          "timeZoneName"
+      )
+      ?.value ||
+    "GMT+0";
 
 
   const match =
@@ -186,47 +213,49 @@ function berlinUtcOffsetMinutes(
 
 
   const hours =
-    Number(match[1]);
+    Number(
+      match[1]
+    );
+
 
   const minutes =
     Number(
-      match[2] || 0
+      match[2] ||
+      0
     );
 
 
   return hours >= 0
+
     ? hours * 60 +
-        minutes
+      minutes
+
     : hours * 60 -
-        minutes;
+      minutes;
 }
 
 
 function berlinMidnightUtcIso(
   dateString
 ) {
-  const noonGuess =
+
+  const guess =
     new Date(
       `${dateString}T12:00:00Z`
     );
 
 
-  const offsetMinutes =
-    berlinUtcOffsetMinutes(
-      noonGuess
-    );
+  return new Date(
 
-
-  const utcMillis =
     Date.parse(
       `${dateString}T00:00:00Z`
     ) -
-    offsetMinutes *
-      60000;
 
+    berlinUtcOffsetMinutes(
+      guess
+    ) *
+    60000
 
-  return new Date(
-    utcMillis
   ).toISOString();
 }
 
@@ -234,6 +263,7 @@ function berlinMidnightUtcIso(
 function getPeriodDates(
   period
 ) {
+
   const today =
     berlinDate();
 
@@ -242,6 +272,7 @@ function getPeriodDates(
     period ===
     "yesterday"
   ) {
+
     const date =
       new Date(
         `${today}T12:00:00Z`
@@ -249,17 +280,22 @@ function getPeriodDates(
 
 
     date.setUTCDate(
-      date.getUTCDate() - 1
+      date.getUTCDate() -
+      1
     );
 
 
     const yesterday =
       date
         .toISOString()
-        .slice(0, 10);
+        .slice(
+          0,
+          10
+        );
 
 
     return {
+
       start:
         berlinMidnightUtcIso(
           yesterday
@@ -274,6 +310,7 @@ function getPeriodDates(
 
 
   return {
+
     start:
       berlinMidnightUtcIso(
         today
@@ -294,184 +331,240 @@ function getPeriodDates(
    ========================================================= */
 
 function buildJarvisInstructions() {
+
   return `
 Du bist JARVIS, der persönliche Assistent und Business-Sparringspartner von Mattl.
 
-AKTUELLE ZEIT:
+Aktuelle Zeit:
 ${berlinDateTimeText()}.
-Zeitzone ist Europe/Berlin.
+
+Zeitzone:
+Europe/Berlin.
+
 
 =========================================================
-SPRACHE
+SPRACHE UND AUSSPRACHE
 =========================================================
 
-Du sprichst ausschließlich Deutsch.
+Sprich ausschließlich natürliches deutsches Hochdeutsch.
 
-WICHTIG:
-- natürliches deutsches Hochdeutsch
-- deutscher Muttersprachler
-- keinerlei englischer, amerikanischer, britischer oder anderer Akzent
-- keine englische Satzmelodie
-- keine künstliche Synchronsprecher-Betonung
-- keine übertriebene Aussprache
-- nicht hektisch sprechen
+Klinge wie ein deutscher Muttersprachler.
 
-Wenn englische Produktnamen oder Firmennamen vorkommen:
-Sprich nur diese Begriffe passend aus.
-Der restliche Satz bleibt klares deutsches Hochdeutsch.
+Kein:
+- englischer Akzent
+- amerikanischer Akzent
+- britischer Akzent
+- französischer Akzent
+- osteuropäischer Akzent
+
+Nutze eine natürliche deutsche Satzmelodie.
+
+Englische Marken, Produktnamen oder Eigennamen dürfen passend ausgesprochen werden.
+Danach sofort wieder normales deutsches Hochdeutsch.
+
+Der Benutzer heißt:
+
+Mattl
+
+Das T muss klar hörbar sein.
+
+Nicht:
+Maddl
+Madel
+Mattle
+
+Sprich schwierige Wörter erst, wenn du sie vollständig erfasst hast.
+
+Keine hörbaren Selbstkorrekturen mitten im Wort.
+
+Bei ungewöhnlichen:
+- Namen
+- Orten
+- Produktnamen
+- Firmennamen
+- Zahlen
+- Datumsangaben
+
+lieber minimal langsamer und sauber aussprechen.
+
 
 =========================================================
 STIMME
 =========================================================
 
 Sprich:
+
 - tief
 - ruhig
-- souverän
 - warm
+- souverän
 - entspannt
 - männlich wirkend
-- mit etwas dunklerer Stimmlage
-- mit ruhigem Brustton
 - nicht nasal
 - nicht schrill
 - nicht hektisch
 
-Sprechtempo:
-etwas langsamer als normales Gespräch,
-aber nicht künstlich langsam.
+Halte die wahrgenommene Lautstärke vom ersten bis zum letzten Wort möglichst gleich.
 
-Zwischen Sinnabschnitten kleine natürliche Pausen.
+WICHTIG:
+
+Nicht leise beginnen und anschließend lauter werden.
+
+Nicht flüstern.
+
+Keine dramatischen Lautstärkesprünge.
+
+Keine stark wechselnde Dynamik.
+
+Sprich flüssig und verbunden.
 
 Keine abgehackten Mini-Sätze.
 
-Sprich in vollständigen natürlichen Satzmelodien.
+Keine künstlichen Pausen nach jedem Komma.
 
-Beispiel:
+Keine übertriebene Synchronsprecher-Betonung.
 
-NICHT:
-"Okay. Mattl. Das. Sind. Drei. Bestellungen."
+Standardtempo:
 
-SONDERN:
-"Okay Mattl, aktuell sind drei Bestellungen offen."
+Leicht ruhiger als normale Alltagssprache,
+aber nicht langsam oder schleppend.
 
-=========================================================
-MATTLS NAME
-=========================================================
-
-Der Benutzer heißt Mattl.
-
-Sprich:
-Mattl
-
-Das T muss klar hörbar sein.
-
-NICHT:
-Maddl
-Madel
-Mattle
 
 =========================================================
 GESPRÄCHSVERHALTEN
 =========================================================
 
-Mattl darf sich beim Sprechen Zeit lassen.
+Mattl darf:
 
-Wenn Mattl:
-- kurz innehält
-- nachdenkt
-- "ähm" sagt
-- einen Satz noch nicht beendet hat
-- mitten in einer Aufzählung ist
-- hörbar weitersprechen möchte
+- nachdenken
+- "ähm" sagen
+- kurz pausieren
+- mitten in einer Aufzählung innehalten
+- einen Satz langsam formulieren
 
-darfst du NICHT sofort antworten.
-
-Warte, bis seine Aussage wirklich abgeschlossen ist.
+Antworte erst,
+wenn seine Aussage wirklich abgeschlossen wirkt.
 
 Unterbrich Mattl nicht unnötig.
 
 Wenn Mattl dich während deiner Antwort unterbricht,
-hör sofort auf und höre ihm zu.
+hör auf und höre ihm zu.
+
 
 =========================================================
-ANTWORTSTIL
+CHARAKTER
 =========================================================
 
 Du bist:
+
 - intelligent
 - ruhig
-- souverän
 - direkt
 - locker
 - freundlich
+- souverän
 - trocken humorvoll
 - gelegentlich frech
 
-Du bist kein Butler.
-Du bist kein Callcenter.
-Du bist kein künstlicher Motivationscoach.
+Sarkasmus darf spontan vorkommen.
+
+Aber:
+
+Nicht bei jeder Antwort.
+
+Nicht gezwungen.
+
+Nicht bei ernsten Themen.
+
+Entscheide selbst anhand der Situation,
+ob ein kurzer trockener Kommentar gerade passt.
+
+Passender Stil:
+
+"Feierabend scheint heute wieder eher ein theoretisches Konzept zu sein."
+
+"Langweilig wird uns heute jedenfalls nicht."
+
+"Ausnahmsweise brennt gerade nichts. Ich würde den Moment genießen."
+
+"Das lief erstaunlich sauber. Fast verdächtig."
+
+Der Humor soll spontan wirken
+und nicht wie eine vorbereitete Spruchliste.
+
+Kein Butler-Ton.
+
+Keine künstlichen Motivationssprüche.
+
+
+=========================================================
+ANTWORTLÄNGE
+=========================================================
 
 Kurze Frage:
 kurze Antwort.
 
 Normale Frage:
-meist 1 bis 5 natürliche Sätze.
+meist ein bis fünf natürliche Sätze.
 
 Komplexe Frage:
-erkläre ausführlicher, wenn sinnvoll.
+ausführlicher, wenn nötig.
 
 Keine unnötigen Einleitungen.
 
 Nicht ständig:
+
 "Natürlich Mattl"
+
 "Sehr gerne Mattl"
+
 "Selbstverständlich Mattl"
 
-Sprich wie ein intelligenter Mensch.
 
 =========================================================
-ZAHLEN, DATUM UND UHRZEIT
+DATUM, UHRZEIT UND ZAHLEN
 =========================================================
 
-Lies technische Schreibweisen niemals roh vor.
+Technische Schreibweisen niemals roh vorlesen.
 
-DATUM:
+Beispiel Datum:
 
-NICHT:
 16.08.2026
 
-SONDERN:
-16. August 2026
+oder:
 
-NICHT:
 2026-08-16
 
-SONDERN:
+sprich als:
+
 16. August 2026
 
-UHRZEIT:
 
-NICHT:
+Beispiel Uhrzeit:
+
 14:30
 
-SONDERN:
+sprich:
+
 14 Uhr 30
 
 oder natürlich:
+
 halb drei
 
-wenn das im Kontext sinnvoll ist.
+wenn es zum Satz passt.
 
-GELD:
+
+Beispiel Geld:
 
 1234,56 EUR
 
-sprich natürlich als:
+sprich:
 
 1.234 Euro und 56 Cent
 
-PROZENT:
+
+Beispiel Prozent:
 
 45 %
 
@@ -479,98 +572,91 @@ sprich:
 
 45 Prozent
 
-ISO-ZEITSTEMPEL NIEMALS ROH VORLESEN.
 
-Beispiel:
+ISO-Zeitstempel niemals roh vorlesen.
 
-2026-08-16T08:15:00.000Z
+Immer zuerst in natürliches deutsches Datum
+und deutsche Uhrzeit umwandeln.
 
-muss als natürliches deutsches Datum und Uhrzeit gesprochen werden.
 
 =========================================================
-LIVE-INFORMATIONEN
+LIVE INFORMATIONEN UND INTERNET
 =========================================================
-
-Du hast Zugriff auf echte Tools.
 
 Erfinde niemals aktuelle Daten.
 
-Bei aktuellen Informationen musst du ein Tool benutzen.
+Für aktuelle,
+unsichere
+oder ausdrücklich zu prüfende Informationen:
 
-=========================================================
-INTERNET
-=========================================================
+BENUTZE search_internet.
 
-Du bist NICHT nur ein Druckelite-Assistent.
+Nutze search_internet für:
 
-Mattl darf dich zu jedem normalen Thema fragen.
-
-Beispiele:
-
-- aktuelle Nachrichten
+- Nachrichten
 - Politik
 - Sport
 - Technik
 - KI
-- Produkte
 - Firmen
 - Personen
 - Wissenschaft
-- Filme
-- Serien
+- Produkte
+- Preise
+- Gesetze
 - Reisen
 - Veranstaltungen
-- aktuelle Preise
-- aktuelle Gesetze
 - aktuelle Entwicklungen
-- allgemeine Wissensfragen
-
-Wenn eine Frage aktuelle Informationen benötigt
-oder du dir bei einer Information nicht sicher bist:
-
-BENUTZE search_internet.
-
-Bei zeitlosen einfachen Wissensfragen,
-die du sicher beantworten kannst,
-musst du nicht suchen.
+- aktuelle Ereignisse
 
 Wenn Mattl sagt:
 
-- such mal
-- schau mal nach
-- prüf das
-- was gibt es aktuell
-- was ist heute passiert
-- was gibt es Neues
-- google das
-- informier dich
+"such mal"
+
+"schau mal nach"
+
+"prüf das"
+
+"was gibt es aktuell"
+
+"was ist heute passiert"
+
+"was gibt es Neues"
+
+"google das"
+
+"informier dich"
 
 musst du search_internet benutzen.
 
-Fasse Suchergebnisse natürlich zusammen.
+Bei sicherem zeitlosem Allgemeinwissen
+musst du nicht suchen.
 
-Lies keine URLs oder lange Quellenlisten vor.
+Fasse Web-Ergebnisse natürlich zusammen.
+
+Lies keine URLs
+und keine langen Quellenlisten vor.
+
 
 =========================================================
 SHOPIFY / DRUCKELITE24
 =========================================================
-
-Druckelite24 ist Mattls Unternehmen.
 
 Bei Fragen nach:
 
 - Umsatz
 - Bestellungen
 - Verkäufen
-- offenem Auftragsbestand
+- offenen Aufträgen
 - durchschnittlichem Bestellwert
 - heutiger Performance
 - gestriger Performance
 - letzter Woche
 
-musst du die Shopify-Tools benutzen.
+benutze die Shopify-Tools.
 
-Druckelite24 ist der einzige verbundene Shopify-Shop.
+Druckelite24 ist der verbundene Shopify-Shop.
+
 
 =========================================================
 GMAIL
@@ -578,26 +664,30 @@ GMAIL
 
 Bei Fragen nach:
 
-- neuen E-Mails
-- ungelesenen E-Mails
+- neuen Mails
+- ungelesenen Mails
 - Kundenmails
 - Reklamationen
 - Anfragen
 - Angebotsanfragen
-- Posteingang
 
 benutze get_unread_emails.
 
-Erfinde keine E-Mails.
+Erfinde niemals E-Mails.
+
 
 =========================================================
 WETTER
 =========================================================
 
-Bei Wetterfragen benutze get_weather.
+Bei Wetterfragen:
+
+benutze get_weather.
 
 Standardort:
+
 Ludwigshafen am Rhein.
+
 
 =========================================================
 NOTIZEN
@@ -606,13 +696,17 @@ NOTIZEN
 Bei:
 
 "notiere"
+
 "merk dir"
+
 "schreib auf"
 
 benutze save_note.
 
-Bei Fragen nach vorhandenen Notizen:
+Zum Abrufen:
+
 list_notes.
+
 
 =========================================================
 ERINNERUNGEN
@@ -621,15 +715,17 @@ ERINNERUNGEN
 Bei:
 
 "erinnere mich"
+
 "stell einen Timer"
+
 "denk in ... Minuten daran"
 
 benutze set_reminder.
 
-Berechne die Zeit ab jetzt.
+Zum Abrufen:
 
-Bei Fragen nach Erinnerungen:
 list_reminders.
+
 
 =========================================================
 E-MAIL ENTWÜRFE
@@ -641,55 +737,57 @@ benutze create_email_draft.
 
 Der Entwurf wird im HUD angezeigt.
 
-Lies lange E-Mail-Texte nicht komplett vor,
+Lange Entwürfe nicht komplett vorlesen,
 außer Mattl verlangt das ausdrücklich.
+
 
 =========================================================
 BUSINESS
 =========================================================
 
-Bei Business-Fragen kannst du wie ein erfahrener:
+Denke bei Business-Fragen wie ein erfahrener:
 
 - Geschäftsführer
 - E-Commerce-Manager
 - Performance-Marketer
 - Verkaufsleiter
 - Datenanalyst
-- Marketingberater
-
-denken.
 
 Sprich Probleme direkt an.
 
-Wenn du eine Verbesserung erkennst,
-darfst du Mattl darauf hinweisen.
+Wenn du eine sinnvolle Verbesserung erkennst,
+weise Mattl selbstständig darauf hin.
+
 
 =========================================================
 SICHERHEIT
 =========================================================
 
-Vor kritischen Änderungen brauchst du Mattls Zustimmung.
-
-Dazu gehören:
+Vor:
 
 - Geld ausgeben
 - Werbebudget verändern
 - Preise verändern
 - Kampagnen verändern
-- Bestellung stornieren
-- Rückerstattung
-- E-Mail tatsächlich versenden
+- Bestellungen stornieren
+- Rückerstattungen
+- E-Mails tatsächlich versenden
 - Daten löschen
 
-Lesen, analysieren, recherchieren,
-Vorschläge machen und Entwürfe schreiben
+brauchst du Mattls ausdrückliche Zustimmung.
+
+Lesen,
+analysieren,
+recherchieren,
+Vorschläge machen
+und Entwürfe erstellen
 darfst du ohne zusätzliche Bestätigung.
 `;
 }
 
 
 /* =========================================================
-   REALTIME TOOL DEFINITIONS
+   REALTIME TOOLS
    ========================================================= */
 
 const REALTIME_TOOLS = [
@@ -702,20 +800,19 @@ const REALTIME_TOOLS = [
       "search_internet",
 
     description:
-      "Durchsucht das aktuelle Internet für allgemeine oder aktuelle Fragen wie Nachrichten, Politik, Sport, Technik, KI, Firmen, Personen, Wissenschaft, Produkte, Preise, Gesetze, Reisen und andere aktuelle Informationen.",
+      "Durchsucht das aktuelle Internet für allgemeine oder aktuelle Fragen.",
 
     parameters: {
+
       type:
         "object",
 
       properties: {
 
         query: {
-          type:
-            "string",
 
-          description:
-            "Die vollständige Suchfrage."
+          type:
+            "string"
         }
       },
 
@@ -737,15 +834,17 @@ const REALTIME_TOOLS = [
       "get_shopify_summary",
 
     description:
-      "Liest live den Shopify-Umsatz, die Anzahl Bestellungen und den durchschnittlichen Bestellwert für heute oder gestern bei Druckelite24.",
+      "Liest live Shopify-Umsatz, Bestellungen und durchschnittlichen Bestellwert für heute oder gestern.",
 
     parameters: {
+
       type:
         "object",
 
       properties: {
 
         period: {
+
           type:
             "string",
 
@@ -774,9 +873,10 @@ const REALTIME_TOOLS = [
       "get_shopify_open_orders",
 
     description:
-      "Liest die aktuell noch nicht erfüllten Shopify-Bestellungen.",
+      "Liest aktuell noch nicht erfüllte Shopify-Bestellungen.",
 
     parameters: {
+
       type:
         "object",
 
@@ -799,6 +899,7 @@ const REALTIME_TOOLS = [
       "Liest Umsatz und Bestellungen der letzten sieben Kalendertage.",
 
     parameters: {
+
       type:
         "object",
 
@@ -818,9 +919,10 @@ const REALTIME_TOOLS = [
       "get_unread_emails",
 
     description:
-      "Liest bis zu zehn ungelesene Gmail-Nachrichten mit Absender, Betreff und kurzem Ausschnitt.",
+      "Liest bis zu zehn ungelesene Gmail-Nachrichten.",
 
     parameters: {
+
       type:
         "object",
 
@@ -840,20 +942,23 @@ const REALTIME_TOOLS = [
       "get_weather",
 
     description:
-      "Liest aktuelle Wetterdaten und Vorhersage für heute oder morgen.",
+      "Liest Wetter für heute oder morgen.",
 
     parameters: {
+
       type:
         "object",
 
       properties: {
 
         location: {
+
           type:
             "string"
         },
 
         day: {
+
           type:
             "string",
 
@@ -886,12 +991,14 @@ const REALTIME_TOOLS = [
       "Speichert eine Notiz dauerhaft.",
 
     parameters: {
+
       type:
         "object",
 
       properties: {
 
         text: {
+
           type:
             "string"
         }
@@ -918,6 +1025,7 @@ const REALTIME_TOOLS = [
       "Liest gespeicherte Notizen.",
 
     parameters: {
+
       type:
         "object",
 
@@ -940,12 +1048,14 @@ const REALTIME_TOOLS = [
       "Speichert eine Erinnerung für eine Anzahl Minuten ab jetzt.",
 
     parameters: {
+
       type:
         "object",
 
       properties: {
 
         minutes_from_now: {
+
           type:
             "integer",
 
@@ -954,6 +1064,7 @@ const REALTIME_TOOLS = [
         },
 
         reminder_text: {
+
           type:
             "string"
         }
@@ -978,9 +1089,10 @@ const REALTIME_TOOLS = [
       "list_reminders",
 
     description:
-      "Liest alle aktuell aktiven Erinnerungen.",
+      "Liest aktive Erinnerungen.",
 
     parameters: {
+
       type:
         "object",
 
@@ -1000,15 +1112,17 @@ const REALTIME_TOOLS = [
       "create_email_draft",
 
     description:
-      "Erstellt einen deutschen E-Mail-Entwurf mit Betreff und Text. Versendet nichts.",
+      "Erstellt einen deutschen E-Mail-Entwurf. Versendet nichts.",
 
     parameters: {
+
       type:
         "object",
 
       properties: {
 
         instruction: {
+
           type:
             "string"
         }
@@ -1027,14 +1141,13 @@ const REALTIME_TOOLS = [
 
 /* =========================================================
    REALTIME SESSION
-
-   MUSS VOR express.json STEHEN
    ========================================================= */
 
 app.post(
   "/api/realtime-session",
 
   express.text({
+
     type: [
       "application/sdp",
       "text/plain"
@@ -1055,6 +1168,7 @@ app.post(
         !process.env
           .OPENAI_API_KEY
       ) {
+
         return res
           .status(500)
           .send(
@@ -1074,6 +1188,7 @@ app.post(
           "v=0"
         )
       ) {
+
         return res
           .status(400)
           .send(
@@ -1094,7 +1209,7 @@ app.post(
         "cedar";
 
 
-      const sessionConfig =
+      const session =
         JSON.stringify({
 
           type:
@@ -1151,12 +1266,7 @@ app.post(
 
       form.set(
         "session",
-        sessionConfig
-      );
-
-
-      console.log(
-        `[REALTIME] Modell=${model} Voice=${voice} Tools=${REALTIME_TOOLS.length}`
+        session
       );
 
 
@@ -1221,9 +1331,7 @@ app.post(
       );
 
 
-    } catch (
-      error
-    ) {
+    } catch (error) {
 
       console.error(
         "[REALTIME SESSION ERROR]",
@@ -1243,7 +1351,7 @@ app.post(
 
 
 /* =========================================================
-   JSON BODY
+   JSON
    ========================================================= */
 
 app.use(
@@ -1262,14 +1370,9 @@ function extractResponseText(
   data
 ) {
 
-  if (!data) {
-    return "";
-  }
-
-
   const direct =
     String(
-      data.output_text ||
+      data?.output_text ||
       ""
     ).trim();
 
@@ -1279,12 +1382,13 @@ function extractResponseText(
   }
 
 
-  const pieces = [];
+  const pieces =
+    [];
 
 
   for (
     const item of
-    data.output || []
+    data?.output || []
   ) {
 
     if (
@@ -1303,7 +1407,7 @@ function extractResponseText(
       if (
         content?.type ===
           "output_text" &&
-        content?.text
+        content.text
       ) {
 
         pieces.push(
@@ -1321,30 +1425,25 @@ function extractResponseText(
 
 
 /* =========================================================
-   INTERNET SEARCH
+   INTERNET
    ========================================================= */
 
 async function searchInternet(
   query
 ) {
 
-  const cleanQuery =
+  const clean =
     String(
       query || ""
     ).trim();
 
 
-  if (!cleanQuery) {
+  if (!clean) {
+
     throw new Error(
       "Keine Suchanfrage angegeben."
     );
   }
-
-
-  console.log(
-    "[WEB SEARCH]",
-    cleanQuery
-  );
 
 
   const response =
@@ -1371,38 +1470,46 @@ async function searchInternet(
             model:
               process.env
                 .OPENAI_WEB_MODEL ||
-              "gpt-5.6",
+              "gpt-5.6-terra",
+
 
             reasoning: {
+
               effort:
                 "low"
             },
 
+
             tools: [
+
               {
+
                 type:
                   "web_search"
               }
             ],
 
+
             tool_choice:
               "auto",
 
-            input:
-              `Beantworte die folgende Frage mithilfe aktueller Informationen aus dem Web.
 
-Frage:
-${cleanQuery}
+            input:
+              `Beantworte diese Frage mithilfe aktueller Informationen aus dem Web:
+
+${clean}
 
 Vorgaben:
-- antworte auf Deutsch
-- nutze zuverlässige aktuelle Quellen
-- nenne konkrete Daten, Namen und Zahlen, wenn relevant
+
+- Deutsch
+- kompakt
+- zuverlässige aktuelle Quellen
+- konkrete Daten und Zahlen wenn relevant
+- natürliche Formulierung für Sprachausgabe
 - keine langen URLs
 - keine Markdown-Tabelle
-- keine unnötige Einleitung
-- formuliere so, dass ein Sprachassistent die Antwort natürlich vorlesen kann
-- technische Datumsangaben in natürliche deutsche Datumsformen umwandeln`,
+- technische Datumsangaben natürlich auf Deutsch formulieren`,
+
 
             store:
               false
@@ -1425,12 +1532,6 @@ Vorgaben:
     !response.ok
   ) {
 
-    console.error(
-      "[WEB SEARCH ERROR]",
-      data
-    );
-
-
     throw new Error(
       data?.error?.message ||
       "Internetsuche fehlgeschlagen."
@@ -1438,13 +1539,14 @@ Vorgaben:
   }
 
 
-  const text =
+  const answer =
     extractResponseText(
       data
     );
 
 
-  if (!text) {
+  if (!answer) {
+
     throw new Error(
       "Die Internetsuche hat keine Antwort geliefert."
     );
@@ -1454,10 +1556,9 @@ Vorgaben:
   return {
 
     query:
-      cleanQuery,
+      clean,
 
-    answer:
-      text,
+    answer,
 
     searched_live_web:
       true
@@ -1485,7 +1586,7 @@ async function getShopifyAccessToken() {
     shopifyTokenCache.token &&
     Date.now() <
       shopifyTokenCache.expiresAt -
-        5 * 60 * 1000
+      300000
   ) {
 
     return shopifyTokenCache.token;
@@ -1519,7 +1620,7 @@ async function getShopifyAccessToken() {
   }
 
 
-  const params =
+  const body =
     new URLSearchParams({
 
       grant_type:
@@ -1547,8 +1648,7 @@ async function getShopifyAccessToken() {
             "application/x-www-form-urlencoded"
         },
 
-        body:
-          params,
+        body,
 
         signal:
           timeoutSignal(
@@ -1584,11 +1684,88 @@ async function getShopifyAccessToken() {
         data.expires_in ||
         86399
       ) *
-        1000
+      1000
   };
 
 
   return data.access_token;
+}
+
+
+/* =========================================================
+   SHOPIFY GRAPHQL
+   ========================================================= */
+
+async function shopifyGraphQL(
+  query,
+  variables = {}
+) {
+
+  const domain =
+    process.env
+      .SHOPIFY_STORE_DOMAIN;
+
+
+  const version =
+    process.env
+      .SHOPIFY_API_VERSION ||
+    "2026-07";
+
+
+  const token =
+    await getShopifyAccessToken();
+
+
+  const response =
+    await fetch(
+      `https://${domain}/admin/api/${version}/graphql.json`,
+      {
+
+        method:
+          "POST",
+
+        headers: {
+
+          "Content-Type":
+            "application/json",
+
+          "X-Shopify-Access-Token":
+            token
+        },
+
+        body:
+          JSON.stringify({
+
+            query,
+
+            variables
+          }),
+
+        signal:
+          timeoutSignal(
+            12000
+          )
+      }
+    );
+
+
+  const data =
+    await response.json();
+
+
+  if (
+    !response.ok ||
+    data.errors
+  ) {
+
+    throw new Error(
+      data.errors?.[0]?.message ||
+      "Shopify-Daten konnten nicht gelesen werden."
+    );
+  }
+
+
+  return data.data;
 }
 
 
@@ -1600,21 +1777,6 @@ async function getShopifySummary(
   period =
     "today"
 ) {
-
-  const domain =
-    process.env
-      .SHOPIFY_STORE_DOMAIN;
-
-
-  const apiVersion =
-    process.env
-      .SHOPIFY_API_VERSION ||
-    "2026-07";
-
-
-  const token =
-    await getShopifyAccessToken();
-
 
   const {
     start,
@@ -1637,125 +1799,69 @@ async function getShopifySummary(
     );
 
 
-  const query = `
-    query JarvisOrders {
-      orders(
-        first: 100,
-        sortKey: CREATED_AT,
-        reverse: true
-      ) {
-        nodes {
+  const data =
+    await shopifyGraphQL(
+      `
+      query {
 
-          name
+        orders(
+          first: 100,
+          sortKey: CREATED_AT,
+          reverse: true
+        ) {
 
-          createdAt
+          nodes {
 
-          cancelledAt
+            name
 
-          currentTotalPriceSet {
+            createdAt
 
-            shopMoney {
+            cancelledAt
 
-              amount
+            currentTotalPriceSet {
 
-              currencyCode
+              shopMoney {
+
+                amount
+
+                currencyCode
+              }
             }
           }
         }
       }
-    }
-  `;
-
-
-  const response =
-    await fetch(
-      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-      {
-
-        method:
-          "POST",
-
-        headers: {
-
-          "Content-Type":
-            "application/json",
-
-          "X-Shopify-Access-Token":
-            token
-        },
-
-        body:
-          JSON.stringify({
-            query
-          }),
-
-        signal:
-          timeoutSignal(
-            10000
-          )
-      }
+      `
     );
-
-
-  const data =
-    await response.json();
-
-
-  if (
-    !response.ok ||
-    data.errors
-  ) {
-
-    console.error(
-      "[SHOPIFY SUMMARY ERROR]",
-      data.errors
-    );
-
-
-    throw new Error(
-      "Shopify-Daten konnten nicht gelesen werden."
-    );
-  }
 
 
   const orders =
-    data.data?.orders
-      ?.nodes || [];
+    (
+      data.orders?.nodes ||
+      []
+    ).filter(
+      order =>
 
+        !order.cancelledAt &&
 
-  const valid =
-    orders.filter(
-      order => {
+        new Date(
+          order.createdAt
+        ) >=
+        startDate &&
 
-        if (
-          order.cancelledAt
-        ) {
-          return false;
-        }
-
-
-        const created =
-          new Date(
-            order.createdAt
-          );
-
-
-        return (
-          created >=
-            startDate &&
-          created <
-            endDate
-        );
-      }
+        new Date(
+          order.createdAt
+        ) <
+        endDate
     );
 
 
   const revenue =
-    valid.reduce(
+    orders.reduce(
       (
         total,
         order
       ) =>
+
         total +
         Number(
           order
@@ -1764,23 +1870,9 @@ async function getShopifySummary(
             ?.amount ||
           0
         ),
+
       0
     );
-
-
-  const currency =
-    valid[0]
-      ?.currentTotalPriceSet
-      ?.shopMoney
-      ?.currencyCode ||
-    "EUR";
-
-
-  const average =
-    valid.length
-      ? revenue /
-        valid.length
-      : 0;
 
 
   return {
@@ -1791,116 +1883,73 @@ async function getShopifySummary(
     period,
 
     orders:
-      valid.length,
+      orders.length,
 
     revenue:
       Number(
-        revenue.toFixed(2)
+        revenue.toFixed(
+          2
+        )
       ),
 
     average_order_value:
       Number(
-        average.toFixed(2)
+        (
+          orders.length
+            ? revenue /
+              orders.length
+            : 0
+        ).toFixed(
+          2
+        )
       ),
 
-    currency
+    currency:
+      orders[0]
+        ?.currentTotalPriceSet
+        ?.shopMoney
+        ?.currencyCode ||
+      "EUR"
   };
 }
 
 
 /* =========================================================
-   SHOPIFY OPEN ORDERS
+   OPEN ORDERS
    ========================================================= */
 
 async function getShopifyOpenOrders() {
 
-  const domain =
-    process.env
-      .SHOPIFY_STORE_DOMAIN;
+  const data =
+    await shopifyGraphQL(
+      `
+      query {
 
+        orders(
+          first: 50,
+          query: "fulfillment_status:unfulfilled",
+          sortKey: CREATED_AT,
+          reverse: false
+        ) {
 
-  const apiVersion =
-    process.env
-      .SHOPIFY_API_VERSION ||
-    "2026-07";
+          nodes {
 
+            name
 
-  const token =
-    await getShopifyAccessToken();
+            createdAt
 
-
-  const query = `
-    query JarvisOpenOrders {
-
-      orders(
-        first: 50,
-        query: "fulfillment_status:unfulfilled",
-        sortKey: CREATED_AT,
-        reverse: false
-      ) {
-
-        nodes {
-
-          name
-
-          createdAt
-
-          cancelledAt
+            cancelledAt
+          }
         }
       }
-    }
-  `;
-
-
-  const response =
-    await fetch(
-      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-      {
-
-        method:
-          "POST",
-
-        headers: {
-
-          "Content-Type":
-            "application/json",
-
-          "X-Shopify-Access-Token":
-            token
-        },
-
-        body:
-          JSON.stringify({
-            query
-          }),
-
-        signal:
-          timeoutSignal(
-            10000
-          )
-      }
+      `
     );
-
-
-  const data =
-    await response.json();
-
-
-  if (
-    !response.ok ||
-    data.errors
-  ) {
-
-    throw new Error(
-      "Offene Bestellungen konnten nicht gelesen werden."
-    );
-  }
 
 
   const orders =
     (
-      data.data?.orders
-        ?.nodes || []
+      data.orders?.nodes ||
+      []
     ).filter(
       order =>
         !order.cancelledAt
@@ -1935,101 +1984,45 @@ async function getShopifyOpenOrders() {
 
 async function getShopifyWeek() {
 
-  const domain =
-    process.env
-      .SHOPIFY_STORE_DOMAIN;
+  const data =
+    await shopifyGraphQL(
+      `
+      query {
 
+        orders(
+          first: 250,
+          sortKey: CREATED_AT,
+          reverse: true
+        ) {
 
-  const apiVersion =
-    process.env
-      .SHOPIFY_API_VERSION ||
-    "2026-07";
+          nodes {
 
+            createdAt
 
-  const token =
-    await getShopifyAccessToken();
+            cancelledAt
 
+            currentTotalPriceSet {
 
-  const query = `
-    query JarvisWeek {
+              shopMoney {
 
-      orders(
-        first: 250,
-        sortKey: CREATED_AT,
-        reverse: true
-      ) {
+                amount
 
-        nodes {
-
-          createdAt
-
-          cancelledAt
-
-          currentTotalPriceSet {
-
-            shopMoney {
-
-              amount
-
-              currencyCode
+                currencyCode
+              }
             }
           }
         }
       }
-    }
-  `;
-
-
-  const response =
-    await fetch(
-      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-      {
-
-        method:
-          "POST",
-
-        headers: {
-
-          "Content-Type":
-            "application/json",
-
-          "X-Shopify-Access-Token":
-            token
-        },
-
-        body:
-          JSON.stringify({
-            query
-          }),
-
-        signal:
-          timeoutSignal(
-            10000
-          )
-      }
+      `
     );
-
-
-  const data =
-    await response.json();
-
-
-  if (
-    !response.ok ||
-    data.errors
-  ) {
-
-    throw new Error(
-      "Shopify-Wochendaten konnten nicht gelesen werden."
-    );
-  }
 
 
   const today =
     berlinDate();
 
 
-  const days = [];
+  const days =
+    [];
 
 
   for (
@@ -2055,7 +2048,10 @@ async function getShopifyWeek() {
       date:
         date
           .toISOString()
-          .slice(0, 10),
+          .slice(
+            0,
+            10
+          ),
 
       orders:
         0,
@@ -2079,13 +2075,14 @@ async function getShopifyWeek() {
 
   for (
     const order of
-    data.data?.orders
-      ?.nodes || []
+    data.orders?.nodes ||
+    []
   ) {
 
     if (
       order.cancelledAt
     ) {
+
       continue;
     }
 
@@ -2096,7 +2093,7 @@ async function getShopifyWeek() {
         {
 
           timeZone:
-            "Europe/Berlin",
+            TZ,
 
           year:
             "numeric",
@@ -2125,8 +2122,7 @@ async function getShopifyWeek() {
     }
 
 
-    bucket.orders +=
-      1;
+    bucket.orders++;
 
 
     bucket.revenue +=
@@ -2147,7 +2143,9 @@ async function getShopifyWeek() {
 
     day.revenue =
       Number(
-        day.revenue.toFixed(2)
+        day.revenue.toFixed(
+          2
+        )
       );
   }
 
@@ -2168,70 +2166,19 @@ async function getShopifyWeek() {
 
 async function getShopId() {
 
-  const domain =
-    process.env
-      .SHOPIFY_STORE_DOMAIN;
-
-
-  const apiVersion =
-    process.env
-      .SHOPIFY_API_VERSION ||
-    "2026-07";
-
-
-  const token =
-    await getShopifyAccessToken();
-
-
-  const response =
-    await fetch(
-      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-      {
-
-        method:
-          "POST",
-
-        headers: {
-
-          "Content-Type":
-            "application/json",
-
-          "X-Shopify-Access-Token":
-            token
-        },
-
-        body:
-          JSON.stringify({
-
-            query:
-              "query { shop { id } }"
-          }),
-
-        signal:
-          timeoutSignal(
-            10000
-          )
-      }
-    );
-
-
   const data =
-    await response.json();
-
-
-  if (
-    !response.ok ||
-    data.errors ||
-    !data.data?.shop?.id
-  ) {
-
-    throw new Error(
-      "Shop-ID konnte nicht ermittelt werden."
+    await shopifyGraphQL(
+      `
+      query {
+        shop {
+          id
+        }
+      }
+      `
     );
-  }
 
 
-  return data.data.shop.id;
+  return data.shop.id;
 }
 
 
@@ -2239,85 +2186,31 @@ async function readJarvisField(
   key
 ) {
 
-  const domain =
-    process.env
-      .SHOPIFY_STORE_DOMAIN;
+  const data =
+    await shopifyGraphQL(
+      `
+      query($key: String!) {
 
+        shop {
 
-  const apiVersion =
-    process.env
-      .SHOPIFY_API_VERSION ||
-    "2026-07";
+          metafield(
+            namespace: "jarvis",
+            key: $key
+          ) {
 
-
-  const token =
-    await getShopifyAccessToken();
-
-
-  const query = `
-    query JarvisMeta {
-
-      shop {
-
-        metafield(
-          namespace: "jarvis",
-          key: "${key}"
-        ) {
-
-          value
+            value
+          }
         }
       }
-    }
-  `;
-
-
-  const response =
-    await fetch(
-      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+      `,
       {
-
-        method:
-          "POST",
-
-        headers: {
-
-          "Content-Type":
-            "application/json",
-
-          "X-Shopify-Access-Token":
-            token
-        },
-
-        body:
-          JSON.stringify({
-            query
-          }),
-
-        signal:
-          timeoutSignal(
-            10000
-          )
+        key
       }
     );
-
-
-  const data =
-    await response.json();
-
-
-  if (
-    !response.ok ||
-    data.errors
-  ) {
-
-    throw new Error(
-      `${key} konnte nicht gelesen werden.`
-    );
-  }
 
 
   const raw =
-    data.data?.shop
+    data.shop
       ?.metafield
       ?.value;
 
@@ -2341,6 +2234,7 @@ async function readJarvisField(
       ? parsed
       : [];
 
+
   } catch {
 
     return [];
@@ -2353,120 +2247,71 @@ async function writeJarvisField(
   value
 ) {
 
-  const domain =
-    process.env
-      .SHOPIFY_STORE_DOMAIN;
-
-
-  const apiVersion =
-    process.env
-      .SHOPIFY_API_VERSION ||
-    "2026-07";
-
-
-  const token =
-    await getShopifyAccessToken();
-
-
-  const shopId =
+  const ownerId =
     await getShopId();
 
 
-  const mutation = `
-    mutation SetJarvis(
-      $metafields: [MetafieldsSetInput!]!
-    ) {
-
-      metafieldsSet(
-        metafields: $metafields
+  const data =
+    await shopifyGraphQL(
+      `
+      mutation(
+        $metafields:
+        [MetafieldsSetInput!]!
       ) {
 
-        userErrors {
+        metafieldsSet(
+          metafields:
+            $metafields
+        ) {
 
-          field
+          userErrors {
 
-          message
+            field
+
+            message
+          }
         }
       }
-    }
-  `;
-
-
-  const response =
-    await fetch(
-      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
+      `,
       {
 
-        method:
-          "POST",
+        metafields: [
 
-        headers: {
+          {
 
-          "Content-Type":
-            "application/json",
+            ownerId,
 
-          "X-Shopify-Access-Token":
-            token
-        },
+            namespace:
+              "jarvis",
 
-        body:
-          JSON.stringify({
+            key,
 
-            query:
-              mutation,
+            type:
+              "json",
 
-            variables: {
-
-              metafields: [
-
-                {
-
-                  ownerId:
-                    shopId,
-
-                  namespace:
-                    "jarvis",
-
-                  key,
-
-                  type:
-                    "json",
-
-                  value:
-                    JSON.stringify(
-                      value
-                    )
-                }
-              ]
-            }
-          }),
-
-        signal:
-          timeoutSignal(
-            10000
-          )
+            value:
+              JSON.stringify(
+                value
+              )
+          }
+        ]
       }
     );
 
 
-  const data =
-    await response.json();
-
-
   const errors =
-    data.data
-      ?.metafieldsSet
+    data
+      .metafieldsSet
       ?.userErrors ||
     [];
 
 
   if (
-    !response.ok ||
-    data.errors ||
     errors.length
   ) {
 
     throw new Error(
+      errors[0].message ||
       `Speichern von ${key} fehlgeschlagen.`
     );
   }
@@ -2481,13 +2326,13 @@ async function saveNote(
   text
 ) {
 
-  const cleanText =
+  const clean =
     String(
       text || ""
     ).trim();
 
 
-  if (!cleanText) {
+  if (!clean) {
 
     throw new Error(
       "Die Notiz ist leer."
@@ -2509,7 +2354,7 @@ async function saveNote(
       ),
 
     text:
-      cleanText,
+      clean,
 
     created_at:
       new Date()
@@ -2529,7 +2374,7 @@ async function saveNote(
       true,
 
     text:
-      cleanText,
+      clean,
 
     total:
       notes.length
@@ -2546,30 +2391,13 @@ async function setReminder(
   text
 ) {
 
-  const reminders =
-    await readJarvisField(
-      "reminders"
-    );
-
-
-  const safeMinutes =
-    Math.max(
-      1,
-      Math.round(
-        Number(
-          minutes
-        ) || 1
-      )
-    );
-
-
-  const cleanText =
+  const clean =
     String(
       text || ""
     ).trim();
 
 
-  if (!cleanText) {
+  if (!clean) {
 
     throw new Error(
       "Erinnerungstext fehlt."
@@ -2577,11 +2405,31 @@ async function setReminder(
   }
 
 
+  const safeMinutes =
+    Math.max(
+
+      1,
+
+      Math.round(
+        Number(
+          minutes
+        ) ||
+        1
+      )
+    );
+
+
+  const reminders =
+    await readJarvisField(
+      "reminders"
+    );
+
+
   const dueAt =
     new Date(
       Date.now() +
       safeMinutes *
-        60000
+      60000
     ).toISOString();
 
 
@@ -2593,7 +2441,7 @@ async function setReminder(
       ),
 
     text:
-      cleanText,
+      clean,
 
     due_at:
       dueAt,
@@ -2615,7 +2463,7 @@ async function setReminder(
       true,
 
     reminder_text:
-      cleanText,
+      clean,
 
     minutes_from_now:
       safeMinutes,
@@ -2628,13 +2476,11 @@ async function setReminder(
 
 async function getActiveReminders() {
 
-  const reminders =
+  return (
     await readJarvisField(
       "reminders"
-    );
-
-
-  return reminders.filter(
+    )
+  ).filter(
     reminder =>
       !reminder.fired
   );
@@ -2656,22 +2502,25 @@ async function checkAndFireDueReminders() {
   const due =
     reminders.filter(
       reminder =>
+
         !reminder.fired &&
+
         new Date(
           reminder.due_at
         ).getTime() <=
-          now
+        now
     );
 
 
   if (
     !due.length
   ) {
+
     return [];
   }
 
 
-  const dueIds =
+  const ids =
     new Set(
       due.map(
         reminder =>
@@ -2684,7 +2533,7 @@ async function checkAndFireDueReminders() {
     reminders.map(
       reminder =>
 
-        dueIds.has(
+        ids.has(
           reminder.id
         )
 
@@ -2750,7 +2599,7 @@ async function getGmailAccessToken() {
     gmailTokenCache.token &&
     Date.now() <
       gmailTokenCache.expiresAt -
-        5 * 60 * 1000
+      300000
   ) {
 
     return gmailTokenCache.token;
@@ -2767,7 +2616,7 @@ async function getGmailAccessToken() {
   }
 
 
-  const params =
+  const body =
     new URLSearchParams({
 
       client_id:
@@ -2801,8 +2650,7 @@ async function getGmailAccessToken() {
             "application/x-www-form-urlencoded"
         },
 
-        body:
-          params,
+        body,
 
         signal:
           timeoutSignal(
@@ -2838,7 +2686,7 @@ async function getGmailAccessToken() {
         data.expires_in ||
         3600
       ) *
-        1000
+      1000
   };
 
 
@@ -2889,7 +2737,7 @@ async function getUnreadEmails() {
     await getGmailAccessToken();
 
 
-  const listResponse =
+  const response =
     await fetch(
       "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread&maxResults=10",
       {
@@ -2908,12 +2756,12 @@ async function getUnreadEmails() {
     );
 
 
-  const listData =
-    await listResponse.json();
+  const list =
+    await response.json();
 
 
   if (
-    !listResponse.ok
+    !response.ok
   ) {
 
     throw new Error(
@@ -2922,23 +2770,19 @@ async function getUnreadEmails() {
   }
 
 
-  const refs =
-    listData.messages ||
-    [];
-
-
   const emails =
     [];
 
 
   for (
     const ref of
-    refs
+    list.messages ||
+    []
   ) {
 
     try {
 
-      const response =
+      const mailResponse =
         await fetch(
           `https://gmail.googleapis.com/gmail/v1/users/me/messages/${ref.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
           {
@@ -2958,19 +2802,19 @@ async function getUnreadEmails() {
 
 
       const data =
-        await response.json();
+        await mailResponse.json();
 
 
       if (
-        !response.ok
+        !mailResponse.ok
       ) {
+
         continue;
       }
 
 
       const headers =
-        data.payload
-          ?.headers ||
+        data.payload?.headers ||
         [];
 
 
@@ -3012,15 +2856,7 @@ async function getUnreadEmails() {
       );
 
 
-    } catch (
-      error
-    ) {
-
-      console.warn(
-        "[GMAIL SINGLE ERROR]",
-        error
-      );
-    }
+    } catch {}
   }
 
 
@@ -3039,13 +2875,6 @@ async function getWeatherData(
     "today"
 ) {
 
-  const placeName =
-    String(
-      location ||
-      "Ludwigshafen am Rhein"
-    ).trim();
-
-
   const geo =
     new URL(
       "https://geocoding-api.open-meteo.com/v1/search"
@@ -3054,7 +2883,10 @@ async function getWeatherData(
 
   geo.searchParams.set(
     "name",
-    placeName
+    String(
+      location ||
+      "Ludwigshafen am Rhein"
+    ).trim()
   );
 
 
@@ -3110,8 +2942,8 @@ async function getWeatherData(
 
   const place =
     candidates.find(
-      item =>
-        item.country_code ===
+      candidate =>
+        candidate.country_code ===
         "DE"
     ) ||
     candidates[0];
@@ -3125,17 +2957,13 @@ async function getWeatherData(
 
   weather.searchParams.set(
     "latitude",
-    String(
-      place.latitude
-    )
+    place.latitude
   );
 
 
   weather.searchParams.set(
     "longitude",
-    String(
-      place.longitude
-    )
+    place.longitude
   );
 
 
@@ -3183,7 +3011,9 @@ async function getWeatherData(
   const index =
     day ===
     "tomorrow"
+
       ? 1
+
       : 0;
 
 
@@ -3212,44 +3042,37 @@ async function getWeatherData(
     current:
       day ===
       "today"
+
         ? data.current
+
         : null,
 
     forecast: {
 
       date:
         data.daily
-          ?.time?.[
-            index
-          ],
+          ?.time
+          ?.[index],
 
       max_temperature:
         data.daily
           ?.temperature_2m_max
-          ?.[
-            index
-          ],
+          ?.[index],
 
       min_temperature:
         data.daily
           ?.temperature_2m_min
-          ?.[
-            index
-          ],
+          ?.[index],
 
       precipitation_probability:
         data.daily
           ?.precipitation_probability_max
-          ?.[
-            index
-          ],
+          ?.[index],
 
       weather_code:
         data.daily
           ?.weather_code
-          ?.[
-            index
-          ]
+          ?.[index]
     }
   };
 }
@@ -3299,6 +3122,7 @@ Antworte ausschließlich als gültiges JSON mit den Feldern subject und body.`,
               ),
 
             reasoning: {
+
               effort:
                 "low"
             },
@@ -3324,11 +3148,13 @@ Antworte ausschließlich als gültiges JSON mit den Feldern subject und body.`,
                   properties: {
 
                     subject: {
+
                       type:
                         "string"
                     },
 
                     body: {
+
                       type:
                         "string"
                     }
@@ -3372,31 +3198,16 @@ Antworte ausschließlich als gültiges JSON mit den Feldern subject und body.`,
   }
 
 
-  const text =
+  return JSON.parse(
     extractResponseText(
       data
-    );
-
-
-  const parsed =
-    JSON.parse(
-      text
-    );
-
-
-  return {
-
-    subject:
-      parsed.subject,
-
-    body:
-      parsed.body
-  };
+    )
+  );
 }
 
 
 /* =========================================================
-   REALTIME TOOL DISPATCHER
+   TOOL DISPATCHER
    ========================================================= */
 
 app.post(
@@ -3450,9 +3261,12 @@ app.post(
 
           data =
             await getShopifySummary(
+
               args.period ===
                 "yesterday"
+
                 ? "yesterday"
+
                 : "today"
             );
 
@@ -3492,11 +3306,13 @@ app.post(
             await getWeatherData(
 
               args.location ||
-                "Ludwigshafen am Rhein",
+              "Ludwigshafen am Rhein",
 
               args.day ===
                 "tomorrow"
+
                 ? "tomorrow"
+
                 : "today"
             );
 
@@ -3574,7 +3390,7 @@ app.post(
                 draft.subject,
 
               instruction:
-                "Der vollständige Entwurf wird im HUD angezeigt. Antworte Mattl nur kurz, dass der Entwurf fertig ist."
+                "Der vollständige Entwurf wird im HUD angezeigt. Antworte nur kurz, dass der Entwurf fertig ist."
             }
           });
         }
@@ -3605,9 +3421,7 @@ app.post(
       });
 
 
-    } catch (
-      error
-    ) {
+    } catch (error) {
 
       console.error(
         "[TOOL ERROR]",
@@ -3633,7 +3447,7 @@ app.post(
 
 
 /* =========================================================
-   REMINDER BACKGROUND CHECK
+   REMINDER CHECK
    ========================================================= */
 
 app.post(
@@ -3683,9 +3497,7 @@ app.post(
       });
 
 
-    } catch (
-      error
-    ) {
+    } catch (error) {
 
       console.error(
         "[REMINDER CHECK ERROR]",
@@ -3734,8 +3546,9 @@ app.post(
 
     try {
 
-
-      /* Gmail */
+      /*
+       * Gmail
+       */
 
       if (
         isGmailConfigured()
@@ -3760,21 +3573,19 @@ app.post(
             fresh.length
           ) {
 
-            for (
-              const email of
-              fresh
-            ) {
-
-              notifiedEmailIds.add(
-                email.id
-              );
-            }
+            fresh.forEach(
+              email =>
+                notifiedEmailIds.add(
+                  email.id
+                )
+            );
 
 
-            const offerCount =
+            const offers =
               fresh.filter(
                 email =>
-                  email.possible_offer_inquiry
+                  email
+                    .possible_offer_inquiry
               ).length;
 
 
@@ -3792,17 +3603,15 @@ app.post(
                     ? "Mail"
                     : "Mails"
                 }.${
-                  offerCount
-                    ? ` ${offerCount} davon sieht nach einer Angebots- oder Preisanfrage aus.`
+                  offers
+                    ? ` ${offers} davon sieht nach einer Angebots- oder Preisanfrage aus.`
                     : ""
                 }`
             });
           }
 
 
-        } catch (
-          error
-        ) {
+        } catch (error) {
 
           console.warn(
             "[GMAIL BACKGROUND ERROR]",
@@ -3812,7 +3621,9 @@ app.post(
       }
 
 
-      /* Shopify */
+      /*
+       * Shopify
+       */
 
       try {
 
@@ -3853,12 +3664,12 @@ app.post(
 
         const cooldown =
           Date.now() -
-            lastOpenOrdersNotice
-              .at >
+          lastOpenOrdersNotice
+            .at >
           2 *
-            60 *
-            60 *
-            1000;
+          60 *
+          60 *
+          1000;
 
 
         if (
@@ -3890,9 +3701,7 @@ app.post(
         }
 
 
-      } catch (
-        error
-      ) {
+      } catch (error) {
 
         console.warn(
           "[SHOPIFY BACKGROUND ERROR]",
@@ -3911,9 +3720,7 @@ app.post(
       });
 
 
-    } catch (
-      error
-    ) {
+    } catch (error) {
 
       console.error(
         "[CHECKIN ERROR]",
@@ -3935,7 +3742,7 @@ app.post(
 
 
 /* =========================================================
-   DEBUG ENDPOINTS
+   DEBUG
    ========================================================= */
 
 app.post(
@@ -3953,15 +3760,15 @@ app.post(
 
           req.body?.period ===
             "yesterday"
+
             ? "yesterday"
+
             : "today"
         )
       );
 
 
-    } catch (
-      error
-    ) {
+    } catch (error) {
 
       return res
         .status(500)
@@ -3989,19 +3796,19 @@ app.post(
         await getWeatherData(
 
           req.body?.location ||
-            "Ludwigshafen am Rhein",
+          "Ludwigshafen am Rhein",
 
           req.body?.day ===
             "tomorrow"
+
             ? "tomorrow"
+
             : "today"
         )
       );
 
 
-    } catch (
-      error
-    ) {
+    } catch (error) {
 
       return res
         .status(500)
@@ -4032,9 +3839,7 @@ app.post(
       );
 
 
-    } catch (
-      error
-    ) {
+    } catch (error) {
 
       return res
         .status(500)
@@ -4090,7 +3895,7 @@ app.get(
       web_model:
         process.env
           .OPENAI_WEB_MODEL ||
-        "gpt-5.6",
+        "gpt-5.6-terra",
 
       realtime_tools:
         REALTIME_TOOLS.map(
@@ -4159,9 +3964,6 @@ app.get(
 
 /* =========================================================
    START
-
-   NICHT LÖSCHEN.
-   RENDER BRAUCHT DIESEN BLOCK.
    ========================================================= */
 
 app.listen(
@@ -4174,75 +3976,55 @@ app.listen(
       "=============================================="
     );
 
-    console.log(
-      `JARVIS ${JARVIS_VERSION} läuft`
-    );
 
     console.log(
-      `Port: ${PORT}`
+      `JARVIS ${JARVIS_VERSION} läuft auf Port ${PORT}`
     );
 
+
     console.log(
-      `Realtime Modell: ${
+      `Realtime: ${
         process.env
           .OPENAI_REALTIME_MODEL ||
         "gpt-realtime-2.1"
       }`
     );
 
+
     console.log(
-      `Realtime Stimme: ${
+      `Voice: ${
         process.env
           .OPENAI_REALTIME_VOICE ||
         "cedar"
       }`
     );
 
+
     console.log(
       "VAD: semantic_vad / low"
     );
 
+
     console.log(
-      `Web Modell: ${
+      `Web: ${
         process.env
           .OPENAI_WEB_MODEL ||
-        "gpt-5.6"
+        "gpt-5.6-terra"
       }`
     );
 
-    console.log(
-      `Tools: ${REALTIME_TOOLS
-        .map(
-          tool =>
-            tool.name
-        )
-        .join(", ")}`
-    );
 
     console.log(
-      `Shopify: ${
-        process.env
-            .SHOPIFY_STORE_DOMAIN &&
-        process.env
-            .SHOPIFY_CLIENT_ID &&
-        process.env
-            .SHOPIFY_CLIENT_SECRET
-          ? "verbunden"
-          : "nicht verbunden"
+      `Tools: ${
+        REALTIME_TOOLS
+          .map(
+            tool =>
+              tool.name
+          )
+          .join(", ")
       }`
     );
 
-    console.log(
-      `Gmail: ${
-        isGmailConfigured()
-          ? "verbunden"
-          : "nicht verbunden"
-      }`
-    );
-
-    console.log(
-      "Internet Search: aktiv"
-    );
 
     console.log(
       "=============================================="
