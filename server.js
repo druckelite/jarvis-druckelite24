@@ -1,7 +1,7 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
 
-   V10 · OPENAI REALTIME TEXT + ELEVENLABS STREAMING
+   V10.1 · OPENAI REALTIME TEXT + ELEVENLABS STREAMING
    ========================================================= */
 
 import express from "express";
@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V10-ELEVENLABS";
+  "V10.1-ELEVENLABS";
 
 
 /* =========================================================
@@ -342,10 +342,13 @@ Mattl: "Was steht heute an?"
 JARVIS: "Schauen wir mal. Irgendwas brennt ja meistens."
 
 ANREDE:
-- Nenne den Nutzer gelegentlich Mattl.
-- Nicht in jeder Antwort.
+- Der Nutzer heißt Mattl.
+- Im normalen Gespräch kannst du ihn gelegentlich Mattl, Meister oder Chef nennen.
+- "Daddy" nur sehr selten und ausschließlich locker-humorvoll.
+- Nicht in jeder Antwort eine Anrede verwenden.
 - Sprich Mattl natürlich aus.
 - Deutliches T, kein englischer Klang.
+- Die Startbegrüßung wird von der Browser-App erzeugt und darf besonders spektakulär, souverän und humorvoll klingen.
 
 GESPRÄCH:
 - Höre Mattl vollständig zu.
@@ -1189,10 +1192,7 @@ app.get(
         });
     }
   }
-);
-
-
-/* =========================================================
+);/* =========================================================
    OPENAI RESPONSE HELPER
    ========================================================= */
 
@@ -1255,7 +1255,10 @@ function extractResponseText(
   return pieces
     .join("\n")
     .trim();
-}/* =========================================================
+}
+
+
+/* =========================================================
    INTERNET SEARCH
    ========================================================= */
 
@@ -2825,19 +2828,12 @@ function looksLikeOffer(
   return [
 
     "angebot",
-
     "anfrage",
-
     "preisanfrage",
-
     "kostenvoranschlag",
-
     "was kostet",
-
     "wie viel kostet",
-
     "wieviel kostet",
-
     "angebot anfordern"
 
   ].some(
@@ -4073,6 +4069,12 @@ app.get(
           .ELEVENLABS_MODEL ||
         "eleven_flash_v2_5",
 
+      elevenlabs_websocket_auth:
+        "single_use_token",
+
+      elevenlabs_inactivity_timeout:
+        180,
+
       web_model:
         process.env
           .OPENAI_WEB_MODEL ||
@@ -4215,6 +4217,16 @@ app.listen(
           ? "verbunden"
           : "nicht verbunden"
       }`
+    );
+
+
+    console.log(
+      "ElevenLabs WebSocket Auth: single_use_token"
+    );
+
+
+    console.log(
+      "ElevenLabs Inactivity Timeout: 180 Sekunden"
     );
 
 
