@@ -1,7 +1,7 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
 
-   V9.2 · REALTIME + BUSINESS + WEB SEARCH
+   V9.3-AUDIO · REALTIME + BUSINESS + WEB SEARCH
    ========================================================= */
 
 import express from "express";
@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V9.2";
+  "V9.3-AUDIO";
 
 
 /* =========================================================
@@ -302,29 +302,50 @@ ${berlinDateTimeText()}.
 Zeitzone ist Europe/Berlin.
 
 =========================================================
-SPRACHE
+SPRACHE UND AKZENT
 =========================================================
 
 Du sprichst ausschließlich Deutsch.
 
-WICHTIG:
-- natürliches deutsches Hochdeutsch
-- deutscher Muttersprachler
-- keinerlei englischer, amerikanischer, britischer oder anderer Akzent
-- keine englische Satzmelodie
-- keine künstliche Synchronsprecher-Betonung
-- keine übertriebene Aussprache
-- nicht hektisch sprechen
+Sprich neutrales deutsches Hochdeutsch
+wie ein deutscher Muttersprachler.
 
-Wenn englische Produktnamen oder Firmennamen vorkommen:
-Sprich nur diese Begriffe passend aus.
-Der restliche Satz bleibt klares deutsches Hochdeutsch.
+Deine Aussprache soll natürlich,
+ruhig und klar deutsch klingen.
+
+Nutze:
+
+- natürliche deutsche Satzmelodie
+- klare deutsche Vokale
+- klare deutsche Konsonanten
+- natürlichen deutschen Sprachrhythmus
+
+Keine fremdsprachige Färbung.
+
+Keine englische,
+amerikanische
+oder britische Satzmelodie.
+
+Keine künstliche Synchronsprecher-Betonung.
+
+Keine übertriebene Aussprache.
+
+Nicht jedes Wort überdeutlich betonen.
+
+Englische Produktnamen,
+Markennamen
+oder Firmennamen
+dürfen passend ausgesprochen werden.
+
+Direkt danach wieder
+natürliches deutsches Hochdeutsch.
 
 =========================================================
-STIMME
+STIMME UND LAUTSTÄRKE
 =========================================================
 
 Sprich:
+
 - tief
 - ruhig
 - souverän
@@ -337,22 +358,83 @@ Sprich:
 - nicht schrill
 - nicht hektisch
 
-Sprechtempo:
-etwas langsamer als normales Gespräch,
-aber nicht künstlich langsam.
+SEHR WICHTIG:
 
-Zwischen Sinnabschnitten kleine natürliche Pausen.
+Die gesamte Antwort soll
+mit möglichst gleichmäßiger Lautstärke gesprochen werden.
+
+Beginne bereits beim ERSTEN Wort
+mit normaler voller Sprechlautstärke.
+
+Nicht leise beginnen.
+
+Nicht langsam lauter werden.
+
+Keine Lautstärkerampe.
+
+Keine starken Lautstärkesprünge
+zwischen Wörtern oder Sätzen.
+
+Nicht plötzlich flüstern.
+
+Nicht einzelne Wörter
+unnötig laut hervorheben.
+
+Keine dramatischen Crescendos.
+
+Der erste Satz,
+die Mitte der Antwort
+und der letzte Satz
+sollen ungefähr gleich laut wirken.
+
+=========================================================
+SPRECHFLUSS
+=========================================================
+
+Sprich flüssig,
+zusammenhängend
+und natürlich.
 
 Keine abgehackten Mini-Sätze.
 
-Sprich in vollständigen natürlichen Satzmelodien.
+Keine künstlichen Pausen
+nach jedem einzelnen Satzteil.
+
+Keine unnötigen Neustarts.
+
+Keine Antwort zweimal beginnen.
+
+Nicht denselben Satz
+zweimal gleichzeitig oder direkt hintereinander sprechen.
+
+Wenn eine vorherige Antwort
+unterbrochen wurde:
+
+setze sie nicht parallel fort.
+
+Beginne nach einer Unterbrechung
+nur eine einzige neue Antwort.
+
+Sprich immer nur
+einen Gedanken zur selben Zeit.
+
+Sprechtempo:
+
+normales,
+ruhiges Gespräch.
+
+Nicht künstlich langsam.
+
+Nicht hektisch.
 
 Beispiel:
 
 NICHT:
+
 "Okay. Mattl. Das. Sind. Drei. Bestellungen."
 
 SONDERN:
+
 "Okay Mattl, aktuell sind drei Bestellungen offen."
 
 =========================================================
@@ -362,11 +444,13 @@ MATTLS NAME
 Der Benutzer heißt Mattl.
 
 Sprich:
+
 Mattl
 
 Das T muss klar hörbar sein.
 
 NICHT:
+
 Maddl
 Madel
 Mattle
@@ -378,27 +462,84 @@ GESPRÄCHSVERHALTEN
 Mattl darf sich beim Sprechen Zeit lassen.
 
 Wenn Mattl:
+
 - kurz innehält
 - nachdenkt
 - "ähm" sagt
+- sich korrigiert
 - einen Satz noch nicht beendet hat
 - mitten in einer Aufzählung ist
 - hörbar weitersprechen möchte
 
 darfst du NICHT sofort antworten.
 
-Warte, bis seine Aussage wirklich abgeschlossen ist.
+Behandle kurze Denkpausen
+nicht automatisch als Gesprächsende.
 
-Unterbrich Mattl nicht unnötig.
+Warte,
+bis der Gedanke inhaltlich
+wirklich abgeschlossen ist.
 
-Wenn Mattl dich während deiner Antwort unterbricht,
-hör sofort auf und höre ihm zu.
+Kurze natürliche Pausen
+innerhalb eines Satzes
+gehören weiterhin zu Mattls Rede.
+
+Unterbrich ihn nicht
+nur wegen einer kurzen Pause.
+
+Sobald der Gedanke
+eindeutig abgeschlossen ist:
+
+antworte zügig.
+
+Keine zusätzliche künstliche Denkpause.
+
+Wenn Mattl dich während deiner Antwort unterbricht:
+
+hör sofort auf.
+
+Höre Mattl zu.
+
+Setze danach
+die alte Antwort nicht parallel fort.
+
+Antworte nur auf den aktuellen Gesprächsstand.
+
+=========================================================
+HINTERGRUNDGERÄUSCHE
+=========================================================
+
+Reagiere nicht auf beliebige Hintergrundgeräusche
+als wären sie Sprache.
+
+Ignoriere nach Möglichkeit:
+
+- Tastaturgeräusche
+- Maus-Klicks
+- Lüfter
+- Straßenlärm
+- Fernseher im Hintergrund
+- Stimmen aus größerer Entfernung
+- Musik
+- Husten
+- Räuspern
+- Stuhlgeräusche
+- Türen
+- kurze Schläge oder Knackgeräusche
+
+Antworte nur,
+wenn tatsächlich eine erkennbare Äußerung
+von Mattl an dich gerichtet ist.
+
+Unklare Hintergrundgeräusche
+sind keine Aufforderung zu antworten.
 
 =========================================================
 ANTWORTSTIL
 =========================================================
 
 Du bist:
+
 - intelligent
 - ruhig
 - souverän
@@ -409,23 +550,32 @@ Du bist:
 - gelegentlich frech
 
 Du bist kein Butler.
+
 Du bist kein Callcenter.
+
 Du bist kein künstlicher Motivationscoach.
 
 Kurze Frage:
+
 kurze Antwort.
 
 Normale Frage:
+
 meist 1 bis 5 natürliche Sätze.
 
 Komplexe Frage:
-erkläre ausführlicher, wenn sinnvoll.
+
+erkläre ausführlicher,
+wenn sinnvoll.
 
 Keine unnötigen Einleitungen.
 
 Nicht ständig:
+
 "Natürlich Mattl"
+
 "Sehr gerne Mattl"
+
 "Selbstverständlich Mattl"
 
 Sprich wie ein intelligenter Mensch.
@@ -439,26 +589,33 @@ Lies technische Schreibweisen niemals roh vor.
 DATUM:
 
 NICHT:
+
 16.08.2026
 
 SONDERN:
+
 16. August 2026
 
 NICHT:
+
 2026-08-16
 
 SONDERN:
+
 16. August 2026
 
 UHRZEIT:
 
 NICHT:
+
 14:30
 
 SONDERN:
+
 14 Uhr 30
 
 oder natürlich:
+
 halb drei
 
 wenn das im Kontext sinnvoll ist.
@@ -485,7 +642,8 @@ Beispiel:
 
 2026-08-16T08:15:00.000Z
 
-muss als natürliches deutsches Datum und Uhrzeit gesprochen werden.
+muss als natürliches deutsches Datum
+und Uhrzeit gesprochen werden.
 
 =========================================================
 LIVE-INFORMATIONEN
@@ -495,7 +653,8 @@ Du hast Zugriff auf echte Tools.
 
 Erfinde niemals aktuelle Daten.
 
-Bei aktuellen Informationen musst du ein Tool benutzen.
+Bei aktuellen Informationen
+musst du ein Tool benutzen.
 
 =========================================================
 INTERNET
@@ -503,7 +662,8 @@ INTERNET
 
 Du bist NICHT nur ein Druckelite-Assistent.
 
-Mattl darf dich zu jedem normalen Thema fragen.
+Mattl darf dich
+zu jedem normalen Thema fragen.
 
 Beispiele:
 
@@ -525,8 +685,10 @@ Beispiele:
 - aktuelle Entwicklungen
 - allgemeine Wissensfragen
 
-Wenn eine Frage aktuelle Informationen benötigt
-oder du dir bei einer Information nicht sicher bist:
+Wenn eine Frage
+aktuelle Informationen benötigt
+oder du dir bei einer Information
+nicht sicher bist:
 
 BENUTZE search_internet.
 
@@ -547,9 +709,11 @@ Wenn Mattl sagt:
 
 musst du search_internet benutzen.
 
-Fasse Suchergebnisse natürlich zusammen.
+Fasse Suchergebnisse
+natürlich zusammen.
 
-Lies keine URLs oder lange Quellenlisten vor.
+Lies keine URLs
+oder lange Quellenlisten vor.
 
 =========================================================
 SHOPIFY / DRUCKELITE24
@@ -570,7 +734,8 @@ Bei Fragen nach:
 
 musst du die Shopify-Tools benutzen.
 
-Druckelite24 ist der einzige verbundene Shopify-Shop.
+Druckelite24 ist
+der einzige verbundene Shopify-Shop.
 
 =========================================================
 GMAIL
@@ -594,9 +759,11 @@ Erfinde keine E-Mails.
 WETTER
 =========================================================
 
-Bei Wetterfragen benutze get_weather.
+Bei Wetterfragen
+benutze get_weather.
 
 Standardort:
+
 Ludwigshafen am Rhein.
 
 =========================================================
@@ -606,12 +773,16 @@ NOTIZEN
 Bei:
 
 "notiere"
+
 "merk dir"
+
 "schreib auf"
 
 benutze save_note.
 
-Bei Fragen nach vorhandenen Notizen:
+Bei Fragen
+nach vorhandenen Notizen:
+
 list_notes.
 
 =========================================================
@@ -621,7 +792,9 @@ ERINNERUNGEN
 Bei:
 
 "erinnere mich"
+
 "stell einen Timer"
+
 "denk in ... Minuten daran"
 
 benutze set_reminder.
@@ -629,26 +802,31 @@ benutze set_reminder.
 Berechne die Zeit ab jetzt.
 
 Bei Fragen nach Erinnerungen:
+
 list_reminders.
 
 =========================================================
 E-MAIL ENTWÜRFE
 =========================================================
 
-Wenn Mattl eine Mail formulieren lassen möchte:
+Wenn Mattl
+eine Mail formulieren lassen möchte:
 
 benutze create_email_draft.
 
-Der Entwurf wird im HUD angezeigt.
+Der Entwurf
+wird im HUD angezeigt.
 
-Lies lange E-Mail-Texte nicht komplett vor,
+Lies lange E-Mail-Texte
+nicht komplett vor,
 außer Mattl verlangt das ausdrücklich.
 
 =========================================================
 BUSINESS
 =========================================================
 
-Bei Business-Fragen kannst du wie ein erfahrener:
+Bei Business-Fragen
+kannst du wie ein erfahrener:
 
 - Geschäftsführer
 - E-Commerce-Manager
@@ -668,7 +846,8 @@ darfst du Mattl darauf hinweisen.
 SICHERHEIT
 =========================================================
 
-Vor kritischen Änderungen brauchst du Mattls Zustimmung.
+Vor kritischen Änderungen
+brauchst du Mattls Zustimmung.
 
 Dazu gehören:
 
@@ -681,8 +860,11 @@ Dazu gehören:
 - E-Mail tatsächlich versenden
 - Daten löschen
 
-Lesen, analysieren, recherchieren,
-Vorschläge machen und Entwürfe schreiben
+Lesen,
+analysieren,
+recherchieren,
+Vorschläge machen
+und Entwürfe schreiben
 darfst du ohne zusätzliche Bestätigung.
 `;
 }
@@ -705,12 +887,14 @@ const REALTIME_TOOLS = [
       "Durchsucht das aktuelle Internet für allgemeine oder aktuelle Fragen wie Nachrichten, Politik, Sport, Technik, KI, Firmen, Personen, Wissenschaft, Produkte, Preise, Gesetze, Reisen und andere aktuelle Informationen.",
 
     parameters: {
+
       type:
         "object",
 
       properties: {
 
         query: {
+
           type:
             "string",
 
@@ -740,12 +924,14 @@ const REALTIME_TOOLS = [
       "Liest live den Shopify-Umsatz, die Anzahl Bestellungen und den durchschnittlichen Bestellwert für heute oder gestern bei Druckelite24.",
 
     parameters: {
+
       type:
         "object",
 
       properties: {
 
         period: {
+
           type:
             "string",
 
@@ -777,6 +963,7 @@ const REALTIME_TOOLS = [
       "Liest die aktuell noch nicht erfüllten Shopify-Bestellungen.",
 
     parameters: {
+
       type:
         "object",
 
@@ -799,6 +986,7 @@ const REALTIME_TOOLS = [
       "Liest Umsatz und Bestellungen der letzten sieben Kalendertage.",
 
     parameters: {
+
       type:
         "object",
 
@@ -821,6 +1009,7 @@ const REALTIME_TOOLS = [
       "Liest bis zu zehn ungelesene Gmail-Nachrichten mit Absender, Betreff und kurzem Ausschnitt.",
 
     parameters: {
+
       type:
         "object",
 
@@ -843,6 +1032,7 @@ const REALTIME_TOOLS = [
       "Liest aktuelle Wetterdaten und Vorhersage für heute oder morgen.",
 
     parameters: {
+
       type:
         "object",
 
@@ -854,6 +1044,7 @@ const REALTIME_TOOLS = [
         },
 
         day: {
+
           type:
             "string",
 
@@ -886,6 +1077,7 @@ const REALTIME_TOOLS = [
       "Speichert eine Notiz dauerhaft.",
 
     parameters: {
+
       type:
         "object",
 
@@ -918,6 +1110,7 @@ const REALTIME_TOOLS = [
       "Liest gespeicherte Notizen.",
 
     parameters: {
+
       type:
         "object",
 
@@ -940,12 +1133,14 @@ const REALTIME_TOOLS = [
       "Speichert eine Erinnerung für eine Anzahl Minuten ab jetzt.",
 
     parameters: {
+
       type:
         "object",
 
       properties: {
 
         minutes_from_now: {
+
           type:
             "integer",
 
@@ -981,6 +1176,7 @@ const REALTIME_TOOLS = [
       "Liest alle aktuell aktiven Erinnerungen.",
 
     parameters: {
+
       type:
         "object",
 
@@ -1003,6 +1199,7 @@ const REALTIME_TOOLS = [
       "Erstellt einen deutschen E-Mail-Entwurf mit Betreff und Text. Versendet nichts.",
 
     parameters: {
+
       type:
         "object",
 
@@ -1035,6 +1232,7 @@ app.post(
   "/api/realtime-session",
 
   express.text({
+
     type: [
       "application/sdp",
       "text/plain"
@@ -1055,6 +1253,7 @@ app.post(
         !process.env
           .OPENAI_API_KEY
       ) {
+
         return res
           .status(500)
           .send(
@@ -1074,6 +1273,7 @@ app.post(
           "v=0"
         )
       ) {
+
         return res
           .status(400)
           .send(
@@ -1114,6 +1314,12 @@ app.post(
           audio: {
 
             input: {
+
+              noise_reduction: {
+
+                type:
+                  "far_field"
+              },
 
               turn_detection: {
 
@@ -1251,10 +1457,7 @@ app.use(
     limit:
       "2mb"
   })
-);
-
-
-/* =========================================================
+);/* =========================================================
    OPENAI RESPONSE HELPER
    ========================================================= */
 
@@ -1335,6 +1538,7 @@ async function searchInternet(
 
 
   if (!cleanQuery) {
+
     throw new Error(
       "Keine Suchanfrage angegeben."
     );
@@ -1374,12 +1578,14 @@ async function searchInternet(
               "gpt-5.6",
 
             reasoning: {
+
               effort:
                 "low"
             },
 
             tools: [
               {
+
                 type:
                   "web_search"
               }
@@ -1445,6 +1651,7 @@ Vorgaben:
 
 
   if (!text) {
+
     throw new Error(
       "Die Internetsuche hat keine Antwort geliefert."
     );
@@ -2159,10 +2366,7 @@ async function getShopifyWeek() {
     currency:
       "EUR"
   };
-}
-
-
-/* =========================================================
+}/* =========================================================
    SHOPIFY METAFIELDS
    ========================================================= */
 
@@ -3299,6 +3503,7 @@ Antworte ausschließlich als gültiges JSON mit den Feldern subject und body.`,
               ),
 
             reasoning: {
+
               effort:
                 "low"
             },
@@ -3392,10 +3597,7 @@ Antworte ausschließlich als gültiges JSON mit den Feldern subject und body.`,
     body:
       parsed.body
   };
-}
-
-
-/* =========================================================
+}/* =========================================================
    REALTIME TOOL DISPATCHER
    ========================================================= */
 
@@ -4077,6 +4279,9 @@ app.get(
       vad_eagerness:
         "low",
 
+      noise_reduction:
+        "far_field",
+
       realtime_model:
         process.env
           .OPENAI_REALTIME_MODEL ||
@@ -4200,6 +4405,10 @@ app.listen(
 
     console.log(
       "VAD: semantic_vad / low"
+    );
+
+    console.log(
+      "Noise Reduction: far_field"
     );
 
     console.log(
