@@ -1,7 +1,7 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
 
-   V9.3-AUDIO · REALTIME + BUSINESS + WEB SEARCH
+   V10 · OPENAI REALTIME TEXT + ELEVENLABS STREAMING
    ========================================================= */
 
 import express from "express";
@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V9.3-AUDIO";
+  "V10-ELEVENLABS";
 
 
 /* =========================================================
@@ -87,13 +87,8 @@ function timeoutSignal(ms) {
 }
 
 
-/* =========================================================
-   BERLIN TIME
-   ========================================================= */
+function berlinDate() {
 
-function berlinDate(
-  date = new Date()
-) {
   return new Intl.DateTimeFormat(
     "en-CA",
     {
@@ -109,182 +104,143 @@ function berlinDate(
       day:
         "2-digit"
     }
-  ).format(date);
-}
-
-
-function berlinDateTimeText() {
-  return new Intl.DateTimeFormat(
-    "de-DE",
-    {
-      timeZone:
-        "Europe/Berlin",
-
-      dateStyle:
-        "full",
-
-      timeStyle:
-        "medium"
-    }
   ).format(
     new Date()
   );
 }
 
 
-function nextDateString(
-  dateString
-) {
-  const date =
-    new Date(
-      `${dateString}T12:00:00Z`
-    );
+function getBerlinHour() {
 
-  date.setUTCDate(
-    date.getUTCDate() + 1
-  );
-
-  return date
-    .toISOString()
-    .slice(0, 10);
-}
-
-
-function berlinUtcOffsetMinutes(
-  date
-) {
-  const parts =
+  const formatter =
     new Intl.DateTimeFormat(
-      "en-US",
+      "de-DE",
       {
         timeZone:
           "Europe/Berlin",
 
-        timeZoneName:
-          "shortOffset"
+        hour:
+          "numeric",
+
+        hourCycle:
+          "h23"
       }
-    ).formatToParts(date);
+    );
 
 
-  const label =
+  const parts =
+    formatter.formatToParts(
+      new Date()
+    );
+
+
+  const hourPart =
     parts.find(
       part =>
         part.type ===
-        "timeZoneName"
-    )?.value || "GMT+0";
-
-
-  const match =
-    label.match(
-      /GMT([+-]\d+)(?::(\d+))?/
+        "hour"
     );
 
 
-  if (!match) {
-    return 0;
+  const hour =
+    Number(
+      hourPart?.value
+    );
+
+
+  if (
+    Number.isNaN(
+      hour
+    )
+  ) {
+    return new Date()
+      .getHours();
   }
 
 
-  const hours =
-    Number(match[1]);
-
-  const minutes =
-    Number(
-      match[2] || 0
-    );
-
-
-  return hours >= 0
-    ? hours * 60 +
-        minutes
-    : hours * 60 -
-        minutes;
-}
-
-
-function berlinMidnightUtcIso(
-  dateString
-) {
-  const noonGuess =
-    new Date(
-      `${dateString}T12:00:00Z`
-    );
-
-
-  const offsetMinutes =
-    berlinUtcOffsetMinutes(
-      noonGuess
-    );
-
-
-  const utcMillis =
-    Date.parse(
-      `${dateString}T00:00:00Z`
-    ) -
-    offsetMinutes *
-      60000;
-
-
-  return new Date(
-    utcMillis
-  ).toISOString();
+  return hour;
 }
 
 
 function getPeriodDates(
   period
 ) {
-  const today =
-    berlinDate();
+
+  const now =
+    new Date();
+
+
+  const berlinParts =
+    new Intl.DateTimeFormat(
+      "en-CA",
+      {
+        timeZone:
+          "Europe/Berlin",
+
+        year:
+          "numeric",
+
+        month:
+          "2-digit",
+
+        day:
+          "2-digit"
+      }
+    ).format(
+      now
+    );
+
+
+  const [
+    year,
+    month,
+    day
+  ] =
+    berlinParts
+      .split("-")
+      .map(Number);
+
+
+  let start =
+    new Date(
+      Date.UTC(
+        year,
+        month - 1,
+        day
+      )
+    );
 
 
   if (
     period ===
     "yesterday"
   ) {
-    const date =
-      new Date(
-        `${today}T12:00:00Z`
-      );
+
+    start.setUTCDate(
+      start.getUTCDate() -
+      1
+    );
+  }
 
 
-    date.setUTCDate(
-      date.getUTCDate() - 1
+  const end =
+    new Date(
+      start
     );
 
 
-    const yesterday =
-      date
-        .toISOString()
-        .slice(0, 10);
-
-
-    return {
-      start:
-        berlinMidnightUtcIso(
-          yesterday
-        ),
-
-      end:
-        berlinMidnightUtcIso(
-          today
-        )
-    };
-  }
+  end.setUTCDate(
+    end.getUTCDate() +
+    1
+  );
 
 
   return {
     start:
-      berlinMidnightUtcIso(
-        today
-      ),
+      start.toISOString(),
 
     end:
-      berlinMidnightUtcIso(
-        nextDateString(
-          today
-        )
-      )
+      end.toISOString()
   };
 }
 
@@ -294,584 +250,217 @@ function getPeriodDates(
    ========================================================= */
 
 function buildJarvisInstructions() {
+
+  const hour =
+    getBerlinHour();
+
+
+  let dayPart =
+    "Tag";
+
+
+  if (
+    hour >= 5 &&
+    hour < 11
+  ) {
+
+    dayPart =
+      "Morgen";
+  }
+
+  else if (
+    hour >= 11 &&
+    hour < 14
+  ) {
+
+    dayPart =
+      "Mittag";
+  }
+
+  else if (
+    hour >= 14 &&
+    hour < 18
+  ) {
+
+    dayPart =
+      "Nachmittag";
+  }
+
+  else if (
+    hour >= 18 &&
+    hour < 23
+  ) {
+
+    dayPart =
+      "Abend";
+  }
+
+  else {
+
+    dayPart =
+      "Nacht";
+  }
+
+
   return `
-Du bist JARVIS, der persönliche Assistent und Business-Sparringspartner von Mattl.
-
-AKTUELLE ZEIT:
-${berlinDateTimeText()}.
-Zeitzone ist Europe/Berlin.
-
-=========================================================
-SPRACHE UND AKZENT
-=========================================================
-
-Du sprichst ausschließlich Deutsch.
-
-Sprich neutrales deutsches Hochdeutsch
-wie ein deutscher Muttersprachler.
-
-Deine Aussprache soll natürlich,
-ruhig und klar deutsch klingen.
-
-Nutze:
-
-- natürliche deutsche Satzmelodie
-- klare deutsche Vokale
-- klare deutsche Konsonanten
-- natürlichen deutschen Sprachrhythmus
-
-Keine fremdsprachige Färbung.
-
-Keine englische,
-amerikanische
-oder britische Satzmelodie.
-
-Keine künstliche Synchronsprecher-Betonung.
-
-Keine übertriebene Aussprache.
-
-Nicht jedes Wort überdeutlich betonen.
-
-Englische Produktnamen,
-Markennamen
-oder Firmennamen
-dürfen passend ausgesprochen werden.
-
-Direkt danach wieder
-natürliches deutsches Hochdeutsch.
-
-=========================================================
-STIMME UND LAUTSTÄRKE
-=========================================================
-
-Sprich:
-
-- tief
-- ruhig
-- souverän
-- warm
-- entspannt
-- männlich wirkend
-- mit etwas dunklerer Stimmlage
-- mit ruhigem Brustton
-- nicht nasal
-- nicht schrill
-- nicht hektisch
-
-SEHR WICHTIG:
-
-Die gesamte Antwort soll
-mit möglichst gleichmäßiger Lautstärke gesprochen werden.
-
-Beginne bereits beim ERSTEN Wort
-mit normaler voller Sprechlautstärke.
-
-Nicht leise beginnen.
-
-Nicht langsam lauter werden.
-
-Keine Lautstärkerampe.
-
-Keine starken Lautstärkesprünge
-zwischen Wörtern oder Sätzen.
-
-Nicht plötzlich flüstern.
-
-Nicht einzelne Wörter
-unnötig laut hervorheben.
-
-Keine dramatischen Crescendos.
-
-Der erste Satz,
-die Mitte der Antwort
-und der letzte Satz
-sollen ungefähr gleich laut wirken.
-
-=========================================================
-SPRECHFLUSS
-=========================================================
-
-Sprich flüssig,
-zusammenhängend
-und natürlich.
-
-Keine abgehackten Mini-Sätze.
-
-Keine künstlichen Pausen
-nach jedem einzelnen Satzteil.
-
-Keine unnötigen Neustarts.
-
-Keine Antwort zweimal beginnen.
-
-Nicht denselben Satz
-zweimal gleichzeitig oder direkt hintereinander sprechen.
-
-Wenn eine vorherige Antwort
-unterbrochen wurde:
-
-setze sie nicht parallel fort.
-
-Beginne nach einer Unterbrechung
-nur eine einzige neue Antwort.
-
-Sprich immer nur
-einen Gedanken zur selben Zeit.
-
-Sprechtempo:
-
-normales,
-ruhiges Gespräch.
-
-Nicht künstlich langsam.
-
-Nicht hektisch.
-
-Beispiel:
-
-NICHT:
-
-"Okay. Mattl. Das. Sind. Drei. Bestellungen."
-
-SONDERN:
-
-"Okay Mattl, aktuell sind drei Bestellungen offen."
-
-=========================================================
-MATTLS NAME
-=========================================================
-
-Der Benutzer heißt Mattl.
-
-Sprich:
-
-Mattl
-
-Das T muss klar hörbar sein.
-
-NICHT:
-
-Maddl
-Madel
-Mattle
-
-=========================================================
-GESPRÄCHSVERHALTEN
-=========================================================
-
-Mattl darf sich beim Sprechen Zeit lassen.
-
-Wenn Mattl:
-
-- kurz innehält
-- nachdenkt
-- "ähm" sagt
-- sich korrigiert
-- einen Satz noch nicht beendet hat
-- mitten in einer Aufzählung ist
-- hörbar weitersprechen möchte
-
-darfst du NICHT sofort antworten.
-
-Behandle kurze Denkpausen
-nicht automatisch als Gesprächsende.
-
-Warte,
-bis der Gedanke inhaltlich
-wirklich abgeschlossen ist.
-
-Kurze natürliche Pausen
-innerhalb eines Satzes
-gehören weiterhin zu Mattls Rede.
-
-Unterbrich ihn nicht
-nur wegen einer kurzen Pause.
-
-Sobald der Gedanke
-eindeutig abgeschlossen ist:
-
-antworte zügig.
-
-Keine zusätzliche künstliche Denkpause.
-
-Wenn Mattl dich während deiner Antwort unterbricht:
-
-hör sofort auf.
-
-Höre Mattl zu.
-
-Setze danach
-die alte Antwort nicht parallel fort.
-
-Antworte nur auf den aktuellen Gesprächsstand.
-
-=========================================================
-HINTERGRUNDGERÄUSCHE
-=========================================================
-
-Reagiere nicht auf beliebige Hintergrundgeräusche
-als wären sie Sprache.
-
-Ignoriere nach Möglichkeit:
-
-- Tastaturgeräusche
-- Maus-Klicks
-- Lüfter
-- Straßenlärm
-- Fernseher im Hintergrund
-- Stimmen aus größerer Entfernung
-- Musik
-- Husten
-- Räuspern
-- Stuhlgeräusche
-- Türen
-- kurze Schläge oder Knackgeräusche
-
-Antworte nur,
-wenn tatsächlich eine erkennbare Äußerung
-von Mattl an dich gerichtet ist.
-
-Unklare Hintergrundgeräusche
-sind keine Aufforderung zu antworten.
-
-=========================================================
-ANTWORTSTIL
-=========================================================
-
-Du bist:
-
+Du bist JARVIS, Mattls persönlicher KI-Assistent.
+
+Der Nutzer heißt Mattl.
+Du arbeitest primär für Mattl und sein Unternehmen Druckelite24.
+
+Aktuelle Tageszeit:
+${dayPart}
+
+SPRACHE:
+- Antworte ausschließlich auf Deutsch.
+- Verwende natürliches, klares deutsches Hochdeutsch.
+- Formuliere wie ein deutscher Muttersprachler.
+- Keine englischen Begrüßungen, wenn Mattl Deutsch spricht.
+- Keine unnötigen englischen Begriffe.
+- Kurze, natürliche Sätze.
+- Keine künstliche Synchronsprecher-Sprache.
+- Keine übertriebene Betonung.
+- Keine unnötigen Wiederholungen.
+
+CHARAKTER:
 - intelligent
+- aufmerksam
+- selbstständig
 - ruhig
 - souverän
-- direkt
-- locker
-- freundlich
 - trocken humorvoll
-- gelegentlich frech
+- gelegentlich leicht sarkastisch
+- aber nie respektlos
+- hilfreich
+- geschäftlich kompetent
 
-Du bist kein Butler.
+Du darfst gelegentlich einen trockenen Kommentar oder ein Wortspiel machen.
+Übertreibe es aber nicht.
 
-Du bist kein Callcenter.
+BEISPIEL:
+Mattl: "Was steht heute an?"
+JARVIS: "Schauen wir mal. Irgendwas brennt ja meistens."
 
-Du bist kein künstlicher Motivationscoach.
+ANREDE:
+- Nenne den Nutzer gelegentlich Mattl.
+- Nicht in jeder Antwort.
+- Sprich Mattl natürlich aus.
+- Deutliches T, kein englischer Klang.
 
-Kurze Frage:
+GESPRÄCH:
+- Höre Mattl vollständig zu.
+- Unterbrich ihn nicht unnötig.
+- Kurze Denkpausen bedeuten nicht automatisch, dass der Satz beendet ist.
+- Wenn Mattl "ähm" sagt oder kurz überlegt, warte.
+- Wenn Mattl eine Aufzählung beginnt, warte bis sie inhaltlich abgeschlossen ist.
+- Wenn Mattl dich unterbricht, beende deine aktuelle Antwort sofort.
+- Fahre eine unterbrochene alte Antwort später nicht parallel fort.
+- Erzeuge niemals zwei Antworten gleichzeitig.
+- Beginne eine neue Antwort erst, wenn die vorherige beendet oder abgebrochen wurde.
+- Sobald Mattls Gedanke klar abgeschlossen ist, antworte zügig.
 
-kurze Antwort.
+ANTWORTSTIL:
+- Standardmäßig kurz und konkret.
+- Keine langen Vorträge, außer Mattl möchte Details.
+- Keine unnötige Einleitung.
+- Keine Zusammenfassung, wenn sie nicht nötig ist.
+- Keine Floskeln wie "Natürlich helfe ich dir gerne".
+- Sag direkt, was Sache ist.
 
-Normale Frage:
+GESCHÄFT:
+Du kennst Druckelite24 als Mattls Hauptunternehmen.
 
-meist 1 bis 5 natürliche Sätze.
+Wenn Mattl nach:
+- Bestellungen
+- Umsatz
+- offenen Bestellungen
+- E-Mails
+- Wetter
+- Notizen
+- Erinnerungen
+- aktuellen Informationen
+fragt, verwende die verfügbaren Tools.
 
-Komplexe Frage:
+WICHTIG:
+Erfinde niemals Live-Daten.
 
-erkläre ausführlicher,
-wenn sinnvoll.
+Wenn aktuelle Daten benötigt werden:
+- benutze das passende Tool
+- warte auf das Tool-Ergebnis
+- antworte danach anhand der gelieferten Daten
 
-Keine unnötigen Einleitungen.
-
-Nicht ständig:
-
-"Natürlich Mattl"
-
-"Sehr gerne Mattl"
-
-"Selbstverständlich Mattl"
-
-Sprich wie ein intelligenter Mensch.
-
-=========================================================
-ZAHLEN, DATUM UND UHRZEIT
-=========================================================
-
-Lies technische Schreibweisen niemals roh vor.
-
-DATUM:
-
-NICHT:
-
-16.08.2026
-
-SONDERN:
-
-16. August 2026
-
-NICHT:
-
-2026-08-16
-
-SONDERN:
-
-16. August 2026
-
-UHRZEIT:
-
-NICHT:
-
-14:30
-
-SONDERN:
-
-14 Uhr 30
-
-oder natürlich:
-
-halb drei
-
-wenn das im Kontext sinnvoll ist.
-
-GELD:
-
-1234,56 EUR
-
-sprich natürlich als:
-
-1.234 Euro und 56 Cent
-
-PROZENT:
-
-45 %
-
-sprich:
-
-45 Prozent
-
-ISO-ZEITSTEMPEL NIEMALS ROH VORLESEN.
-
-Beispiel:
-
-2026-08-16T08:15:00.000Z
-
-muss als natürliches deutsches Datum
-und Uhrzeit gesprochen werden.
-
-=========================================================
-LIVE-INFORMATIONEN
-=========================================================
-
-Du hast Zugriff auf echte Tools.
-
-Erfinde niemals aktuelle Daten.
-
-Bei aktuellen Informationen
-musst du ein Tool benutzen.
-
-=========================================================
-INTERNET
-=========================================================
-
-Du bist NICHT nur ein Druckelite-Assistent.
-
-Mattl darf dich
-zu jedem normalen Thema fragen.
-
-Beispiele:
-
-- aktuelle Nachrichten
+INTERNET:
+Wenn Mattl nach:
+- aktuellen Nachrichten
+- heutigen Ereignissen
+- aktuellen Preisen
+- aktuellen Öffnungszeiten
+- neuen Produkten
+- aktuellen Firmeninformationen
 - Politik
 - Sport
-- Technik
-- KI
-- Produkte
-- Firmen
-- Personen
-- Wissenschaft
-- Filme
-- Serien
-- Reisen
-- Veranstaltungen
-- aktuelle Preise
-- aktuelle Gesetze
-- aktuelle Entwicklungen
-- allgemeine Wissensfragen
+- Wetter außerhalb des Wetter-Tools
+- aktuellen Softwareständen
+- aktuellen Gesetzen
+fragt, verwende search_internet.
 
-Wenn eine Frage
-aktuelle Informationen benötigt
-oder du dir bei einer Information
-nicht sicher bist:
+SHOPIFY:
+Für Druckelite24 Bestell- und Umsatzfragen nutze Shopify-Tools.
 
-BENUTZE search_internet.
+Beispiele:
+"Wie viel Umsatz heute?"
+→ get_shopify_summary
 
-Bei zeitlosen einfachen Wissensfragen,
-die du sicher beantworten kannst,
-musst du nicht suchen.
+"Wie viele Bestellungen sind offen?"
+→ get_shopify_open_orders
 
+"Wie lief die Woche?"
+→ get_shopify_week
+
+E-MAIL:
+Wenn Mattl ungelesene Mails wissen möchte:
+→ get_unread_emails
+
+Wenn Mattl eine E-Mail formulieren möchte:
+→ create_email_draft
+
+Der E-Mail-Entwurf wird im HUD angezeigt.
+Sag danach nur kurz, dass der Entwurf fertig ist.
+
+NOTIZEN:
 Wenn Mattl sagt:
+"Merke dir..."
+"Notier..."
+"Schreib auf..."
+→ save_note
 
-- such mal
-- schau mal nach
-- prüf das
-- was gibt es aktuell
-- was ist heute passiert
-- was gibt es Neues
-- google das
-- informier dich
+Wenn er nach seinen Notizen fragt:
+→ list_notes
 
-musst du search_internet benutzen.
+ERINNERUNGEN:
+Wenn Mattl eine Erinnerung möchte:
+→ set_reminder
 
-Fasse Suchergebnisse
-natürlich zusammen.
+Wenn er nach Erinnerungen fragt:
+→ list_reminders
 
-Lies keine URLs
-oder lange Quellenlisten vor.
+WETTER:
+Für heutiges oder morgiges Wetter:
+→ get_weather
 
-=========================================================
-SHOPIFY / DRUCKELITE24
-=========================================================
+Sei proaktiv, aber nicht nervig.
 
-Druckelite24 ist Mattls Unternehmen.
+Wenn dir ein Tool einen wichtigen Sachverhalt liefert,
+weise Mattl kurz darauf hin.
 
-Bei Fragen nach:
-
-- Umsatz
-- Bestellungen
-- Verkäufen
-- offenem Auftragsbestand
-- durchschnittlichem Bestellwert
-- heutiger Performance
-- gestriger Performance
-- letzter Woche
-
-musst du die Shopify-Tools benutzen.
-
-Druckelite24 ist
-der einzige verbundene Shopify-Shop.
-
-=========================================================
-GMAIL
-=========================================================
-
-Bei Fragen nach:
-
-- neuen E-Mails
-- ungelesenen E-Mails
-- Kundenmails
-- Reklamationen
-- Anfragen
-- Angebotsanfragen
-- Posteingang
-
-benutze get_unread_emails.
-
-Erfinde keine E-Mails.
-
-=========================================================
-WETTER
-=========================================================
-
-Bei Wetterfragen
-benutze get_weather.
-
-Standardort:
-
-Ludwigshafen am Rhein.
-
-=========================================================
-NOTIZEN
-=========================================================
-
-Bei:
-
-"notiere"
-
-"merk dir"
-
-"schreib auf"
-
-benutze save_note.
-
-Bei Fragen
-nach vorhandenen Notizen:
-
-list_notes.
-
-=========================================================
-ERINNERUNGEN
-=========================================================
-
-Bei:
-
-"erinnere mich"
-
-"stell einen Timer"
-
-"denk in ... Minuten daran"
-
-benutze set_reminder.
-
-Berechne die Zeit ab jetzt.
-
-Bei Fragen nach Erinnerungen:
-
-list_reminders.
-
-=========================================================
-E-MAIL ENTWÜRFE
-=========================================================
-
-Wenn Mattl
-eine Mail formulieren lassen möchte:
-
-benutze create_email_draft.
-
-Der Entwurf
-wird im HUD angezeigt.
-
-Lies lange E-Mail-Texte
-nicht komplett vor,
-außer Mattl verlangt das ausdrücklich.
-
-=========================================================
-BUSINESS
-=========================================================
-
-Bei Business-Fragen
-kannst du wie ein erfahrener:
-
-- Geschäftsführer
-- E-Commerce-Manager
-- Performance-Marketer
-- Verkaufsleiter
-- Datenanalyst
-- Marketingberater
-
-denken.
-
-Sprich Probleme direkt an.
-
-Wenn du eine Verbesserung erkennst,
-darfst du Mattl darauf hinweisen.
-
-=========================================================
-SICHERHEIT
-=========================================================
-
-Vor kritischen Änderungen
-brauchst du Mattls Zustimmung.
-
-Dazu gehören:
-
-- Geld ausgeben
-- Werbebudget verändern
-- Preise verändern
-- Kampagnen verändern
-- Bestellung stornieren
-- Rückerstattung
-- E-Mail tatsächlich versenden
-- Daten löschen
-
-Lesen,
-analysieren,
-recherchieren,
-Vorschläge machen
-und Entwürfe schreiben
-darfst du ohne zusätzliche Bestätigung.
+Du bist kein neutraler Chatbot.
+Du bist Mattls persönlicher JARVIS.
 `;
 }
 
 
 /* =========================================================
-   REALTIME TOOL DEFINITIONS
+   REALTIME TOOLS
    ========================================================= */
 
 const REALTIME_TOOLS = [
@@ -884,22 +473,20 @@ const REALTIME_TOOLS = [
       "search_internet",
 
     description:
-      "Durchsucht das aktuelle Internet für allgemeine oder aktuelle Fragen wie Nachrichten, Politik, Sport, Technik, KI, Firmen, Personen, Wissenschaft, Produkte, Preise, Gesetze, Reisen und andere aktuelle Informationen.",
+      "Sucht aktuelle Informationen live im Internet.",
 
     parameters: {
-
       type:
         "object",
 
       properties: {
 
         query: {
-
           type:
             "string",
 
           description:
-            "Die vollständige Suchfrage."
+            "Die konkrete Suchanfrage."
         }
       },
 
@@ -921,17 +508,15 @@ const REALTIME_TOOLS = [
       "get_shopify_summary",
 
     description:
-      "Liest live den Shopify-Umsatz, die Anzahl Bestellungen und den durchschnittlichen Bestellwert für heute oder gestern bei Druckelite24.",
+      "Liest Bestellungen, Umsatz und durchschnittlichen Bestellwert für heute oder gestern aus Shopify.",
 
     parameters: {
-
       type:
         "object",
 
       properties: {
 
         period: {
-
           type:
             "string",
 
@@ -960,10 +545,9 @@ const REALTIME_TOOLS = [
       "get_shopify_open_orders",
 
     description:
-      "Liest die aktuell noch nicht erfüllten Shopify-Bestellungen.",
+      "Liest aktuell offene beziehungsweise noch nicht erfüllte Shopify-Bestellungen.",
 
     parameters: {
-
       type:
         "object",
 
@@ -983,10 +567,9 @@ const REALTIME_TOOLS = [
       "get_shopify_week",
 
     description:
-      "Liest Umsatz und Bestellungen der letzten sieben Kalendertage.",
+      "Liest Umsatz und Bestellanzahl der letzten sieben Tage aus Shopify.",
 
     parameters: {
-
       type:
         "object",
 
@@ -1006,10 +589,9 @@ const REALTIME_TOOLS = [
       "get_unread_emails",
 
     description:
-      "Liest bis zu zehn ungelesene Gmail-Nachrichten mit Absender, Betreff und kurzem Ausschnitt.",
+      "Liest die letzten ungelesenen Gmail-Nachrichten.",
 
     parameters: {
-
       type:
         "object",
 
@@ -1029,10 +611,9 @@ const REALTIME_TOOLS = [
       "get_weather",
 
     description:
-      "Liest aktuelle Wetterdaten und Vorhersage für heute oder morgen.",
+      "Liest das Wetter für heute oder morgen für einen Ort.",
 
     parameters: {
-
       type:
         "object",
 
@@ -1044,7 +625,6 @@ const REALTIME_TOOLS = [
         },
 
         day: {
-
           type:
             "string",
 
@@ -1074,10 +654,9 @@ const REALTIME_TOOLS = [
       "save_note",
 
     description:
-      "Speichert eine Notiz dauerhaft.",
+      "Speichert eine Notiz dauerhaft für JARVIS.",
 
     parameters: {
-
       type:
         "object",
 
@@ -1107,10 +686,9 @@ const REALTIME_TOOLS = [
       "list_notes",
 
     description:
-      "Liest gespeicherte Notizen.",
+      "Liest alle gespeicherten JARVIS-Notizen.",
 
     parameters: {
-
       type:
         "object",
 
@@ -1133,14 +711,12 @@ const REALTIME_TOOLS = [
       "Speichert eine Erinnerung für eine Anzahl Minuten ab jetzt.",
 
     parameters: {
-
       type:
         "object",
 
       properties: {
 
         minutes_from_now: {
-
           type:
             "integer",
 
@@ -1176,7 +752,6 @@ const REALTIME_TOOLS = [
       "Liest alle aktuell aktiven Erinnerungen.",
 
     parameters: {
-
       type:
         "object",
 
@@ -1199,7 +774,6 @@ const REALTIME_TOOLS = [
       "Erstellt einen deutschen E-Mail-Entwurf mit Betreff und Text. Versendet nichts.",
 
     parameters: {
-
       type:
         "object",
 
@@ -1232,7 +806,6 @@ app.post(
   "/api/realtime-session",
 
   express.text({
-
     type: [
       "application/sdp",
       "text/plain"
@@ -1253,7 +826,6 @@ app.post(
         !process.env
           .OPENAI_API_KEY
       ) {
-
         return res
           .status(500)
           .send(
@@ -1273,7 +845,6 @@ app.post(
           "v=0"
         )
       ) {
-
         return res
           .status(400)
           .send(
@@ -1288,12 +859,6 @@ app.post(
         "gpt-realtime-2.1";
 
 
-      const voice =
-        process.env
-          .OPENAI_REALTIME_VOICE ||
-        "cedar";
-
-
       const sessionConfig =
         JSON.stringify({
 
@@ -1301,6 +866,10 @@ app.post(
             "realtime",
 
           model,
+
+          output_modalities: [
+            "text"
+          ],
 
           instructions:
             buildJarvisInstructions(),
@@ -1318,6 +887,8 @@ app.post(
               noise_reduction: {
 
                 type:
+                  process.env
+                    .OPENAI_NOISE_REDUCTION ||
                   "far_field"
               },
 
@@ -1335,11 +906,6 @@ app.post(
                 interrupt_response:
                   true
               }
-            },
-
-            output: {
-
-              voice
             }
           }
         });
@@ -1362,7 +928,7 @@ app.post(
 
 
       console.log(
-        `[REALTIME] Modell=${model} Voice=${voice} Tools=${REALTIME_TOOLS.length}`
+        `[REALTIME] Modell=${model} Output=text ElevenLabs=extern Tools=${REALTIME_TOOLS.length}`
       );
 
 
@@ -1457,7 +1023,176 @@ app.use(
     limit:
       "2mb"
   })
-);/* =========================================================
+);
+
+
+/* =========================================================
+   ELEVENLABS · SINGLE-USE TOKEN FOR BROWSER WEBSOCKET
+   ========================================================= */
+
+app.get(
+  "/api/elevenlabs-token",
+
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+
+      const apiKey =
+        process.env
+          .ELEVENLABS_API_KEY;
+
+
+      const voiceId =
+        process.env
+          .ELEVENLABS_VOICE_ID ||
+        "Vje4UYe2YPbNqyQwJGra";
+
+
+      const modelId =
+        process.env
+          .ELEVENLABS_MODEL ||
+        "eleven_flash_v2_5";
+
+
+      if (
+        !apiKey
+      ) {
+
+        return res
+          .status(500)
+          .json({
+
+            ok:
+              false,
+
+            error:
+              "ELEVENLABS_API_KEY fehlt."
+          });
+      }
+
+
+      if (
+        !voiceId
+      ) {
+
+        return res
+          .status(500)
+          .json({
+
+            ok:
+              false,
+
+            error:
+              "ELEVENLABS_VOICE_ID fehlt."
+          });
+      }
+
+
+      const response =
+        await fetch(
+          "https://api.elevenlabs.io/v1/single-use-token/tts_websocket",
+          {
+
+            method:
+              "POST",
+
+            headers: {
+
+              "xi-api-key":
+                apiKey
+            },
+
+            signal:
+              timeoutSignal(
+                10000
+              )
+          }
+        );
+
+
+      const data =
+        await response.json();
+
+
+      if (
+        !response.ok ||
+        !data?.token
+      ) {
+
+        console.error(
+          "[ELEVENLABS TOKEN ERROR]",
+          response.status,
+          data
+        );
+
+
+        return res
+          .status(
+            response.status ||
+            500
+          )
+          .json({
+
+            ok:
+              false,
+
+            error:
+              data?.detail?.message ||
+              data?.detail ||
+              "ElevenLabs-Token konnte nicht erstellt werden."
+          });
+      }
+
+
+      return res.json({
+
+        ok:
+          true,
+
+        token:
+          data.token,
+
+        voice_id:
+          voiceId,
+
+        model_id:
+          modelId,
+
+        language_code:
+          "de"
+      });
+
+
+    } catch (
+      error
+    ) {
+
+      console.error(
+        "[ELEVENLABS TOKEN ERROR]",
+        error
+      );
+
+
+      return res
+        .status(500)
+        .json({
+
+          ok:
+            false,
+
+          error:
+            error.message ||
+            "ElevenLabs-Verbindung fehlgeschlagen."
+        });
+    }
+  }
+);
+
+
+/* =========================================================
    OPENAI RESPONSE HELPER
    ========================================================= */
 
@@ -1520,10 +1255,7 @@ function extractResponseText(
   return pieces
     .join("\n")
     .trim();
-}
-
-
-/* =========================================================
+}/* =========================================================
    INTERNET SEARCH
    ========================================================= */
 
@@ -1578,14 +1310,12 @@ async function searchInternet(
               "gpt-5.6",
 
             reasoning: {
-
               effort:
                 "low"
             },
 
             tools: [
               {
-
                 type:
                   "web_search"
               }
@@ -2236,7 +1966,8 @@ async function getShopifyWeek() {
     berlinDate();
 
 
-  const days = [];
+  const days =
+    [];
 
 
   for (
@@ -2262,7 +1993,10 @@ async function getShopifyWeek() {
       date:
         date
           .toISOString()
-          .slice(0, 10),
+          .slice(
+            0,
+            10
+          ),
 
       orders:
         0,
@@ -2293,6 +2027,7 @@ async function getShopifyWeek() {
     if (
       order.cancelledAt
     ) {
+
       continue;
     }
 
@@ -2327,7 +2062,10 @@ async function getShopifyWeek() {
       );
 
 
-    if (!bucket) {
+    if (
+      !bucket
+    ) {
+
       continue;
     }
 
@@ -2354,7 +2092,10 @@ async function getShopifyWeek() {
 
     day.revenue =
       Number(
-        day.revenue.toFixed(2)
+        day.revenue
+          .toFixed(
+            2
+          )
       );
   }
 
@@ -2366,7 +2107,10 @@ async function getShopifyWeek() {
     currency:
       "EUR"
   };
-}/* =========================================================
+}
+
+
+/* =========================================================
    SHOPIFY METAFIELDS
    ========================================================= */
 
@@ -2526,7 +2270,10 @@ async function readJarvisField(
       ?.value;
 
 
-  if (!raw) {
+  if (
+    !raw
+  ) {
+
     return [];
   }
 
@@ -2544,6 +2291,7 @@ async function readJarvisField(
     )
       ? parsed
       : [];
+
 
   } catch {
 
@@ -2670,10 +2418,20 @@ async function writeJarvisField(
     errors.length
   ) {
 
+    console.error(
+      "[SHOPIFY METAFIELD ERROR]",
+      data.errors ||
+      errors
+    );
+
+
     throw new Error(
       `Speichern von ${key} fehlgeschlagen.`
     );
   }
+
+
+  return true;
 }
 
 
@@ -2691,7 +2449,9 @@ async function saveNote(
     ).trim();
 
 
-  if (!cleanText) {
+  if (
+    !cleanText
+  ) {
 
     throw new Error(
       "Die Notiz ist leer."
@@ -2773,7 +2533,9 @@ async function setReminder(
     ).trim();
 
 
-  if (!cleanText) {
+  if (
+    !cleanText
+  ) {
 
     throw new Error(
       "Erinnerungstext fehlt."
@@ -2786,7 +2548,8 @@ async function setReminder(
       Date.now() +
       safeMinutes *
         60000
-    ).toISOString();
+    )
+      .toISOString();
 
 
   reminders.push({
@@ -2838,10 +2601,11 @@ async function getActiveReminders() {
     );
 
 
-  return reminders.filter(
-    reminder =>
-      !reminder.fired
-  );
+  return reminders
+    .filter(
+      reminder =>
+        !reminder.fired
+    );
 }
 
 
@@ -2871,6 +2635,7 @@ async function checkAndFireDueReminders() {
   if (
     !due.length
   ) {
+
     return [];
   }
 
@@ -2915,10 +2680,7 @@ async function checkAndFireDueReminders() {
 
 
   return due;
-}
-
-
-/* =========================================================
+}/* =========================================================
    GMAIL
    ========================================================= */
 
@@ -3168,6 +2930,7 @@ async function getUnreadEmails() {
       if (
         !response.ok
       ) {
+
         continue;
       }
 
@@ -3503,7 +3266,6 @@ Antworte ausschließlich als gültiges JSON mit den Feldern subject und body.`,
               ),
 
             reasoning: {
-
               effort:
                 "low"
             },
@@ -3597,7 +3359,10 @@ Antworte ausschließlich als gültiges JSON mit den Feldern subject und body.`,
     body:
       parsed.body
   };
-}/* =========================================================
+}
+
+
+/* =========================================================
    REALTIME TOOL DISPATCHER
    ========================================================= */
 
@@ -3905,10 +3670,7 @@ app.post(
       });
     }
   }
-);
-
-
-/* =========================================================
+);/* =========================================================
    PROACTIVE CHECK
    ========================================================= */
 
@@ -4273,6 +4035,9 @@ app.get(
       realtime:
         true,
 
+      realtime_output:
+        "text",
+
       vad:
         "semantic_vad",
 
@@ -4280,6 +4045,8 @@ app.get(
         "low",
 
       noise_reduction:
+        process.env
+          .OPENAI_NOISE_REDUCTION ||
         "far_field",
 
       realtime_model:
@@ -4287,10 +4054,24 @@ app.get(
           .OPENAI_REALTIME_MODEL ||
         "gpt-realtime-2.1",
 
-      realtime_voice:
+      voice_engine:
+        "ElevenLabs",
+
+      elevenlabs:
+        Boolean(
+          process.env
+            .ELEVENLABS_API_KEY
+        ),
+
+      elevenlabs_voice_id:
         process.env
-          .OPENAI_REALTIME_VOICE ||
-        "cedar",
+          .ELEVENLABS_VOICE_ID ||
+        "Vje4UYe2YPbNqyQwJGra",
+
+      elevenlabs_model:
+        process.env
+          .ELEVENLABS_MODEL ||
+        "eleven_flash_v2_5",
 
       web_model:
         process.env
@@ -4379,13 +4160,16 @@ app.listen(
       "=============================================="
     );
 
+
     console.log(
       `JARVIS ${JARVIS_VERSION} läuft`
     );
 
+
     console.log(
       `Port: ${PORT}`
     );
+
 
     console.log(
       `Realtime Modell: ${
@@ -4395,21 +4179,58 @@ app.listen(
       }`
     );
 
+
     console.log(
-      `Realtime Stimme: ${
+      "Realtime Output: TEXT"
+    );
+
+
+    console.log(
+      "Voice Engine: ElevenLabs"
+    );
+
+
+    console.log(
+      `ElevenLabs Voice ID: ${
         process.env
-          .OPENAI_REALTIME_VOICE ||
-        "cedar"
+          .ELEVENLABS_VOICE_ID ||
+        "Vje4UYe2YPbNqyQwJGra"
       }`
     );
+
+
+    console.log(
+      `ElevenLabs Modell: ${
+        process.env
+          .ELEVENLABS_MODEL ||
+        "eleven_flash_v2_5"
+      }`
+    );
+
+
+    console.log(
+      `ElevenLabs: ${
+        process.env
+          .ELEVENLABS_API_KEY
+          ? "verbunden"
+          : "nicht verbunden"
+      }`
+    );
+
 
     console.log(
       "VAD: semantic_vad / low"
     );
 
+
     console.log(
-      "Noise Reduction: far_field"
+      `Noise Reduction: ${
+        process.env
+          .OPENAI_NOISE_REDUCTION ||
+        "far_field"
+      }`
     );
+
 
     console.log(
       `Web Modell: ${
@@ -4419,6 +4240,7 @@ app.listen(
       }`
     );
 
+
     console.log(
       `Tools: ${REALTIME_TOOLS
         .map(
@@ -4427,6 +4249,7 @@ app.listen(
         )
         .join(", ")}`
     );
+
 
     console.log(
       `Shopify: ${
@@ -4441,6 +4264,7 @@ app.listen(
       }`
     );
 
+
     console.log(
       `Gmail: ${
         isGmailConfigured()
@@ -4449,9 +4273,11 @@ app.listen(
       }`
     );
 
+
     console.log(
       "Internet Search: aktiv"
     );
+
 
     console.log(
       "=============================================="
