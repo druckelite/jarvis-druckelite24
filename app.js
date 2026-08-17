@@ -374,6 +374,8 @@ function showDraft(draft) {
 
   panel.style.display =
     "flex";
+
+  ensureDraftSendButton();
 }
 
 
@@ -465,6 +467,194 @@ if (draftCopyBtn) {
     }
   );
 }
+
+
+
+
+/* =========================================================
+   GMAIL DRAFT · SENDEN NACH BESTÄTIGUNG
+   ========================================================= */
+
+function ensureDraftSendButton() {
+
+  const panel =
+    document.getElementById(
+      "draftPanel"
+    );
+
+  if (
+    !panel
+  ) {
+    return null;
+  }
+
+  let button =
+    document.getElementById(
+      "draftSendBtn"
+    );
+
+  if (
+    button
+  ) {
+    return button;
+  }
+
+  const existingActions =
+    panel.querySelector(
+      ".draft-actions"
+    );
+
+  const host =
+    existingActions ||
+    (() => {
+      const div =
+        document.createElement(
+          "div"
+        );
+
+      div.className =
+        "draft-actions jarvis-draft-actions";
+
+      panel.appendChild(
+        div
+      );
+
+      return div;
+    })();
+
+  button =
+    document.createElement(
+      "button"
+    );
+
+  button.type =
+    "button";
+
+  button.id =
+    "draftSendBtn";
+
+  button.className =
+    "draft-send-confirm";
+
+  button.textContent =
+    "SENDEN";
+
+  host.appendChild(
+    button
+  );
+
+  button.addEventListener(
+    "click",
+    async () => {
+
+      if (
+        !currentGmailDraftId
+      ) {
+        setLog(
+          "Kein Gmail-Entwurf zum Senden vorhanden."
+        );
+        return;
+      }
+
+      const confirmed =
+        window.confirm(
+          "Diesen E-Mail-Entwurf jetzt wirklich senden?"
+        );
+
+      if (
+        !confirmed
+      ) {
+        return;
+      }
+
+      button.disabled =
+        true;
+      button.textContent =
+        "WIRD GESENDET …";
+
+      try {
+
+        const response =
+          await fetch(
+            "/api/realtime-tool",
+            {
+              method:
+                "POST",
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
+              body:
+                JSON.stringify({
+                  name:
+                    "send_email_draft",
+                  arguments: {
+                    draft_id:
+                      currentGmailDraftId,
+                    confirmation_text:
+                      "senden"
+                  }
+                })
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data?.ok ||
+          data?.sent?.sent !==
+            true
+        ) {
+          throw new Error(
+            data?.error ||
+            "E-Mail konnte nicht gesendet werden."
+          );
+        }
+
+        currentGmailDraftId =
+          null;
+
+        try {
+          sessionStorage.removeItem(
+            "jarvisGmailDraftId"
+          );
+        } catch {}
+
+        panel.style.display =
+          "none";
+
+        setLog(
+          "E-Mail wurde gesendet."
+        );
+
+        loadInboxDashboard();
+
+      } catch (
+        error
+      ) {
+
+        setLog(
+          error.message ||
+          "E-Mail konnte nicht gesendet werden."
+        );
+
+      } finally {
+
+        button.disabled =
+          false;
+        button.textContent =
+          "SENDEN";
+      }
+    }
+  );
+
+  return button;
+}
+
+
+ensureDraftSendButton();
 
 
 /* =========================================================
@@ -4890,6 +5080,7 @@ function ensureGmailMailModal() {
       <div id="gmailMailBody" class="gmail-mail-body"></div>
       <div class="gmail-mail-actions">
         <button type="button" id="gmailMailReadBtn">VORLESEN</button>
+        <button type="button" id="gmailMailReplyBtn" class="gmail-mail-ai-reply">JARVIS ANTWORTEN</button>
         <button type="button" id="gmailMailCloseBtn">SCHLIESSEN</button>
       </div>
       <div class="gmail-mail-hint">Sag z. B. „Antworte darauf, dass …“ · Gesendet wird erst nach deinem ausdrücklichen „Senden“.</div>
@@ -4957,6 +5148,125 @@ function ensureGmailMailModal() {
         speakTextWithElevenLabs(
           `E-Mail von ${getSenderDisplayName(currentSelectedEmail.from)}. Betreff: ${currentSelectedEmail.subject}. ${currentSelectedEmail.body}`
         );
+      }
+    }
+  );
+
+
+
+  modal.querySelector(
+    "#gmailMailReplyBtn"
+  )?.addEventListener(
+    "click",
+    async () => {
+
+      if (
+        !currentSelectedEmailId
+      ) {
+        return;
+      }
+
+      const button =
+        modal.querySelector(
+          "#gmailMailReplyBtn"
+        );
+
+      const original =
+        button?.textContent ||
+        "JARVIS ANTWORTEN";
+
+      if (
+        button
+      ) {
+        button.disabled =
+          true;
+        button.textContent =
+          "JARVIS DENKT …";
+      }
+
+      try {
+
+        const response =
+          await fetch(
+            "/api/realtime-tool",
+            {
+              method:
+                "POST",
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
+              body:
+                JSON.stringify({
+                  name:
+                    "create_email_reply_draft",
+                  arguments: {
+                    message_id:
+                      currentSelectedEmailId,
+                    instruction:
+                      "Formuliere selbstständig eine passende, professionelle und freundliche Antwort auf diese Kundenmail. Beantworte das Anliegen konkret anhand der vorhandenen Mail. Erfinde keine Preise, Liefertermine oder Zusagen."
+                  }
+                })
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data?.ok ||
+          !data?.draft
+        ) {
+          throw new Error(
+            data?.error ||
+            "Antwortvorschlag konnte nicht erstellt werden."
+          );
+        }
+
+        if (
+          data?.gmail_draft_id ||
+          data?.draft?.gmail_draft_id
+        ) {
+          currentGmailDraftId =
+            data.gmail_draft_id ||
+            data.draft.gmail_draft_id;
+
+          try {
+            sessionStorage.setItem(
+              "jarvisGmailDraftId",
+              currentGmailDraftId
+            );
+          } catch {}
+        }
+
+        showDraft(
+          data.draft
+        );
+
+        modal.classList.remove(
+          "open"
+        );
+
+      } catch (
+        error
+      ) {
+
+        setLog(
+          error.message ||
+          "Antwortvorschlag fehlgeschlagen."
+        );
+
+      } finally {
+
+        if (
+          button
+        ) {
+          button.disabled =
+            false;
+          button.textContent =
+            original;
+        }
       }
     }
   );
