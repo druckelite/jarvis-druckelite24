@@ -3347,15 +3347,20 @@ function superchatArray(
     return data;
   }
 
+  const preferredKeys = [
+    "data",
+    "items",
+    "objects",
+    "conversations",
+    "channels",
+    "contacts",
+    "results",
+    "records"
+  ];
+
   for (
-    const key of [
-      "data",
-      "items",
-      "conversations",
-      "channels",
-      "contacts",
-      "results"
-    ]
+    const key of
+    preferredKeys
   ) {
     if (
       Array.isArray(
@@ -3363,6 +3368,59 @@ function superchatArray(
       )
     ) {
       return data[key];
+    }
+  }
+
+  /*
+    Superchat kann Listen in einem zusätzlichen Wrapper liefern.
+    Maximal zwei Ebenen durchsuchen, ohne Metadaten blind zu rendern.
+  */
+  if (
+    data &&
+    typeof data ===
+      "object"
+  ) {
+    for (
+      const value of
+      Object.values(data)
+    ) {
+      if (
+        Array.isArray(value)
+      ) {
+        const usable =
+          value.filter(
+            item =>
+              item &&
+              typeof item ===
+                "object"
+          );
+
+        if (
+          usable.length
+        ) {
+          return usable;
+        }
+      }
+
+      if (
+        value &&
+        typeof value ===
+          "object" &&
+        !Array.isArray(value)
+      ) {
+        for (
+          const key of
+          preferredKeys
+        ) {
+          if (
+            Array.isArray(
+              value?.[key]
+            )
+          ) {
+            return value[key];
+          }
+        }
+      }
     }
   }
 
@@ -3892,6 +3950,10 @@ app.get(
       return res.json({
         ok:
           true,
+        configured:
+          isSuperchatConfigured(),
+        count:
+          conversations.length,
         conversations:
           conversations.slice(
             0,
