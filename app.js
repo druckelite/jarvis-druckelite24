@@ -237,16 +237,16 @@ const INTRO_START =
   4;
 
 const INTRO_START_VOLUME =
-  0.26;
+  0.24;
 
 const INTRO_VOICE_DELAY_MS =
   900;
 
 const INTRO_BACKGROUND_VOLUME =
-  0.028;
+  0.014;
 
 const INTRO_DUCK_DURATION_MS =
-  1200;
+  1400;
 
 const INTRO_FADE_DURATION_MS =
   20000;
@@ -818,7 +818,7 @@ async function startIntro() {
 
   introAudio =
     new Audio(
-      "/Intro.mp3?v=104"
+      "/Intro.mp3?v=105"
     );
 
 
