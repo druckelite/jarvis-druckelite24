@@ -3454,11 +3454,29 @@ function normalizeSuperchatConversation(
   conversation
 ) {
 
+  const conversationContacts =
+    Array.isArray(
+      conversation?.contacts
+    )
+      ? conversation.contacts
+      : [];
+
+  const firstConversationContact =
+    conversationContacts[0];
+
   const contact =
-    conversation?.contact ||
-    conversation?.customer ||
-    conversation?.participant ||
-    {};
+    (
+      firstConversationContact &&
+      typeof firstConversationContact ===
+        "object"
+    )
+      ? firstConversationContact
+      : (
+          conversation?.contact ||
+          conversation?.customer ||
+          conversation?.participant ||
+          {}
+        );
 
   const lastMessage =
     conversation?.last_message ||
@@ -3468,17 +3486,21 @@ function normalizeSuperchatConversation(
     conversation?.message ||
     {};
 
+  const directContactName =
+    [
+      contact?.first_name,
+      contact?.last_name
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
   const name =
     firstNonEmpty(
+      directContactName,
       contact?.display_name,
       contact?.displayName,
       contact?.name,
-      [
-        contact?.first_name,
-        contact?.last_name
-      ]
-        .filter(Boolean)
-        .join(" "),
       conversation?.contact_name,
       conversation?.title,
       conversation?.name,
@@ -3498,6 +3520,10 @@ function normalizeSuperchatConversation(
   const contactId =
     firstNonEmpty(
       contact?.id,
+      typeof firstConversationContact ===
+        "string"
+        ? firstConversationContact
+        : "",
       conversation?.contact_id,
       conversation?.contactId,
       ""
@@ -3505,11 +3531,11 @@ function normalizeSuperchatConversation(
 
   const channelId =
     firstNonEmpty(
+      conversation?.channel?.id,
       conversation?.channel_id,
       conversation?.channelId,
-      conversation?.channel?.id,
-      lastMessage?.channel_id,
       lastMessage?.channel?.id,
+      lastMessage?.channel_id,
       ""
     );
 
@@ -3536,9 +3562,15 @@ function normalizeSuperchatConversation(
     channel_id:
       channelId,
     name:
-      String(name || "WhatsApp-Kontakt"),
+      String(
+        name ||
+        "WhatsApp-Kontakt"
+      ),
     preview:
-      String(text || ""),
+      String(
+        text ||
+        "Chat öffnen"
+      ),
     updated_at:
       updatedAt,
     raw:
@@ -7484,225 +7516,6 @@ app.get(
    RENDER BRAUCHT DIESEN BLOCK.
    ========================================================= */
 
-
-/* =========================================================
-   SUPERCHAT SAFE DIAGNOSTIC
-   Zeigt nur Feldnamen / IDs / Typen, keine API Keys,
-   keine Nachrichtentexte und keine personenbezogenen Inhalte.
-   ========================================================= */
-
-function safeShape(value, depth = 0) {
-
-  if (depth > 3) {
-    return typeof value;
-  }
-
-  if (Array.isArray(value)) {
-    return {
-      type: "array",
-      length: value.length,
-      first:
-        value.length
-          ? safeShape(value[0], depth + 1)
-          : null
-    };
-  }
-
-  if (
-    value &&
-    typeof value === "object"
-  ) {
-    const out = {};
-
-    for (
-      const key of
-      Object.keys(value)
-        .slice(0, 30)
-    ) {
-      const item =
-        value[key];
-
-      if (
-        item === null ||
-        item === undefined
-      ) {
-        out[key] = item;
-      }
-      else if (
-        typeof item === "string"
-      ) {
-        out[key] = {
-          type: "string",
-          length: item.length
-        };
-      }
-      else if (
-        typeof item === "number" ||
-        typeof item === "boolean"
-      ) {
-        out[key] = {
-          type: typeof item
-        };
-      }
-      else {
-        out[key] =
-          safeShape(
-            item,
-            depth + 1
-          );
-      }
-    }
-
-    return out;
-  }
-
-  return {
-    type: typeof value
-  };
-}
-
-
-app.get(
-  "/api/superchat-diagnostic",
-  async (
-    req,
-    res
-  ) => {
-
-    try {
-
-      const [
-        conversationsRaw,
-        contactsRaw
-      ] =
-        await Promise.all([
-          superchatRequest(
-            "/conversations?limit=5"
-          ),
-          superchatRequest(
-            "/contacts?limit=5"
-          )
-            .catch(
-              error => ({
-                diagnostic_error:
-                  error.message
-              })
-            )
-        ]);
-
-      const conversationResults =
-        Array.isArray(
-          conversationsRaw?.results
-        )
-          ? conversationsRaw.results
-          : [];
-
-      const contactResults =
-        Array.isArray(
-          contactsRaw?.results
-        )
-          ? contactsRaw.results
-          : [];
-
-      const firstConversation =
-        conversationResults[0] || {};
-
-      const firstContact =
-        contactResults[0] || {};
-
-      const nestedConversationKeys = {};
-
-      for (
-        const key of
-        Object.keys(
-          firstConversation
-        ).slice(
-          0,
-          25
-        )
-      ) {
-        const value =
-          firstConversation[key];
-
-        if (
-          value &&
-          typeof value === "object" &&
-          !Array.isArray(value)
-        ) {
-          nestedConversationKeys[key] =
-            Object.keys(value)
-              .slice(0, 20);
-        }
-      }
-
-      const nestedContactKeys = {};
-
-      for (
-        const key of
-        Object.keys(
-          firstContact
-        ).slice(
-          0,
-          25
-        )
-      ) {
-        const value =
-          firstContact[key];
-
-        if (
-          value &&
-          typeof value === "object" &&
-          !Array.isArray(value)
-        ) {
-          nestedContactKeys[key] =
-            Object.keys(value)
-              .slice(0, 20);
-        }
-      }
-
-      return res.json({
-        ok:
-          true,
-        conversation_result_count:
-          conversationResults.length,
-        conversation_keys:
-          Object.keys(
-            firstConversation
-          ).slice(
-            0,
-            30
-          ),
-        conversation_nested_keys:
-          nestedConversationKeys,
-        contact_result_count:
-          contactResults.length,
-        contact_keys:
-          Object.keys(
-            firstContact
-          ).slice(
-            0,
-            30
-          ),
-        contact_nested_keys:
-          nestedContactKeys
-      });
-
-    } catch (
-      error
-    ) {
-
-      return res
-        .status(500)
-        .json({
-          ok:
-            false,
-          error:
-            error.message ||
-            "Diagnose fehlgeschlagen."
-        });
-    }
-  }
-);
 
 
 app.listen(
