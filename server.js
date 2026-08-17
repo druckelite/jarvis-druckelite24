@@ -7484,6 +7484,143 @@ app.get(
    RENDER BRAUCHT DIESEN BLOCK.
    ========================================================= */
 
+
+/* =========================================================
+   SUPERCHAT SAFE DIAGNOSTIC
+   Zeigt nur Feldnamen / IDs / Typen, keine API Keys,
+   keine Nachrichtentexte und keine personenbezogenen Inhalte.
+   ========================================================= */
+
+function safeShape(value, depth = 0) {
+
+  if (depth > 3) {
+    return typeof value;
+  }
+
+  if (Array.isArray(value)) {
+    return {
+      type: "array",
+      length: value.length,
+      first:
+        value.length
+          ? safeShape(value[0], depth + 1)
+          : null
+    };
+  }
+
+  if (
+    value &&
+    typeof value === "object"
+  ) {
+    const out = {};
+
+    for (
+      const key of
+      Object.keys(value)
+        .slice(0, 30)
+    ) {
+      const item =
+        value[key];
+
+      if (
+        item === null ||
+        item === undefined
+      ) {
+        out[key] = item;
+      }
+      else if (
+        typeof item === "string"
+      ) {
+        out[key] = {
+          type: "string",
+          length: item.length
+        };
+      }
+      else if (
+        typeof item === "number" ||
+        typeof item === "boolean"
+      ) {
+        out[key] = {
+          type: typeof item
+        };
+      }
+      else {
+        out[key] =
+          safeShape(
+            item,
+            depth + 1
+          );
+      }
+    }
+
+    return out;
+  }
+
+  return {
+    type: typeof value
+  };
+}
+
+
+app.get(
+  "/api/superchat-diagnostic",
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+
+      const [
+        conversationsRaw,
+        contactsRaw
+      ] =
+        await Promise.all([
+          superchatRequest(
+            "/conversations?limit=5"
+          ),
+          superchatRequest(
+            "/contacts?limit=5"
+          )
+            .catch(
+              error => ({
+                diagnostic_error:
+                  error.message
+              })
+            )
+        ]);
+
+      return res.json({
+        ok: true,
+        configured:
+          isSuperchatConfigured(),
+        conversations_shape:
+          safeShape(
+            conversationsRaw
+          ),
+        contacts_shape:
+          safeShape(
+            contactsRaw
+          )
+      });
+
+    } catch (
+      error
+    ) {
+
+      return res
+        .status(500)
+        .json({
+          ok: false,
+          error:
+            error.message ||
+            "Diagnose fehlgeschlagen."
+        });
+    }
+  }
+);
+
+
 app.listen(
   PORT,
   "0.0.0.0",
