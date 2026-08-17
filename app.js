@@ -371,6 +371,35 @@ function showDraft(draft) {
 }
 
 
+const draftCloseBtn =
+  document.getElementById(
+    "draftCloseBtn"
+  );
+
+if (draftCloseBtn) {
+
+  draftCloseBtn.addEventListener(
+    "click",
+    () => {
+
+      const panel =
+        document.getElementById(
+          "draftPanel"
+        );
+
+      if (panel) {
+        panel.style.display =
+          "none";
+      }
+
+      /* Wichtig: Nur visuell ausblenden.
+         Gmail-Draft-ID bleibt erhalten, damit Mattl
+         den Entwurf danach weiterhin per Sprachbefehl senden kann. */
+    }
+  );
+}
+
+
 const draftCopyBtn =
   document.getElementById(
     "draftCopyBtn"
