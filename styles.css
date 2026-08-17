@@ -3726,3 +3726,18 @@ audio { display: none; }
     font-size:13px;
   }
 }
+
+
+/* =========================================================
+   WHATSAPP LIVE FINAL DETAILS
+   ========================================================= */
+
+.modern-whatsapp .wa-modern-list [data-wa-conversation-id].selected{
+  background:rgba(37,211,102,.12) !important;
+  outline:1px solid rgba(37,211,102,.35);
+  box-shadow:inset 3px 0 0 rgba(37,211,102,.82);
+}
+
+.modern-whatsapp .wa-modern-list [data-wa-conversation-id].selected .msg-copy b{
+  color:#ecfff3 !important;
+}
