@@ -3528,44 +3528,201 @@ audio { display: none; }
 }
 
 
+
+
+
 /* =========================================================
-   TEMP JARVIS DIAGNOSTIC BOX
+   GMAIL MAIL-VOLLANSICHT · FINAL
+   Diagnose zeigte: Modal OPEN, aber z-index:auto.
    ========================================================= */
 
-#jarvisDiagBox{
-  position:fixed;
-  right:12px;
-  bottom:56px;
-  z-index:999999;
-  width:min(520px,calc(100vw - 24px));
-  padding:10px 12px;
-  border:1px solid rgba(231,7,121,.55);
-  border-radius:8px;
-  background:rgba(8,9,13,.96);
-  box-shadow:0 0 24px rgba(231,7,121,.18);
-  color:#e7e7ec;
-  font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+.gmail-mail-modal{
+  position:fixed !important;
+  inset:0 !important;
+  z-index:100000 !important;
+  display:none !important;
+  align-items:center !important;
+  justify-content:center !important;
+  padding:24px !important;
+  background:rgba(0,0,0,.76) !important;
+  backdrop-filter:blur(8px);
+  -webkit-backdrop-filter:blur(8px);
+  opacity:0;
+  visibility:hidden;
   pointer-events:none;
 }
 
-#jarvisDiagBox .diag-title{
-  margin-bottom:5px;
-  color:#ff2d9a;
-  font-weight:800;
-  letter-spacing:.12em;
+.gmail-mail-modal.open{
+  display:flex !important;
+  opacity:1 !important;
+  visibility:visible !important;
+  pointer-events:auto !important;
 }
 
-#jarvisDiagBox > div:not(.diag-title){
+.gmail-mail-card{
+  position:relative;
+  width:min(820px,92vw);
+  max-height:min(760px,88vh);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  border:1px solid rgba(231,7,121,.58);
+  border-radius:12px;
+  background:
+    linear-gradient(180deg,rgba(17,16,22,.985),rgba(7,8,11,.99));
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.04) inset,
+    0 0 42px rgba(231,7,121,.19),
+    0 28px 80px rgba(0,0,0,.72);
+  color:#f2f2f5;
+}
+
+.gmail-mail-top{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:18px;
+  padding:18px 20px 15px;
+  border-bottom:1px solid rgba(255,255,255,.09);
+}
+
+.gmail-mail-top > div{
+  min-width:0;
+}
+
+.gmail-mail-kicker{
+  display:block;
+  margin-bottom:5px;
+  color:#ff2d9a;
+  font:600 10px/1.2 var(--font-mono,monospace);
+  letter-spacing:.16em;
+}
+
+.gmail-mail-top strong{
+  display:block;
+  max-width:100%;
+  font:700 20px/1.25 var(--font-display,Arial,sans-serif);
   white-space:normal;
   overflow-wrap:anywhere;
 }
 
+.gmail-mail-close{
+  width:34px;
+  height:34px;
+  flex:0 0 34px;
+  display:grid;
+  place-items:center;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:8px;
+  background:#111318;
+  color:#fff;
+  font-size:22px;
+  line-height:1;
+  cursor:pointer;
+}
 
+.gmail-mail-close:hover{
+  border-color:rgba(231,7,121,.7);
+  color:#ff2d9a;
+}
 
-/* Diagnose Runde 2 */
-#jarvisDiagBox{
-  width:min(900px,calc(100vw - 24px)) !important;
-  max-height:240px;
+.gmail-mail-meta{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:14px;
+  padding:12px 20px;
+  border-bottom:1px solid rgba(255,255,255,.07);
+  background:rgba(255,255,255,.018);
+}
+
+.gmail-mail-meta div{
+  min-width:0;
+}
+
+.gmail-mail-meta span{
+  display:block;
+  margin-bottom:3px;
+  color:#777d87;
+  font:600 9px/1.2 var(--font-mono,monospace);
+  letter-spacing:.10em;
+}
+
+.gmail-mail-meta b{
+  display:block;
+  max-width:100%;
+  color:#dfe1e7;
+  font-size:12px;
+  font-weight:600;
+  overflow-wrap:anywhere;
+}
+
+.gmail-mail-body{
+  min-height:180px;
   overflow:auto;
-  font-size:11px !important;
+  padding:20px;
+  color:#e7e8ec;
+  font-size:14px;
+  line-height:1.62;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+
+.gmail-mail-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:9px;
+  padding:12px 20px;
+  border-top:1px solid rgba(255,255,255,.08);
+}
+
+.gmail-mail-actions button{
+  min-width:112px;
+  height:36px;
+  border:1px solid rgba(255,255,255,.13);
+  border-radius:7px;
+  background:#12141a;
+  color:#eceef2;
+  font:700 10px var(--font-mono,monospace);
+  letter-spacing:.08em;
+  cursor:pointer;
+}
+
+.gmail-mail-actions button:first-child{
+  border-color:rgba(231,7,121,.5);
+  color:#ff4eaa;
+}
+
+.gmail-mail-actions button:hover{
+  background:#191c23;
+}
+
+.gmail-mail-hint{
+  padding:0 20px 16px;
+  color:#777d87;
+  font-size:10px;
+  line-height:1.35;
+}
+
+@media(max-width:680px){
+  .gmail-mail-modal{
+    padding:10px !important;
+  }
+
+  .gmail-mail-card{
+    width:100%;
+    max-height:92vh;
+  }
+
+  .gmail-mail-meta{
+    grid-template-columns:1fr;
+  }
+
+  .gmail-mail-top strong{
+    font-size:17px;
+  }
+
+  .gmail-mail-body{
+    padding:16px;
+    font-size:13px;
+  }
 }
