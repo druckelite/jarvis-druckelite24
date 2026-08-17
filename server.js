@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V10.1-ELEVENLABS-GMAIL-DRAFT-FIX";
+  "V10.1-ELEVENLABS-GMAIL-NEW-DRAFT-SEND-FIX";
 
 
 /* =========================================================
@@ -458,7 +458,10 @@ NIEMALS create_email_draft für eine Antwort auf eine vorhandene Mail verwenden.
 create_email_reply_draft erstellt einen echten Gmail-Entwurf mit Gmail-Draft-ID, sendet aber NICHT.
 
 Nur wenn Mattl ausdrücklich eine komplett neue, unabhängige E-Mail formulieren möchte:
+Wenn der Empfänger noch nicht eindeutig bekannt ist, FRAGE ZUERST kurz: „An wen soll die Mail gehen?“
+Erst wenn Empfänger und Inhalt/Anweisung bekannt sind:
 → create_email_draft
+create_email_draft speichert ebenfalls einen ECHTEN Gmail-Entwurf mit Gmail-Draft-ID. Kein reiner HUD-Entwurf mehr.
 
 E-MAIL SENDEN:
 Eine E-Mail darf ausschließlich dann gesendet werden, wenn Mattl unmittelbar und ausdrücklich „senden“, „abschicken“ oder „versenden“ sagt.
@@ -968,6 +971,13 @@ const REALTIME_TOOLS = [
 
       properties: {
 
+        to: {
+          type:
+            "string",
+          description:
+            "Empfänger-E-Mail-Adresse oder eindeutiger Empfänger, den Mattl genannt hat."
+        },
+
         instruction: {
           type:
             "string"
@@ -975,6 +985,7 @@ const REALTIME_TOOLS = [
       },
 
       required: [
+        "to",
         "instruction"
       ],
 
@@ -4834,8 +4845,21 @@ async function getWeatherData(
    ========================================================= */
 
 async function createEmailDraft(
-  instruction
+  instruction,
+  recipient
 ) {
+
+  const to =
+    String(recipient || "")
+      .trim();
+
+
+  if (!to) {
+    throw new Error(
+      "Für eine neue E-Mail fehlt der Empfänger. Frage Mattl zuerst, an wen die Mail gehen soll."
+    );
+  }
+
 
   const response =
     await fetch(
@@ -4958,13 +4982,88 @@ Antworte ausschließlich als gültiges JSON mit den Feldern subject und body.`,
     );
 
 
+  const subject =
+    String(
+      parsed.subject || ""
+    ).trim();
+
+
+  const body =
+    String(
+      parsed.body || ""
+    ).trim();
+
+
+  const raw =
+    encodeGmailBase64Url(
+      [
+        `To: ${to}`,
+        `Subject: ${subject}`,
+        "MIME-Version: 1.0",
+        'Content-Type: text/plain; charset="UTF-8"',
+        "Content-Transfer-Encoding: 8bit",
+        "",
+        body
+      ].join("\r\n")
+    );
+
+
+  const gmailToken =
+    await getGmailAccessToken();
+
+
+  const draftResponse =
+    await fetch(
+      "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
+      {
+        method:
+          "POST",
+        headers: {
+          Authorization:
+            `Bearer ${gmailToken}`,
+          "Content-Type":
+            "application/json"
+        },
+        body:
+          JSON.stringify({
+            message: {
+              raw
+            }
+          }),
+        signal:
+          timeoutSignal(
+            15000
+          )
+      }
+    );
+
+
+  const draftData =
+    await draftResponse.json();
+
+
+  if (!draftResponse.ok) {
+    throw new Error(
+      draftData?.error?.message ||
+      "Gmail-Entwurf konnte nicht gespeichert werden."
+    );
+  }
+
+
+  lastCreatedGmailDraftId =
+    draftData.id;
+
+
   return {
-
-    subject:
-      parsed.subject,
-
-    body:
-      parsed.body
+    to,
+    subject,
+    body,
+    gmail_draft_id:
+      draftData.id,
+    created_in_gmail:
+      true,
+    sent:
+      false
   };
 }
 
@@ -5263,7 +5362,8 @@ app.post(
 
           const draft =
             await createEmailDraft(
-              args.instruction
+              args.instruction,
+              args.to
             );
 
 
@@ -5274,16 +5374,25 @@ app.post(
 
             draft,
 
+            gmail_draft_id:
+              draft.gmail_draft_id,
+
             result: {
 
               created:
                 true,
 
+              saved_in_gmail:
+                true,
+
+              to:
+                draft.to,
+
               subject:
                 draft.subject,
 
               instruction:
-                "Der vollständige Entwurf wird im HUD angezeigt. Antworte Mattl nur kurz, dass der Entwurf fertig ist."
+                "Der vollständige Entwurf wird im HUD angezeigt und ist als echter Gmail-Entwurf gespeichert. Noch NICHT gesendet. Frage Mattl kurz, ob er ihn senden möchte."
             }
           });
         }
