@@ -5514,16 +5514,28 @@ function renderWhatsAppConversations(
         index
       ) => {
 
+        const displayName =
+          item.name &&
+          item.name !==
+            "WhatsApp-Kontakt"
+            ? item.name
+            : (
+                item.handle ||
+                "WhatsApp-Kontakt"
+              );
+
         const name =
           escapeHtml(
-            item.name ||
-            "WhatsApp-Kontakt"
+            displayName
           );
 
         const preview =
           escapeHtml(
-            item.preview ||
-            "Chat öffnen"
+            item.preview &&
+            item.preview !==
+              "Chat öffnen"
+              ? item.preview
+              : "Chat auswählen"
           );
 
         const id =
@@ -5561,6 +5573,16 @@ function renderWhatsAppConversations(
 
           currentSelectedWhatsAppConversationId =
             id;
+
+          list.querySelectorAll(
+            "[data-wa-conversation-id]"
+          ).forEach(
+            item =>
+              item.classList.toggle(
+                "selected",
+                item === row
+              )
+          );
 
           try {
             const response =
