@@ -234,19 +234,19 @@ const INTRO_START =
   4;
 
 const INTRO_START_VOLUME =
-  0.26;
+  0.22;
 
 const INTRO_VOICE_DELAY_MS =
   900;
 
 const INTRO_BACKGROUND_VOLUME =
-  0.018;
+  0.022;
 
 const INTRO_DUCK_DURATION_MS =
-  650;
+  900;
 
 const INTRO_FADE_DURATION_MS =
-  15000;
+  24000;
 
 
 /* =========================================================
@@ -6174,7 +6174,7 @@ console.log(
 
 
 console.log(
-  "JARVIS APP V10.4 · VOICE STOP FIX"
+  "JARVIS APP V10.4 · SOFT INTRO MIX"
 );
 
 
