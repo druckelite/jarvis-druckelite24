@@ -73,6 +73,15 @@ let dataChannel =
 let micStream =
   null;
 
+let stopSpeechRecognition =
+  null;
+
+let stopSpeechRecognitionRunning =
+  false;
+
+let stopSpeechRecognitionRestartTimer =
+  null;
+
 let realtimeConnected =
   false;
 
@@ -169,6 +178,15 @@ let proactiveFirstCheckTimer =
 let reminderCheckTimer =
   null;
 
+let userTurnInProgress =
+  false;
+
+let pendingProactiveNotice =
+  "";
+
+let pendingProactiveFlushTimer =
+  null;
+
 
 let screenWakeLock =
   null;
@@ -181,7 +199,15 @@ let currentSelectedEmail =
   null;
 
 let currentGmailDraftId =
-  null;
+  (() => {
+    try {
+      return sessionStorage.getItem(
+        "jarvisGmailDraftId"
+      );
+    } catch {
+      return null;
+    }
+  })();
 
 
 const PROACTIVE_CHECK_INTERVAL_MS =
@@ -1284,6 +1310,9 @@ async function scheduleElevenPcm(
     true;
 
 
+  startStopSpeechRecognition();
+
+
   setJarvisState(
     "speaking"
   );
@@ -1344,6 +1373,8 @@ async function scheduleElevenPcm(
 
               assistantSpeaking =
                 false;
+
+              stopStopSpeechRecognition();
 
 
               if (
@@ -1462,6 +1493,211 @@ function clearElevenAudio() {
 
   assistantSpeaking =
     false;
+
+  stopStopSpeechRecognition();
+}
+
+
+/* =========================================================
+   VOICE STOP · JARVIS WÄHREND AUSGABE UNTERBRECHEN
+   Separater Stop-Listener. Das OpenAI-Mikrofon bleibt während
+   der TTS-Ausgabe weiterhin deaktiviert, damit kein Echo stört.
+   ========================================================= */
+
+function getStopSpeechRecognitionClass() {
+  return (
+    window.SpeechRecognition ||
+    window.webkitSpeechRecognition ||
+    null
+  );
+}
+
+
+function stopStopSpeechRecognition() {
+
+  if (
+    stopSpeechRecognitionRestartTimer
+  ) {
+    clearTimeout(
+      stopSpeechRecognitionRestartTimer
+    );
+    stopSpeechRecognitionRestartTimer =
+      null;
+  }
+
+
+  if (!stopSpeechRecognition) {
+    stopSpeechRecognitionRunning =
+      false;
+    return;
+  }
+
+
+  const recognition =
+    stopSpeechRecognition;
+
+  stopSpeechRecognition =
+    null;
+
+  stopSpeechRecognitionRunning =
+    false;
+
+
+  try {
+    recognition.onend =
+      null;
+    recognition.abort();
+  } catch {}
+}
+
+
+function startStopSpeechRecognition() {
+
+  if (
+    !active ||
+    !assistantSpeaking ||
+    stopSpeechRecognitionRunning
+  ) {
+    return;
+  }
+
+
+  const Recognition =
+    getStopSpeechRecognitionClass();
+
+
+  if (!Recognition) {
+    return;
+  }
+
+
+  const recognition =
+    new Recognition();
+
+  stopSpeechRecognition =
+    recognition;
+
+  recognition.lang =
+    "de-DE";
+
+  recognition.continuous =
+    true;
+
+  recognition.interimResults =
+    true;
+
+  recognition.maxAlternatives =
+    1;
+
+
+  recognition.onstart =
+    () => {
+      stopSpeechRecognitionRunning =
+        true;
+    };
+
+
+  recognition.onresult =
+    event => {
+
+      let transcript =
+        "";
+
+
+      for (
+        let i = event.resultIndex;
+        i < event.results.length;
+        i += 1
+      ) {
+        transcript +=
+          ` ${event.results[i]?.[0]?.transcript || ""}`;
+      }
+
+
+      const normalized =
+        transcript
+          .toLowerCase()
+          .trim();
+
+
+      if (
+        /(^|\s)(stop|stopp|halt|ruhe|genug)(\s|$|[.!?,])/i.test(
+          normalized
+        )
+      ) {
+
+        console.log(
+          "Voice-Stop erkannt:",
+          normalized
+        );
+
+        stopStopSpeechRecognition();
+
+        userTurnInProgress =
+          false;
+
+        pendingProactiveNotice =
+          "";
+
+        handleUserInterruption();
+      }
+    };
+
+
+  recognition.onerror =
+    event => {
+
+      const error =
+        String(
+          event?.error ||
+          ""
+        );
+
+      stopSpeechRecognitionRunning =
+        false;
+
+
+      if (
+        error === "not-allowed" ||
+        error === "service-not-allowed"
+      ) {
+        stopSpeechRecognition =
+          null;
+      }
+    };
+
+
+  recognition.onend =
+    () => {
+
+      stopSpeechRecognitionRunning =
+        false;
+
+      stopSpeechRecognition =
+        null;
+
+
+      if (
+        active &&
+        assistantSpeaking
+      ) {
+        stopSpeechRecognitionRestartTimer =
+          setTimeout(
+            startStopSpeechRecognition,
+            180
+          );
+      }
+    };
+
+
+  try {
+    recognition.start();
+  } catch {
+    stopSpeechRecognitionRunning =
+      false;
+    stopSpeechRecognition =
+      null;
+  }
 }
 
 
@@ -3267,9 +3503,29 @@ async function executeRealtimeTool(
   }
 
 
+  let effectiveToolName =
+    toolName;
+
+
+  if (
+    toolName ===
+      "create_email_draft" &&
+    currentSelectedEmailId &&
+    /\b(antwort|darauf|zurueck|zurück|reply|kundenmail|diese mail|die mail|schreib.*zurück)\b/i.test(
+      String(args.instruction || "")
+    )
+  ) {
+    effectiveToolName =
+      "create_email_reply_draft";
+
+    args.message_id =
+      currentSelectedEmailId;
+  }
+
+
   console.log(
     "[TOOL]",
-    toolName,
+    effectiveToolName,
     args
   );
 
@@ -3297,7 +3553,7 @@ async function executeRealtimeTool(
             JSON.stringify({
 
               name:
-                toolName,
+                effectiveToolName,
 
               arguments:
                 args
@@ -3367,6 +3623,13 @@ async function executeRealtimeTool(
       currentGmailDraftId =
         toolResult.gmail_draft_id ||
         toolResult.draft.gmail_draft_id;
+
+      try {
+        sessionStorage.setItem(
+          "jarvisGmailDraftId",
+          currentGmailDraftId
+        );
+      } catch {}
     }
 
 
@@ -3376,6 +3639,12 @@ async function executeRealtimeTool(
     ) {
       currentGmailDraftId =
         null;
+
+      try {
+        sessionStorage.removeItem(
+          "jarvisGmailDraftId"
+        );
+      } catch {}
 
       loadInboxDashboard();
     }
@@ -3520,6 +3789,10 @@ function handleRealtimeEvent(
 
 
     case "input_audio_buffer.speech_started":
+
+      userTurnInProgress =
+        true;
+
 
       if (
         assistantSpeaking ||
@@ -3735,6 +4008,12 @@ function handleRealtimeEvent(
       }
 
 
+      userTurnInProgress =
+        false;
+
+      flushPendingProactiveNotice();
+
+
       if (
         !hasPendingElevenAudio()
       ) {
@@ -3795,6 +4074,12 @@ function handleRealtimeEvent(
 
       responseInProgress =
         false;
+
+
+      userTurnInProgress =
+        false;
+
+      flushPendingProactiveNotice();
 
 
       assistantSpeaking =
@@ -4324,6 +4609,108 @@ async function speakGreeting() {
 }
 
 
+function isBusyForProactiveSpeech() {
+
+  return (
+    !active ||
+    greetingInProgress ||
+    assistantSpeaking ||
+    responseInProgress ||
+    userTurnInProgress ||
+    runningToolCalls.size > 0 ||
+    hasPendingElevenAudio()
+  );
+}
+
+
+function flushPendingProactiveNotice() {
+
+  if (
+    pendingProactiveFlushTimer
+  ) {
+    clearTimeout(
+      pendingProactiveFlushTimer
+    );
+  }
+
+
+  pendingProactiveFlushTimer =
+    setTimeout(
+      () => {
+
+        pendingProactiveFlushTimer =
+          null;
+
+
+        if (
+          !pendingProactiveNotice
+        ) {
+          return;
+        }
+
+
+        if (
+          isBusyForProactiveSpeech()
+        ) {
+          flushPendingProactiveNotice();
+          return;
+        }
+
+
+        const text =
+          pendingProactiveNotice;
+
+
+        pendingProactiveNotice =
+          "";
+
+
+        if (
+          !speakProactiveMessage(
+            text
+          )
+        ) {
+          pendingProactiveNotice =
+            text;
+          flushPendingProactiveNotice();
+        }
+
+      },
+      700
+    );
+}
+
+
+function deliverOrQueueProactiveNotice(
+  text
+) {
+
+  const clean =
+    String(text || "")
+      .trim();
+
+
+  if (!clean) {
+    return false;
+  }
+
+
+  if (
+    isBusyForProactiveSpeech()
+  ) {
+    pendingProactiveNotice =
+      clean;
+    flushPendingProactiveNotice();
+    return false;
+  }
+
+
+  return speakProactiveMessage(
+    clean
+  );
+}
+
+
 /* =========================================================
    PROACTIVE MESSAGE
    ========================================================= */
@@ -4337,7 +4724,9 @@ function speakProactiveMessage(
     greetingInProgress ||
     assistantSpeaking ||
     responseInProgress ||
-    runningToolCalls.size > 0
+    userTurnInProgress ||
+    runningToolCalls.size > 0 ||
+    hasPendingElevenAudio()
   ) {
 
     return false;
@@ -5045,6 +5434,7 @@ async function runProactiveCheck() {
     greetingInProgress ||
     assistantSpeaking ||
     responseInProgress ||
+    userTurnInProgress ||
     runningToolCalls.size > 0
   ) {
 
@@ -5087,7 +5477,7 @@ async function runProactiveCheck() {
     }
 
 
-    speakProactiveMessage(
+    deliverOrQueueProactiveNotice(
       data.text
     );
 
@@ -5111,7 +5501,8 @@ async function runReminderCheck() {
     !active ||
     greetingInProgress ||
     assistantSpeaking ||
-    responseInProgress
+    responseInProgress ||
+    userTurnInProgress
   ) {
     return;
   }
@@ -5152,7 +5543,7 @@ async function runReminderCheck() {
     }
 
 
-    speakProactiveMessage(
+    deliverOrQueueProactiveNotice(
       data.text
     );
 
@@ -5594,6 +5985,9 @@ async function stopJarvis(
     false;
 
 
+  stopStopSpeechRecognition();
+
+
   responseInProgress =
     false;
 
@@ -5780,7 +6174,7 @@ console.log(
 
 
 console.log(
-  "JARVIS APP V10.4 · GMAIL AUTO-BEARBEITET"
+  "JARVIS APP V10.4 · VOICE STOP FIX"
 );
 
 
