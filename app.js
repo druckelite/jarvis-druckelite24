@@ -201,6 +201,12 @@ let currentSelectedEmailId =
 let currentSelectedEmail =
   null;
 
+let currentSelectedWhatsAppConversationId =
+  null;
+
+let currentSelectedWhatsAppConversation =
+  null;
+
 let currentGmailDraftId =
   (() => {
     try {
@@ -3535,6 +3541,21 @@ async function executeRealtimeTool(
   }
 
 
+  if (
+    (
+      toolName ===
+        "get_whatsapp_conversation" ||
+      toolName ===
+        "create_whatsapp_reply_draft"
+    ) &&
+    !args.conversation_id &&
+    currentSelectedWhatsAppConversationId
+  ) {
+    args.conversation_id =
+      currentSelectedWhatsAppConversationId;
+  }
+
+
   let effectiveToolName =
     toolName;
 
@@ -3645,6 +3666,38 @@ async function executeRealtimeTool(
       showGmailMail(
         toolResult.email
       );
+    }
+
+
+
+    if (
+      toolResult?.conversation?.id
+    ) {
+      currentSelectedWhatsAppConversationId =
+        toolResult.conversation.id;
+
+      currentSelectedWhatsAppConversation =
+        toolResult.conversation;
+    }
+
+
+    if (
+      toolResult?.whatsapp_draft?.text
+    ) {
+      showDraft({
+        subject:
+          `WhatsApp · ${toolResult.whatsapp_draft.contact_name || "Kunde"}`,
+        body:
+          toolResult.whatsapp_draft.text
+      });
+    }
+
+
+    if (
+      toolResult?.whatsapp_sent?.sent ===
+        true
+    ) {
+      loadWhatsAppDashboard();
     }
 
 
@@ -5365,6 +5418,256 @@ function renderInboxEmails(emails) {
 }
 
 
+
+function getWhatsAppListElement() {
+
+  return (
+    document.querySelector(
+      ".wa-modern-list"
+    ) ||
+    document.querySelector(
+      ".modern-whatsapp .modern-message-list"
+    ) ||
+    document.querySelector(
+      ".whatsapp-list"
+    )
+  );
+}
+
+
+function formatWhatsAppTime(
+  value
+) {
+
+  if (
+    !value
+  ) {
+    return "—";
+  }
+
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat(
+    "de-DE",
+    {
+      timeZone:
+        "Europe/Berlin",
+      hour:
+        "2-digit",
+      minute:
+        "2-digit"
+    }
+  ).format(date);
+}
+
+
+function renderWhatsAppConversations(
+  conversations
+) {
+
+  const list =
+    getWhatsAppListElement();
+
+  if (
+    !list
+  ) {
+    return;
+  }
+
+  const items =
+    Array.isArray(
+      conversations
+    )
+      ? conversations.slice(
+          0,
+          5
+        )
+      : [];
+
+  if (
+    !items.length
+  ) {
+    list.innerHTML =
+      `<div class="message-row modern-message-row">
+        <div class="sender-avatar wa-avatar">WA</div>
+        <div class="msg-copy"><b>Keine Chats geladen</b><span>Superchat liefert aktuell keine Konversationen.</span></div>
+        <time>—</time>
+      </div>`;
+
+    return;
+  }
+
+  list.innerHTML =
+    items.map(
+      (
+        item,
+        index
+      ) => {
+
+        const name =
+          escapeHtml(
+            item.name ||
+            "WhatsApp-Kontakt"
+          );
+
+        const preview =
+          escapeHtml(
+            item.preview ||
+            "Chat öffnen"
+          );
+
+        const id =
+          escapeHtml(
+            item.id ||
+            ""
+          );
+
+        return `
+          <div class="message-row modern-message-row" data-wa-conversation-id="${id}" role="button" tabindex="0">
+            <div class="sender-avatar wa-avatar">${String(index + 1).padStart(2, "0")}</div>
+            <div class="msg-copy"><b>${name}</b><span>${preview}</span></div>
+            <time>${escapeHtml(formatWhatsAppTime(item.updated_at))}</time>
+          </div>`;
+      }
+    ).join("");
+
+  list.querySelectorAll(
+    "[data-wa-conversation-id]"
+  ).forEach(
+    row => {
+
+      const select =
+        async () => {
+
+          const id =
+            row.dataset
+              .waConversationId;
+
+          if (
+            !id
+          ) {
+            return;
+          }
+
+          currentSelectedWhatsAppConversationId =
+            id;
+
+          try {
+            const response =
+              await fetch(
+                `/api/superchat-conversation/${encodeURIComponent(id)}`,
+                {
+                  cache:
+                    "no-store"
+                }
+              );
+
+            const data =
+              await response.json();
+
+            if (
+              response.ok &&
+              data?.ok
+            ) {
+              currentSelectedWhatsAppConversation =
+                data.conversation;
+
+              setLog(
+                `WhatsApp: ${data.conversation?.name || "Chat"} ausgewählt.`
+              );
+            }
+          } catch (
+            error
+          ) {
+            console.warn(
+              "WhatsApp-Chat konnte nicht geöffnet werden:",
+              error
+            );
+          }
+        };
+
+      row.addEventListener(
+        "click",
+        select
+      );
+
+      row.addEventListener(
+        "keydown",
+        event => {
+          if (
+            event.key ===
+              "Enter" ||
+            event.key ===
+              " "
+          ) {
+            event.preventDefault();
+            select();
+          }
+        }
+      );
+    }
+  );
+}
+
+
+async function loadWhatsAppDashboard() {
+
+  const list =
+    getWhatsAppListElement();
+
+  if (
+    !list
+  ) {
+    return;
+  }
+
+  try {
+    const response =
+      await fetch(
+        "/api/superchat-conversations",
+        {
+          cache:
+            "no-store"
+        }
+      );
+
+    const data =
+      await response.json();
+
+    if (
+      !response.ok ||
+      !data?.ok
+    ) {
+      throw new Error(
+        data?.error ||
+        "Superchat konnte nicht geladen werden."
+      );
+    }
+
+    renderWhatsAppConversations(
+      data.conversations
+    );
+
+  } catch (
+    error
+  ) {
+    console.warn(
+      "Superchat Dashboard Fehler:",
+      error
+    );
+  }
+}
+
+
 async function loadInboxDashboard() {
 
   const list =
@@ -6257,4 +6560,12 @@ console.log(
 
 console.log(
   "=============================================="
+);
+
+
+/* Superchat Dashboard Refresh */
+loadWhatsAppDashboard();
+setInterval(
+  loadWhatsAppDashboard,
+  30 * 1000
 );
