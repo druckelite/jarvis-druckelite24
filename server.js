@@ -1,292 +1,5629 @@
 /* =========================================================
-   DRUCKELITE24 · JARVIS SERVER
+   DRUCKELITE24 · JARVIS
+   APP.JS
 
-   V10.1 · OPENAI REALTIME TEXT + ELEVENLABS STREAMING
+   V10.4 · ZAHLEN & TTS BUFFER FIX
+   OPENAI REALTIME TEXT
+   + ELEVENLABS WEBSOCKET
+   + PCM 24 KHZ
+   + WEB AUDIO
+   + OHNE DEBUG HUD
    ========================================================= */
-
-import express from "express";
-
-const app = express();
-
-const PORT =
-  process.env.PORT || 3000;
-
-const JARVIS_VERSION =
-  "V10.1-PROACTIVE-REPEAT-FIX";
 
 
 /* =========================================================
-   PUBLIC FILES
+   DOM
    ========================================================= */
 
-const PUBLIC_FILES =
-  new Set([
-    "index.html",
-    "app.js",
-    "styles.css",
-    "Intro.mp3"
-  ]);
+const button =
+  document.querySelector("#toggle");
+
+const statusEl =
+  document.querySelector("#status");
+
+const logEl =
+  document.querySelector("#log");
+
+const remoteAudio =
+  document.querySelector("#remoteAudio");
 
 
-app.get(
-  "/:file",
-  (req, res, next) => {
+/* =========================================================
+   DEBUG HUD
+   ========================================================= */
 
-    if (
-      !PUBLIC_FILES.has(
-        req.params.file
-      )
-    ) {
-      return next();
-    }
+// DEBUG HUD entfernt – debugSet() bleibt absichtlich als sichere No-op-Hilfe erhalten.
 
-    return res.sendFile(
-      req.params.file,
-      {
-        root: "."
-      }
-    );
+
+
+function debugSet(
+  id,
+  value
+) {
+
+  const el =
+    document.getElementById(id);
+
+  if (el) {
+    el.textContent =
+      String(value);
   }
-);
+}
 
+
+/* =========================================================
+   STATE
+   ========================================================= */
+
+let active =
+  false;
+
+let starting =
+  false;
+
+let stopping =
+  false;
+
+let peerConnection =
+  null;
+
+let dataChannel =
+  null;
+
+let micStream =
+  null;
+
+let stopSpeechRecognition =
+  null;
+
+let stopSpeechRecognitionRunning =
+  false;
+
+let stopSpeechRecognitionRestartTimer =
+  null;
+
+let realtimeConnected =
+  false;
+
+let assistantSpeaking =
+  false;
+
+let greetingInProgress =
+  false;
+
+let responseInProgress =
+  false;
+
+let currentResponseText =
+  "";
+
+/* =========================================================
+   TTS TEXT BUFFER
+   Sammelt OpenAI-Text kurz, damit ElevenLabs keine Zahlen,
+   Abkürzungen oder Wörter in Einzelteilen bekommt.
+   ========================================================= */
+
+let ttsTextBuffer =
+  "";
+
+let ttsBufferTimer =
+  null;
+
+const TTS_BUFFER_DELAY_MS =
+  140;
+
+const TTS_BUFFER_MAX_CHARS =
+  140;
+
+const runningToolCalls =
+  new Set();
+
+
+/* =========================================================
+   ELEVENLABS STATE
+   ========================================================= */
+
+let elevenSocket =
+  null;
+
+let elevenConnected =
+  false;
+
+let elevenReady =
+  false;
+
+let elevenClosing =
+  false;
+
+let elevenTokenData =
+  null;
+
+let elevenSessionId =
+  0;
+
+let elevenKeepAliveTimer =
+  null;
+
+
+/* =========================================================
+   WEB AUDIO / PCM STATE
+   ========================================================= */
+
+let audioContext =
+  null;
+
+let nextPlaybackTime =
+  0;
+
+let audioScheduleChain =
+  Promise.resolve();
+
+const scheduledAudioSources =
+  new Set();
+
+const ELEVEN_PCM_SAMPLE_RATE =
+  24000;
+
+
+/* =========================================================
+   BACKGROUND CHECKS
+   ========================================================= */
+
+let proactiveCheckTimer =
+  null;
+
+let proactiveCheckInFlight =
+  false;
+
+let proactiveFirstCheckTimer =
+  null;
+
+let reminderCheckTimer =
+  null;
+
+let userTurnInProgress =
+  false;
+
+let pendingProactiveNotice =
+  "";
+
+let pendingProactiveFlushTimer =
+  null;
+
+
+let screenWakeLock =
+  null;
+
+
+let currentSelectedEmailId =
+  null;
+
+let currentSelectedEmail =
+  null;
+
+let currentSelectedWhatsAppConversationId =
+  null;
+
+let currentSelectedWhatsAppConversation =
+  null;
+
+let pendingNewWhatsAppDraft =
+  null;
+
+let currentGmailDraftId =
+  (() => {
+    try {
+      return sessionStorage.getItem(
+        "jarvisGmailDraftId"
+      );
+    } catch {
+      return null;
+    }
+  })();
+
+
+const PROACTIVE_CHECK_INTERVAL_MS =
+  5 * 1000;
+
+const PROACTIVE_FIRST_CHECK_DELAY_MS =
+  2 * 1000;
+
+const REMINDER_CHECK_INTERVAL_MS =
+  60 * 1000;
+
+
+/* =========================================================
+   INTRO
+   ========================================================= */
+
+let introAudio =
+  null;
+
+let introFadeTimer =
+  null;
+
+const INTRO_START =
+  4;
+
+const INTRO_START_VOLUME =
+  0.24;
+
+const INTRO_VOICE_DELAY_MS =
+  900;
+
+const INTRO_BACKGROUND_VOLUME =
+  0.014;
+
+const INTRO_DUCK_DURATION_MS =
+  1400;
+
+const INTRO_FADE_DURATION_MS =
+  20000;
 
 
 /* =========================================================
    HELPERS
    ========================================================= */
 
-function normalize(text) {
-  return String(text || "")
-    .toLowerCase()
-    .replace(
-      /[.,!?;:]/g,
-      " "
-    )
-    .replace(
-      /\s+/g,
-      " "
-    )
-    .trim();
-}
+function sleep(ms) {
 
-
-function timeoutSignal(ms) {
-  try {
-    if (
-      typeof AbortSignal !==
-        "undefined" &&
-      typeof AbortSignal.timeout ===
-        "function"
-    ) {
-      return AbortSignal.timeout(
-        ms
-      );
-    }
-  } catch {}
-
-  return undefined;
-}
-
-
-function berlinDate() {
-
-  return new Intl.DateTimeFormat(
-    "en-CA",
-    {
-      timeZone:
-        "Europe/Berlin",
-
-      year:
-        "numeric",
-
-      month:
-        "2-digit",
-
-      day:
-        "2-digit"
-    }
-  ).format(
-    new Date()
+  return new Promise(
+    resolve =>
+      setTimeout(resolve, ms)
   );
 }
 
 
+function safeJsonParse(value) {
+
+  try {
+
+    return JSON.parse(value);
+
+  } catch {
+
+    return null;
+  }
+}
+
+
+/* =========================================================
+   UI
+   ========================================================= */
+
+function setStatus(text) {
+
+  if (!statusEl) {
+    return;
+  }
+
+  statusEl.textContent =
+    text;
+
+  statusEl.classList.toggle(
+    "online",
+    text === "Online"
+  );
+}
+
+
+function setLog(text) {
+
+  if (!logEl) {
+    return;
+  }
+
+  logEl.textContent =
+    text;
+}
+
+
+function setButtonActive(value) {
+
+  if (!button) {
+    return;
+  }
+
+  button.classList.toggle(
+    "active",
+    Boolean(value)
+  );
+}
+
+
+function setJarvisState(state) {
+
+  document.body.dataset.jarvisState =
+    state;
+}
+
+
+/* =========================================================
+   DRAFT PANEL
+   ========================================================= */
+
+function showDraft(draft) {
+
+  const panel =
+    document.getElementById(
+      "draftPanel"
+    );
+
+  const subjectEl =
+    document.getElementById(
+      "draftSubject"
+    );
+
+  const bodyEl =
+    document.getElementById(
+      "draftBody"
+    );
+
+  if (
+    !panel ||
+    !subjectEl ||
+    !bodyEl
+  ) {
+    return;
+  }
+
+  subjectEl.textContent =
+    draft?.subject
+      ? `Betreff: ${draft.subject}`
+      : "";
+
+  bodyEl.textContent =
+    draft?.body || "";
+
+  panel.style.display =
+    "flex";
+
+  ensureDraftSendButton();
+}
+
+
+const draftCloseBtn =
+  document.getElementById(
+    "draftCloseBtn"
+  );
+
+if (draftCloseBtn) {
+
+  draftCloseBtn.addEventListener(
+    "click",
+    () => {
+
+      const panel =
+        document.getElementById(
+          "draftPanel"
+        );
+
+      if (panel) {
+        panel.style.display =
+          "none";
+      }
+
+      /* Wichtig: Nur visuell ausblenden.
+         Gmail-Draft-ID bleibt erhalten, damit Mattl
+         den Entwurf danach weiterhin per Sprachbefehl senden kann. */
+    }
+  );
+}
+
+
+const draftCopyBtn =
+  document.getElementById(
+    "draftCopyBtn"
+  );
+
+if (draftCopyBtn) {
+
+  draftCopyBtn.addEventListener(
+    "click",
+    async () => {
+
+      const subjectEl =
+        document.getElementById(
+          "draftSubject"
+        );
+
+      const bodyEl =
+        document.getElementById(
+          "draftBody"
+        );
+
+      const fullText =
+        `${
+          subjectEl?.textContent || ""
+        }\n\n${
+          bodyEl?.textContent || ""
+        }`.trim();
+
+      try {
+
+        await navigator.clipboard
+          .writeText(fullText);
+
+        const original =
+          draftCopyBtn.textContent;
+
+        draftCopyBtn.textContent =
+          "Kopiert!";
+
+        setTimeout(
+          () => {
+
+            draftCopyBtn.textContent =
+              original;
+
+          },
+          1500
+        );
+
+      } catch (error) {
+
+        console.warn(
+          "Kopieren fehlgeschlagen:",
+          error
+        );
+      }
+    }
+  );
+}
+
+
+
+
+/* =========================================================
+   GMAIL DRAFT · SENDEN NACH BESTÄTIGUNG
+   ========================================================= */
+
+function ensureDraftSendButton() {
+
+  const panel =
+    document.getElementById(
+      "draftPanel"
+    );
+
+  if (
+    !panel
+  ) {
+    return null;
+  }
+
+  let button =
+    document.getElementById(
+      "draftSendBtn"
+    );
+
+  if (
+    button
+  ) {
+    return button;
+  }
+
+  const existingActions =
+    panel.querySelector(
+      ".draft-actions"
+    );
+
+  const host =
+    existingActions ||
+    (() => {
+      const div =
+        document.createElement(
+          "div"
+        );
+
+      div.className =
+        "draft-actions jarvis-draft-actions";
+
+      panel.appendChild(
+        div
+      );
+
+      return div;
+    })();
+
+  button =
+    document.createElement(
+      "button"
+    );
+
+  button.type =
+    "button";
+
+  button.id =
+    "draftSendBtn";
+
+  button.className =
+    "draft-send-confirm";
+
+  button.textContent =
+    "SENDEN";
+
+  host.appendChild(
+    button
+  );
+
+  button.addEventListener(
+    "click",
+    async () => {
+
+      if (
+        !currentGmailDraftId &&
+        !pendingNewWhatsAppDraft
+      ) {
+        setLog(
+          "Kein Entwurf zum Senden vorhanden."
+        );
+        return;
+      }
+
+      const confirmed =
+        window.confirm(
+          pendingNewWhatsAppDraft
+            ? "Diese WhatsApp jetzt wirklich senden?"
+            : "Diesen E-Mail-Entwurf jetzt wirklich senden?"
+        );
+
+      if (
+        !confirmed
+      ) {
+        return;
+      }
+
+      button.disabled =
+        true;
+      button.textContent =
+        "WIRD GESENDET …";
+
+      try {
+
+        const response =
+          await fetch(
+            "/api/realtime-tool",
+            {
+              method:
+                "POST",
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
+              body:
+                JSON.stringify(
+                  pendingNewWhatsAppDraft
+                    ? {
+                        name:
+                          "send_new_whatsapp_draft",
+                        arguments: {
+                          confirmation_text:
+                            "senden"
+                        }
+                      }
+                    : {
+                        name:
+                          "send_email_draft",
+                        arguments: {
+                          draft_id:
+                            currentGmailDraftId,
+                          confirmation_text:
+                            "senden"
+                        }
+                      }
+                )
+            }
+          );
+
+        const data =
+          await response.json();
+
+        const sentOk =
+          pendingNewWhatsAppDraft
+            ? data?.whatsapp_sent?.sent ===
+                true ||
+              data?.result?.sent ===
+                true
+            : data?.sent?.sent ===
+                true;
+
+        if (
+          !response.ok ||
+          !data?.ok ||
+          !sentOk
+        ) {
+          throw new Error(
+            data?.error ||
+            (
+              pendingNewWhatsAppDraft
+                ? "WhatsApp konnte nicht gesendet werden."
+                : "E-Mail konnte nicht gesendet werden."
+            )
+          );
+        }
+
+        if (
+          pendingNewWhatsAppDraft
+        ) {
+          pendingNewWhatsAppDraft =
+            null;
+
+          panel.style.display =
+            "none";
+
+          setLog(
+            "WhatsApp wurde gesendet."
+          );
+
+          loadWhatsAppDashboard();
+
+        } else {
+
+          currentGmailDraftId =
+            null;
+
+          try {
+            sessionStorage.removeItem(
+              "jarvisGmailDraftId"
+            );
+          } catch {}
+
+          panel.style.display =
+            "none";
+
+          setLog(
+            "E-Mail wurde gesendet."
+          );
+
+          loadInboxDashboard();
+        }
+
+      } catch (
+        error
+      ) {
+
+        setLog(
+          error.message ||
+          "E-Mail konnte nicht gesendet werden."
+        );
+
+      } finally {
+
+        button.disabled =
+          false;
+        button.textContent =
+          "SENDEN";
+      }
+    }
+  );
+
+  return button;
+}
+
+
+ensureDraftSendButton();
+
+
+/* =========================================================
+   BERLIN TIME
+   ========================================================= */
+
 function getBerlinHour() {
 
-  const formatter =
-    new Intl.DateTimeFormat(
-      "de-DE",
-      {
-        timeZone:
-          "Europe/Berlin",
+  try {
 
-        hour:
-          "numeric",
+    const formatter =
+      new Intl.DateTimeFormat(
+        "de-DE",
+        {
+          timeZone:
+            "Europe/Berlin",
 
-        hourCycle:
-          "h23"
+          hour:
+            "numeric",
+
+          hourCycle:
+            "h23"
+        }
+      );
+
+    const parts =
+      formatter.formatToParts(
+        new Date()
+      );
+
+    const hourPart =
+      parts.find(
+        part =>
+          part.type === "hour"
+      );
+
+    const hour =
+      Number(
+        hourPart?.value
+      );
+
+    if (!Number.isNaN(hour)) {
+      return hour;
+    }
+
+  } catch (error) {
+
+    console.warn(
+      "Berlin-Zeit Fehler:",
+      error
+    );
+  }
+
+  return new Date()
+    .getHours();
+}
+
+
+
+/* =========================================================
+   MOBILE SCREEN WAKE LOCK
+   Verhindert automatisches Display-Standby, solange JARVIS läuft.
+   Wenn das iPhone manuell gesperrt wird, darf iOS Browser/WebRTC
+   trotzdem pausieren.
+   ========================================================= */
+
+async function requestScreenWakeLock() {
+
+  try {
+
+    if (
+      !("wakeLock" in navigator) ||
+      document.visibilityState !==
+        "visible"
+    ) {
+      return false;
+    }
+
+
+    if (
+      screenWakeLock
+    ) {
+      return true;
+    }
+
+
+    screenWakeLock =
+      await navigator.wakeLock
+        .request(
+          "screen"
+        );
+
+
+    screenWakeLock.addEventListener(
+      "release",
+      () => {
+
+        screenWakeLock =
+          null;
       }
     );
 
 
-  const parts =
-    formatter.formatToParts(
-      new Date()
+    return true;
+
+
+  } catch (
+    error
+  ) {
+
+    console.warn(
+      "Wake Lock nicht verfügbar:",
+      error
     );
 
 
-  const hourPart =
-    parts.find(
-      part =>
-        part.type ===
-        "hour"
-    );
+    screenWakeLock =
+      null;
 
+
+    return false;
+  }
+}
+
+
+async function releaseScreenWakeLock() {
+
+  if (
+    !screenWakeLock
+  ) {
+    return;
+  }
+
+
+  try {
+
+    await screenWakeLock
+      .release();
+
+  } catch {}
+
+
+  screenWakeLock =
+    null;
+}
+
+
+document.addEventListener(
+  "visibilitychange",
+  () => {
+
+    if (
+      document.visibilityState !==
+      "visible"
+    ) {
+      return;
+    }
+
+
+    if (
+      active
+    ) {
+
+      requestScreenWakeLock();
+
+
+      /*
+        Wenn iOS die Seite im Hintergrund pausiert hat,
+        beim Zurückkehren sofort den Server prüfen.
+      */
+
+      setTimeout(
+        () => {
+
+          runProactiveCheck();
+          runReminderCheck();
+
+        },
+        700
+      );
+    }
+  }
+);
+
+
+/* =========================================================
+   GREETING
+   ========================================================= */
+
+function pickRandom(items) {
+
+  return items[
+    Math.floor(
+      Math.random() *
+      items.length
+    )
+  ];
+}
+
+
+function getGreetingAddress() {
+
+  const roll =
+    Math.random();
+
+  if (roll < 0.40) {
+    return "Mattl";
+  }
+
+  if (roll < 0.70) {
+    return "Chef";
+  }
+
+  if (roll < 0.94) {
+    return "Meister";
+  }
+
+  return "Daddy";
+}
+
+
+function getGreeting() {
 
   const hour =
-    Number(
-      hourPart?.value
+    getBerlinHour();
+
+  const roll =
+    Math.random();
+
+  let name;
+
+  if (roll < 0.36) {
+    name = "Mattl";
+  }
+
+  else if (roll < 0.66) {
+    name = "Chef";
+  }
+
+  else if (roll < 0.92) {
+    name = "Meister";
+  }
+
+  else {
+    name = "Daddy";
+  }
+
+
+  if (
+    hour >= 5 &&
+    hour < 11
+  ) {
+
+    return pickRandom([
+
+      `Systemcheck abgeschlossen. Kommandozentrale online. Guten Morgen, ${name}. JARVIS ist vollständig einsatzbereit. Heute machen wir keine halben Sachen.`,
+
+      `Energieversorgung stabil. Systeme synchronisiert. Guten Morgen, ${name}. Die Welt schläft langsam aus. Wir sind ihr bereits einen Schritt voraus.`,
+
+      `JARVIS online. Alle Systeme auf Grün. Guten Morgen, ${name}. Kaffee besorgst du. Den Rest erledigen wir gemeinsam.`,
+
+      `Kommandozentrale aktiviert. Datenverbindungen stehen. Guten Morgen, ${name}. Heute wird nicht verwaltet. Heute wird angegriffen.`,
+
+      `Systeme hochgefahren. Aufmerksamkeit bei einhundert Prozent. Guten Morgen, ${name}. Zeit, aus Ideen Ergebnisse zu machen.`,
+
+      `Guten Morgen, ${name}. JARVIS meldet volle Einsatzbereitschaft. Systeme stabil. Ziele noch nicht definiert. Das ändern wir jetzt.`,
+
+      `Verbindung hergestellt. Kommandozentrale bereit. Guten Morgen, ${name}. Mal sehen, wer heute versucht, uns aufzuhalten.`
+
+    ]);
+  }
+
+
+  if (
+    hour >= 11 &&
+    hour < 18
+  ) {
+
+    return pickRandom([
+
+      `Kommandozentrale online. Systeme synchronisiert. Willkommen zurück, ${name}. Sag mir, welches Problem heute zuerst kapitulieren soll.`,
+
+      `JARVIS ist online. Datenströme aktiv. Systeme stabil. ${name}, du hast meine volle Aufmerksamkeit.`,
+
+      `Verbindung steht. Systeme auf Grün. Willkommen zurück, ${name}. Geschäft, Werbung, Zahlen oder Chaos. Ich bin bereit.`,
+
+      `Kommandozentrale aktiviert. ${name}, JARVIS meldet vollständige Einsatzbereitschaft. Gib mir ein Ziel.`,
+
+      `Alle Systeme online. Analyse bereit. ${name}, wenn heute irgendwo Umsatz liegen bleibt, finden wir ihn.`,
+
+      `Systemcheck abgeschlossen. Keine kritischen Fehler. Noch nicht. Willkommen zurück, ${name}. Was steht an?`,
+
+      `JARVIS online. Kommandozentrale bereit. ${name}, heute machen wir entweder Fortschritt oder wenigstens einen beeindruckenden Versuch.`,
+
+      `Verbindung hergestellt. Daten bereit. Geduld geladen. Willkommen zurück, ${name}. Nutzen wir sie, solange sie noch da ist.`,
+
+      `${name}. JARVIS ist online. Systeme synchronisiert. Der Laden läuft. Jetzt sorgen wir dafür, dass er noch besser läuft.`
+
+    ]);
+  }
+
+
+  if (
+    hour >= 18 &&
+    hour < 23
+  ) {
+
+    return pickRandom([
+
+      `Nachtbetrieb wird vorbereitet. Kommandozentrale online. Guten Abend, ${name}. Andere machen Feierabend. Wir offenbar nicht.`,
+
+      `Systeme synchronisiert. Abendmodus aktiv. Willkommen zurück, ${name}. Die zweite Halbzeit kann beginnen.`,
+
+      `JARVIS online. Beleuchtung gedimmt. Rechenleistung unverändert. Guten Abend, ${name}. Was reißen wir heute noch ab?`,
+
+      `Kommandozentrale aktiviert. Guten Abend, ${name}. Die meisten fahren jetzt runter. Wir gehen offensichtlich den anderen Weg.`,
+
+      `Systemcheck abgeschlossen. Alles bereit. Guten Abend, ${name}. Wenn wir schon um diese Uhrzeit arbeiten, sollte es wenigstens spektakulär werden.`,
+
+      `JARVIS meldet sich. Systeme auf Grün. Guten Abend, ${name}. Feierabend wurde für heute offenbar nicht genehmigt.`,
+
+      `Verbindung hergestellt. Nachtbetrieb bereit. Guten Abend, ${name}. Zeit, noch etwas zu erledigen, das morgen niemand kommen sieht.`
+
+    ]);
+  }
+
+
+  return pickRandom([
+
+    `Nachtmodus aktiviert. Systeme online. ${name}, vernünftige Menschen schlafen jetzt. Das erklärt vermutlich, warum wir beide hier sind.`,
+
+    `Kommandozentrale online. Uhrzeit kritisch. Einsatzbereitschaft trotzdem einhundert Prozent. Willkommen zurück, ${name}.`,
+
+    `Systemcheck abgeschlossen. Die Stadt schläft. JARVIS nicht. ${name}, was bauen wir jetzt noch?`,
+
+    `Nachtbetrieb aktiv. Systeme stabil. Vernunft auf Stand-by. ${name}, JARVIS ist bereit.`,
+
+    `Verbindung hergestellt. Alles ruhig. Verdächtig ruhig. Willkommen zurück, ${name}. Was haben wir vor?`,
+
+    `${name}. Es ist mitten in der Nacht. JARVIS ist online. Wenn das irgendwann groß wird, behaupten wir einfach, das sei alles Teil des Plans gewesen.`
+
+  ]);
+}
+
+
+/* =========================================================
+   INTRO
+   ========================================================= */
+
+function stopIntro() {
+
+  if (introFadeTimer) {
+
+    clearInterval(
+      introFadeTimer
+    );
+
+    introFadeTimer =
+      null;
+  }
+
+
+  if (introAudio) {
+
+    try {
+      introAudio.pause();
+    } catch {}
+
+
+    try {
+      introAudio.currentTime =
+        0;
+    } catch {}
+
+
+    introAudio =
+      null;
+  }
+}
+
+
+async function startIntro() {
+
+  stopIntro();
+
+
+  introAudio =
+    new Audio(
+      "/Intro.mp3?v=105"
+    );
+
+
+  introAudio.preload =
+    "auto";
+
+
+  introAudio.volume =
+    INTRO_START_VOLUME;
+
+
+  return new Promise(
+    resolve => {
+
+      let resolved =
+        false;
+
+
+      const done =
+        () => {
+
+          if (resolved) {
+            return;
+          }
+
+          resolved =
+            true;
+
+          resolve();
+        };
+
+
+      const play =
+        async () => {
+
+          try {
+
+            if (!introAudio) {
+
+              done();
+              return;
+            }
+
+
+            introAudio.currentTime =
+              INTRO_START;
+
+
+            await introAudio.play();
+
+
+            done();
+
+          } catch (error) {
+
+            console.warn(
+              "Intro Fehler:",
+              error
+            );
+
+
+            done();
+          }
+        };
+
+
+      introAudio.addEventListener(
+        "loadedmetadata",
+        play,
+        {
+          once: true
+        }
+      );
+
+
+      introAudio.addEventListener(
+        "error",
+        done,
+        {
+          once: true
+        }
+      );
+
+
+      if (
+        introAudio.readyState >= 1
+      ) {
+
+        play();
+      }
+
+
+      introAudio.load();
+    }
+  );
+}
+
+
+function duckIntro() {
+
+  if (
+    !introAudio ||
+    introAudio.paused
+  ) {
+    return;
+  }
+
+
+  if (introFadeTimer) {
+
+    clearInterval(
+      introFadeTimer
+    );
+
+    introFadeTimer =
+      null;
+  }
+
+
+  const original =
+    introAudio.volume;
+
+
+  const start =
+    performance.now();
+
+
+  introFadeTimer =
+    setInterval(
+      () => {
+
+        if (!introAudio) {
+
+          clearInterval(
+            introFadeTimer
+          );
+
+          introFadeTimer =
+            null;
+
+          return;
+        }
+
+
+        const progress =
+          Math.min(
+            (
+              performance.now() -
+              start
+            ) /
+            INTRO_DUCK_DURATION_MS,
+            1
+          );
+
+
+        const smooth =
+          progress *
+          progress *
+          (
+            3 -
+            2 * progress
+          );
+
+
+        introAudio.volume =
+          original -
+          (
+            original -
+            INTRO_BACKGROUND_VOLUME
+          ) *
+          smooth;
+
+
+        if (progress >= 1) {
+
+          clearInterval(
+            introFadeTimer
+          );
+
+          introFadeTimer =
+            null;
+
+
+          fadeIntroOut();
+        }
+
+      },
+      40
+    );
+}
+
+
+function fadeIntroOut() {
+
+  if (
+    !introAudio ||
+    introAudio.paused
+  ) {
+    return;
+  }
+
+
+  const start =
+    performance.now();
+
+
+  const volume =
+    introAudio.volume;
+
+
+  introFadeTimer =
+    setInterval(
+      () => {
+
+        if (!introAudio) {
+
+          clearInterval(
+            introFadeTimer
+          );
+
+          introFadeTimer =
+            null;
+
+          return;
+        }
+
+
+        const progress =
+          Math.min(
+            (
+              performance.now() -
+              start
+            ) /
+            INTRO_FADE_DURATION_MS,
+            1
+          );
+
+
+        introAudio.volume =
+          Math.max(
+            0,
+            volume *
+            Math.pow(
+              1 - progress,
+              1.7
+            )
+          );
+
+
+        if (progress >= 1) {
+
+          clearInterval(
+            introFadeTimer
+          );
+
+          introFadeTimer =
+            null;
+
+
+          try {
+            introAudio.pause();
+          } catch {}
+
+
+          introAudio =
+            null;
+        }
+
+      },
+      60
+    );
+}
+
+
+/* =========================================================
+   WEB AUDIO
+   ========================================================= */
+
+async function ensureAudioContext() {
+
+  if (!audioContext) {
+
+    const AudioContextClass =
+      window.AudioContext ||
+      window.webkitAudioContext;
+
+
+    if (!AudioContextClass) {
+
+      throw new Error(
+        "Web Audio wird von diesem Browser nicht unterstützt."
+      );
+    }
+
+
+    audioContext =
+      new AudioContextClass();
+
+
+    nextPlaybackTime =
+      audioContext.currentTime;
+  }
+
+
+  if (
+    audioContext.state ===
+    "suspended"
+  ) {
+
+    await audioContext.resume();
+  }
+
+
+  return audioContext;
+}
+
+
+function base64ToUint8Array(base64) {
+
+  const binary =
+    atob(base64);
+
+
+  const bytes =
+    new Uint8Array(
+      binary.length
+    );
+
+
+  for (
+    let i = 0;
+    i < binary.length;
+    i++
+  ) {
+
+    bytes[i] =
+      binary.charCodeAt(i);
+  }
+
+
+  return bytes;
+}
+
+
+function pcm16ToFloat32(bytes) {
+
+  const sampleCount =
+    Math.floor(
+      bytes.byteLength / 2
+    );
+
+
+  const floats =
+    new Float32Array(
+      sampleCount
+    );
+
+
+  const view =
+    new DataView(
+      bytes.buffer,
+      bytes.byteOffset,
+      bytes.byteLength
+    );
+
+
+  for (
+    let i = 0;
+    i < sampleCount;
+    i++
+  ) {
+
+    const sample =
+      view.getInt16(
+        i * 2,
+        true
+      );
+
+
+    floats[i] =
+      sample < 0
+        ? sample / 32768
+        : sample / 32767;
+  }
+
+
+  return floats;
+}
+
+
+function hasPendingElevenAudio() {
+
+  if (
+    scheduledAudioSources.size > 0
+  ) {
+    return true;
+  }
+
+
+  if (
+    audioContext &&
+    nextPlaybackTime >
+      audioContext.currentTime +
+      0.03
+  ) {
+    return true;
+  }
+
+
+  return false;
+}
+
+
+async function scheduleElevenPcm(
+  base64
+) {
+
+  const ctx =
+    await ensureAudioContext();
+
+
+  const bytes =
+    base64ToUint8Array(
+      base64
     );
 
 
   if (
-    Number.isNaN(
-      hour
-    )
+    bytes.byteLength < 2
   ) {
-    return new Date()
-      .getHours();
+    return;
   }
 
 
-  return hour;
-}
+  const samples =
+    pcm16ToFloat32(
+      bytes
+    );
 
 
-function getTimeZoneOffsetMs(
-  date,
-  timeZone
-) {
+  if (
+    samples.length === 0
+  ) {
+    return;
+  }
 
-  const parts =
-    new Intl.DateTimeFormat(
-      "en-US",
-      {
-        timeZone,
-        year:
-          "numeric",
-        month:
-          "2-digit",
-        day:
-          "2-digit",
-        hour:
-          "2-digit",
-        minute:
-          "2-digit",
-        second:
-          "2-digit",
-        hourCycle:
-          "h23"
+
+  const buffer =
+    ctx.createBuffer(
+      1,
+      samples.length,
+      ELEVEN_PCM_SAMPLE_RATE
+    );
+
+
+  buffer
+    .getChannelData(0)
+    .set(samples);
+
+
+  const source =
+    ctx.createBufferSource();
+
+
+  source.buffer =
+    buffer;
+
+
+  source.connect(
+    ctx.destination
+  );
+
+
+  const startAt =
+    Math.max(
+      ctx.currentTime + 0.025,
+      nextPlaybackTime
+    );
+
+
+  nextPlaybackTime =
+    startAt +
+    buffer.duration;
+
+
+  scheduledAudioSources.add(
+    source
+  );
+
+
+  assistantSpeaking =
+    true;
+
+
+  startStopSpeechRecognition();
+
+
+  setJarvisState(
+    "speaking"
+  );
+
+
+  setLog(
+    "JARVIS spricht."
+  );
+
+
+  setMicrophoneEnabled(
+    false
+  );
+
+
+  debugSet(
+    "dbgPlayback",
+    "✅"
+  );
+
+
+  debugSet(
+    "dbgEvent",
+    "PCM Audio spielt"
+  );
+
+
+  source.onended =
+    () => {
+
+      scheduledAudioSources.delete(
+        source
+      );
+
+
+      if (
+        scheduledAudioSources.size === 0
+      ) {
+
+        const delayMs =
+          Math.max(
+            0,
+            (
+              nextPlaybackTime -
+              ctx.currentTime
+            ) * 1000
+          );
+
+
+        setTimeout(
+          () => {
+
+            if (
+              scheduledAudioSources.size ===
+                0 &&
+              !responseInProgress
+            ) {
+
+              assistantSpeaking =
+                false;
+
+              stopStopSpeechRecognition();
+
+
+              if (
+                greetingInProgress
+              ) {
+
+                greetingInProgress =
+                  false;
+              }
+
+
+              if (
+                active &&
+                runningToolCalls.size ===
+                  0
+              ) {
+
+                setJarvisState(
+                  "listening"
+                );
+
+
+                setLog(
+                  "JARVIS hört zu."
+                );
+
+
+                setMicrophoneEnabled(
+                  true
+                );
+              }
+            }
+
+          },
+          delayMs + 80
+        );
       }
-    ).formatToParts(date);
+    };
 
 
-  const values =
-    Object.fromEntries(
-      parts
-        .filter(
-          part =>
-            part.type !==
-            "literal"
-        )
-        .map(
-          part => [
-            part.type,
-            part.value
-          ]
-        )
-    );
-
-
-  const asUtc =
-    Date.UTC(
-      Number(values.year),
-      Number(values.month) - 1,
-      Number(values.day),
-      Number(values.hour),
-      Number(values.minute),
-      Number(values.second)
-    );
-
-
-  return (
-    asUtc -
-    date.getTime()
+  source.start(
+    startAt
   );
 }
 
 
-function berlinMidnightToUtc(
-  year,
-  month,
-  day
+function enqueueElevenAudio(
+  base64
 ) {
 
-  const timeZone =
-    "Europe/Berlin";
+  audioScheduleChain =
+    audioScheduleChain
+      .then(
+        () =>
+          scheduleElevenPcm(
+            base64
+          )
+      )
+      .catch(
+        error => {
+
+          console.error(
+            "PCM Playback Fehler:",
+            error
+          );
 
 
-  let utc =
-    Date.UTC(
-      year,
-      month - 1,
-      day,
-      0,
-      0,
-      0
-    );
+          debugSet(
+            "dbgPlayback",
+            "❌"
+          );
 
 
-  // Zweimal korrigieren, damit Sommer-/Winterzeit sauber berücksichtigt wird.
-  for (
-    let i = 0;
-    i < 2;
-    i += 1
-  ) {
-
-    const offset =
-      getTimeZoneOffsetMs(
-        new Date(utc),
-        timeZone
+          debugSet(
+            "dbgEvent",
+            `PCM Fehler: ${
+              error.message ||
+              "unbekannt"
+            }`
+          );
+        }
       );
-
-
-    utc =
-      Date.UTC(
-        year,
-        month - 1,
-        day,
-        0,
-        0,
-        0
-      ) -
-      offset;
-  }
-
-
-  return new Date(utc);
 }
 
 
-function getPeriodDates(
-  period
+function clearElevenAudio() {
+
+  for (
+    const source of
+    scheduledAudioSources
+  ) {
+
+    try {
+      source.stop();
+    } catch {}
+  }
+
+
+  scheduledAudioSources.clear();
+
+
+  if (audioContext) {
+
+    nextPlaybackTime =
+      audioContext.currentTime;
+  } else {
+
+    nextPlaybackTime =
+      0;
+  }
+
+
+  audioScheduleChain =
+    Promise.resolve();
+
+
+  assistantSpeaking =
+    false;
+
+  stopStopSpeechRecognition();
+}
+
+
+/* =========================================================
+   VOICE STOP · JARVIS WÄHREND AUSGABE UNTERBRECHEN
+   Separater Stop-Listener. Das OpenAI-Mikrofon bleibt während
+   der TTS-Ausgabe weiterhin deaktiviert, damit kein Echo stört.
+   ========================================================= */
+
+function getStopSpeechRecognitionClass() {
+  return (
+    window.SpeechRecognition ||
+    window.webkitSpeechRecognition ||
+    null
+  );
+}
+
+
+function stopStopSpeechRecognition() {
+
+  if (
+    stopSpeechRecognitionRestartTimer
+  ) {
+    clearTimeout(
+      stopSpeechRecognitionRestartTimer
+    );
+    stopSpeechRecognitionRestartTimer =
+      null;
+  }
+
+
+  if (!stopSpeechRecognition) {
+    stopSpeechRecognitionRunning =
+      false;
+    return;
+  }
+
+
+  const recognition =
+    stopSpeechRecognition;
+
+  stopSpeechRecognition =
+    null;
+
+  stopSpeechRecognitionRunning =
+    false;
+
+
+  try {
+    recognition.onend =
+      null;
+    recognition.abort();
+  } catch {}
+}
+
+
+function startStopSpeechRecognition() {
+
+  if (
+    !active ||
+    !assistantSpeaking ||
+    stopSpeechRecognitionRunning
+  ) {
+    return;
+  }
+
+
+  const Recognition =
+    getStopSpeechRecognitionClass();
+
+
+  if (!Recognition) {
+    return;
+  }
+
+
+  const recognition =
+    new Recognition();
+
+  stopSpeechRecognition =
+    recognition;
+
+  recognition.lang =
+    "de-DE";
+
+  recognition.continuous =
+    true;
+
+  recognition.interimResults =
+    true;
+
+  recognition.maxAlternatives =
+    1;
+
+
+  recognition.onstart =
+    () => {
+      stopSpeechRecognitionRunning =
+        true;
+    };
+
+
+  recognition.onresult =
+    event => {
+
+      let transcript =
+        "";
+
+
+      for (
+        let i = event.resultIndex;
+        i < event.results.length;
+        i += 1
+      ) {
+        transcript +=
+          ` ${event.results[i]?.[0]?.transcript || ""}`;
+      }
+
+
+      const normalized =
+        transcript
+          .toLowerCase()
+          .trim();
+
+
+      if (
+        /(^|\s)(stop|stopp|halt|ruhe|genug)(\s|$|[.!?,])/i.test(
+          normalized
+        )
+      ) {
+
+        console.log(
+          "Voice-Stop erkannt:",
+          normalized
+        );
+
+        stopStopSpeechRecognition();
+
+        userTurnInProgress =
+          false;
+
+        pendingProactiveNotice =
+          "";
+
+        handleUserInterruption();
+      }
+    };
+
+
+  recognition.onerror =
+    event => {
+
+      const error =
+        String(
+          event?.error ||
+          ""
+        );
+
+      stopSpeechRecognitionRunning =
+        false;
+
+
+      if (
+        error === "not-allowed" ||
+        error === "service-not-allowed"
+      ) {
+        stopSpeechRecognition =
+          null;
+      }
+    };
+
+
+  recognition.onend =
+    () => {
+
+      stopSpeechRecognitionRunning =
+        false;
+
+      stopSpeechRecognition =
+        null;
+
+
+      if (
+        active &&
+        assistantSpeaking
+      ) {
+        stopSpeechRecognitionRestartTimer =
+          setTimeout(
+            startStopSpeechRecognition,
+            180
+          );
+      }
+    };
+
+
+  try {
+    recognition.start();
+  } catch {
+    stopSpeechRecognitionRunning =
+      false;
+    stopSpeechRecognition =
+      null;
+  }
+}
+
+
+/* =========================================================
+   MICROPHONE
+   ========================================================= */
+
+async function createMicrophoneStream() {
+
+  if (
+    !navigator.mediaDevices ||
+    !navigator.mediaDevices
+      .getUserMedia
+  ) {
+
+    throw new Error(
+      "Mikrofon wird von diesem Browser nicht unterstützt."
+    );
+  }
+
+
+  micStream =
+    await navigator.mediaDevices
+      .getUserMedia({
+        audio: {
+
+          echoCancellation:
+            true,
+
+          noiseSuppression:
+            true,
+
+          autoGainControl:
+            true,
+
+          channelCount:
+            1
+        }
+      });
+
+
+  setMicrophoneEnabled(
+    false
+  );
+
+
+  return micStream;
+}
+
+
+function setMicrophoneEnabled(
+  enabled
 ) {
+
+  if (!micStream) {
+    return;
+  }
+
+
+  for (
+    const track of
+    micStream.getAudioTracks()
+  ) {
+
+    track.enabled =
+      Boolean(enabled);
+  }
+
+
+  console.log(
+    "Mikrofon:",
+    enabled
+      ? "AN"
+      : "AUS"
+  );
+}
+
+
+function stopMicrophone() {
+
+  if (!micStream) {
+    return;
+  }
+
+
+  try {
+
+    for (
+      const track of
+      micStream.getTracks()
+    ) {
+
+      track.stop();
+    }
+
+  } catch {}
+
+
+  micStream =
+    null;
+}
+
+
+/* =========================================================
+   OPENAI REALTIME SEND
+   ========================================================= */
+
+function sendRealtimeEvent(
+  event
+) {
+
+  if (
+    !dataChannel ||
+    dataChannel.readyState !==
+      "open"
+  ) {
+
+    console.warn(
+      "DataChannel nicht offen:",
+      event?.type
+    );
+
+
+    return false;
+  }
+
+
+  try {
+
+    dataChannel.send(
+      JSON.stringify(
+        event
+      )
+    );
+
+
+    return true;
+
+  } catch (error) {
+
+    console.error(
+      "Realtime Sendefehler:",
+      error
+    );
+
+
+    return false;
+  }
+}
+
+
+/* =========================================================
+   ELEVENLABS TOKEN
+   ========================================================= */
+
+async function fetchElevenLabsToken() {
+
+  debugSet(
+    "dbgToken",
+    "⏳"
+  );
+
+
+  const response =
+    await fetch(
+      "/api/elevenlabs-token",
+      {
+        method:
+          "GET",
+
+        cache:
+          "no-store"
+      }
+    );
+
+
+  let data;
+
+
+  try {
+
+    data =
+      await response.json();
+
+  } catch {
+
+    throw new Error(
+      "ElevenLabs Token-Antwort ist kein JSON."
+    );
+  }
+
+
+  if (
+    !response.ok ||
+    !data?.ok ||
+    !data?.token
+  ) {
+
+    debugSet(
+      "dbgToken",
+      "❌"
+    );
+
+
+    throw new Error(
+      data?.error ||
+      "ElevenLabs-Token fehlt."
+    );
+  }
+
+
+  elevenTokenData =
+    data;
+
+
+  debugSet(
+    "dbgToken",
+    "✅"
+  );
+
+
+  debugSet(
+    "dbgVoice",
+    data.voice_id ||
+    "FEHLT"
+  );
+
+
+  return data;
+}
+
+
+/* =========================================================
+   ELEVENLABS KEEP ALIVE
+   ========================================================= */
+
+function stopElevenKeepAlive() {
+
+  if (
+    elevenKeepAliveTimer
+  ) {
+
+    clearInterval(
+      elevenKeepAliveTimer
+    );
+
+
+    elevenKeepAliveTimer =
+      null;
+  }
+}
+
+
+function startElevenKeepAlive() {
+
+  stopElevenKeepAlive();
+
+
+  elevenKeepAliveTimer =
+    setInterval(
+      () => {
+
+        if (
+          elevenSocket &&
+          elevenSocket.readyState ===
+            WebSocket.OPEN &&
+          elevenReady &&
+          !responseInProgress
+        ) {
+
+          try {
+
+            elevenSocket.send(
+              JSON.stringify({
+                text: " "
+              })
+            );
+
+          } catch (error) {
+
+            console.warn(
+              "ElevenLabs Keepalive Fehler:",
+              error
+            );
+          }
+        }
+
+      },
+      120000
+    );
+}
+
+
+/* =========================================================
+   ELEVENLABS DISCONNECT
+   ========================================================= */
+
+function disconnectElevenLabs() {
+
+  stopElevenKeepAlive();
+
+
+  elevenConnected =
+    false;
+
+
+  elevenReady =
+    false;
+
+
+  elevenClosing =
+    true;
+
+
+  if (elevenSocket) {
+
+    try {
+
+      elevenSocket.close(
+        1000,
+        "JARVIS stop"
+      );
+
+    } catch {}
+
+
+    elevenSocket =
+      null;
+  }
+
+
+  elevenTokenData =
+    null;
+
+
+  setTimeout(
+    () => {
+
+      elevenClosing =
+        false;
+
+    },
+    100
+  );
+}
+
+
+/* =========================================================
+   ELEVENLABS CONNECT
+   ========================================================= */
+
+async function connectElevenLabs() {
+
+  disconnectElevenLabs();
+
+
+  debugSet(
+    "dbgEleven",
+    "❌"
+  );
+
+
+  debugSet(
+    "dbgSocket",
+    "verbinde..."
+  );
+
+
+  debugSet(
+    "dbgClose",
+    "-"
+  );
+
+
+  debugSet(
+    "dbgEvent",
+    "ElevenLabs Token wird geladen"
+  );
+
+
+  const config =
+    await fetchElevenLabsToken();
+
+
+  const token =
+    config.token;
+
+
+  const voiceId =
+    config.voice_id;
+
+
+  const modelId =
+    config.model_id ||
+    "eleven_flash_v2_5";
+
+
+  const languageCode =
+    config.language_code ||
+    "de";
+
+
+  if (!voiceId) {
+
+    throw new Error(
+      "ELEVENLABS_VOICE_ID fehlt."
+    );
+  }
+
+
+  const url =
+    new URL(
+      `wss://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream-input`
+    );
+
+
+  url.searchParams.set(
+    "model_id",
+    modelId
+  );
+
+
+  url.searchParams.set(
+    "output_format",
+    "pcm_24000"
+  );
+
+
+  url.searchParams.set(
+    "single_use_token",
+    token
+  );
+
+
+  url.searchParams.set(
+    "language_code",
+    languageCode
+  );
+
+
+  url.searchParams.set(
+    "inactivity_timeout",
+    "180"
+  );
+
+
+  elevenSessionId +=
+    1;
+
+
+  const sessionId =
+    elevenSessionId;
+
+
+  return new Promise(
+    (
+      resolve,
+      reject
+    ) => {
+
+
+      const socket =
+        new WebSocket(
+          url.toString()
+        );
+
+
+      elevenSocket =
+        socket;
+
+
+      let settled =
+        false;
+
+
+      const timeout =
+        setTimeout(
+          () => {
+
+            if (settled) {
+              return;
+            }
+
+
+            settled =
+              true;
+
+
+            debugSet(
+              "dbgSocket",
+              "TIMEOUT"
+            );
+
+
+            debugSet(
+              "dbgEvent",
+              "ElevenLabs WebSocket Timeout"
+            );
+
+
+            try {
+              socket.close();
+            } catch {}
+
+
+            reject(
+              new Error(
+                "ElevenLabs WebSocket Timeout."
+              )
+            );
+
+          },
+          12000
+        );
+
+
+      socket.onopen =
+        () => {
+
+          if (
+            sessionId !==
+            elevenSessionId
+          ) {
+            return;
+          }
+
+
+          clearTimeout(
+            timeout
+          );
+
+
+          elevenConnected =
+            true;
+
+
+          elevenReady =
+            true;
+
+
+          debugSet(
+            "dbgEleven",
+            "✅"
+          );
+
+
+          debugSet(
+            "dbgSocket",
+            "OPEN"
+          );
+
+
+          debugSet(
+            "dbgEvent",
+            "ElevenLabs verbunden"
+          );
+
+
+          try {
+
+            socket.send(
+              JSON.stringify({
+
+                text:
+                  " ",
+
+                voice_settings: {
+
+                  stability:
+                    0.52,
+
+                  similarity_boost:
+                    0.82,
+
+                  style:
+                    0.18,
+
+                  use_speaker_boost:
+                    true
+                },
+
+                generation_config: {
+
+                  chunk_length_schedule: [
+                  50,
+  70,
+  100,
+  140
+                  ]
+                }
+              })
+            );
+
+          } catch (error) {
+
+            console.error(
+              "ElevenLabs Init Fehler:",
+              error
+            );
+
+
+            debugSet(
+              "dbgEvent",
+              "ElevenLabs Init Sendefehler"
+            );
+          }
+
+
+          startElevenKeepAlive();
+
+
+          console.log(
+            "ElevenLabs WebSocket verbunden."
+          );
+
+
+          if (!settled) {
+
+            settled =
+              true;
+
+            resolve();
+          }
+        };
+
+
+      socket.onmessage =
+        event => {
+
+
+          if (
+            sessionId !==
+            elevenSessionId
+          ) {
+            return;
+          }
+
+
+          const data =
+            safeJsonParse(
+              event.data
+            );
+
+
+          if (!data) {
+
+            debugSet(
+              "dbgEvent",
+              "ElevenLabs Nachricht kein JSON"
+            );
+
+            return;
+          }
+
+
+          if (data.audio) {
+
+            debugSet(
+              "dbgAudio",
+              "✅"
+            );
+
+
+            debugSet(
+              "dbgEvent",
+              "ElevenLabs PCM Audio kommt"
+            );
+
+
+            enqueueElevenAudio(
+              data.audio
+            );
+          }
+
+
+          if (
+            data.isFinal ||
+            data.is_final
+          ) {
+
+            debugSet(
+              "dbgEvent",
+              "ElevenLabs Generation fertig"
+            );
+
+
+            console.log(
+              "ElevenLabs Generation fertig."
+            );
+          }
+
+
+          if (data.error) {
+
+            const errorText =
+              typeof data.error ===
+                "string"
+                ? data.error
+                : JSON.stringify(
+                    data.error
+                  );
+
+
+            console.error(
+              "ElevenLabs Serverfehler:",
+              data.error
+            );
+
+
+            debugSet(
+              "dbgEvent",
+              `ELEVEN FEHLER: ${errorText}`
+            );
+          }
+        };
+
+
+      socket.onerror =
+        error => {
+
+          console.error(
+            "ElevenLabs WebSocket Fehler:",
+            error
+          );
+
+
+          debugSet(
+            "dbgEleven",
+            "❌"
+          );
+
+
+          debugSet(
+            "dbgSocket",
+            "ERROR"
+          );
+
+
+          debugSet(
+            "dbgEvent",
+            "ElevenLabs WebSocket Fehler"
+          );
+
+
+          if (!settled) {
+
+            settled =
+              true;
+
+
+            clearTimeout(
+              timeout
+            );
+
+
+            reject(
+              new Error(
+                "ElevenLabs-Verbindung fehlgeschlagen."
+              )
+            );
+          }
+        };
+
+
+      socket.onclose =
+        event => {
+
+          elevenConnected =
+            false;
+
+
+          elevenReady =
+            false;
+
+
+          stopElevenKeepAlive();
+
+
+          debugSet(
+            "dbgEleven",
+            "❌"
+          );
+
+
+          debugSet(
+            "dbgSocket",
+            "CLOSED"
+          );
+
+
+          debugSet(
+            "dbgClose",
+            `${event.code}${
+              event.reason
+                ? ` · ${event.reason}`
+                : ""
+            }`
+          );
+
+
+          console.log(
+            "ElevenLabs WebSocket geschlossen.",
+            event.code,
+            event.reason
+          );
+
+
+          if (!elevenClosing) {
+
+            debugSet(
+              "dbgEvent",
+              `ElevenLabs geschlossen: ${
+                event.code
+              } ${
+                event.reason || ""
+              }`
+            );
+          }
+
+
+          if (!settled) {
+
+            settled =
+              true;
+
+
+            clearTimeout(
+              timeout
+            );
+
+
+            reject(
+              new Error(
+                `ElevenLabs geschlossen: ${
+                  event.code
+                } ${
+                  event.reason ||
+                  ""
+                }`
+              )
+            );
+          }
+        };
+    }
+  );
+}
+
+
+/* =========================================================
+   DEUTSCHE ZAHLEN FÜR SPRACHAUSGABE
+   ========================================================= */
+
+function germanNumberUnder100(
+  number
+) {
+
+  const n =
+    Math.max(
+      0,
+      Math.floor(
+        Number(number) || 0
+      )
+    );
+
+  const ones = [
+    "null",
+    "eins",
+    "zwei",
+    "drei",
+    "vier",
+    "fünf",
+    "sechs",
+    "sieben",
+    "acht",
+    "neun"
+  ];
+
+  const special = {
+    10: "zehn",
+    11: "elf",
+    12: "zwölf",
+    13: "dreizehn",
+    14: "vierzehn",
+    15: "fünfzehn",
+    16: "sechzehn",
+    17: "siebzehn",
+    18: "achtzehn",
+    19: "neunzehn"
+  };
+
+  const tens = {
+    20: "zwanzig",
+    30: "dreißig",
+    40: "vierzig",
+    50: "fünfzig",
+    60: "sechzig",
+    70: "siebzig",
+    80: "achtzig",
+    90: "neunzig"
+  };
+
+  if (n < 10) {
+    return ones[n];
+  }
+
+  if (special[n]) {
+    return special[n];
+  }
+
+  const ten =
+    Math.floor(
+      n / 10
+    ) * 10;
+
+  const one =
+    n % 10;
+
+  if (one === 0) {
+    return tens[ten];
+  }
+
+  const oneWord =
+    one === 1
+      ? "ein"
+      : ones[one];
+
+  return `${oneWord}und${tens[ten]}`;
+}
+
+
+function germanIntegerToWords(
+  number
+) {
+
+  let n =
+    Math.floor(
+      Math.abs(
+        Number(number) || 0
+      )
+    );
+
+  if (n === 0) {
+    return "null";
+  }
+
+  const parts =
+    [];
+
+  const appendUnder1000 =
+    value => {
+
+      let x =
+        value;
+
+      let result =
+        "";
+
+      if (x >= 100) {
+
+        const hundreds =
+          Math.floor(
+            x / 100
+          );
+
+        result +=
+          hundreds === 1
+            ? "einhundert"
+            : `${germanNumberUnder100(hundreds)}hundert`;
+
+        x %=
+          100;
+      }
+
+      if (x > 0) {
+        result +=
+          germanNumberUnder100(
+            x
+          );
+      }
+
+      return result;
+    };
+
+
+  const billions =
+    Math.floor(
+      n / 1000000000
+    );
+
+  if (billions > 0) {
+
+    parts.push(
+      billions === 1
+        ? "eine Milliarde"
+        : `${germanIntegerToWords(billions)} Milliarden`
+    );
+
+    n %=
+      1000000000;
+  }
+
+
+  const millions =
+    Math.floor(
+      n / 1000000
+    );
+
+  if (millions > 0) {
+
+    parts.push(
+      millions === 1
+        ? "eine Million"
+        : `${germanIntegerToWords(millions)} Millionen`
+    );
+
+    n %=
+      1000000;
+  }
+
+
+  const thousands =
+    Math.floor(
+      n / 1000
+    );
+
+  if (thousands > 0) {
+
+    parts.push(
+      thousands === 1
+        ? "eintausend"
+        : `${appendUnder1000(thousands)}tausend`
+    );
+
+    n %=
+      1000;
+  }
+
+
+  if (n > 0) {
+    parts.push(
+      appendUnder1000(
+        n
+      )
+    );
+  }
+
+
+  return parts
+    .join(" ")
+    .trim();
+}
+
+
+function parseGermanInteger(
+  value
+) {
+
+  const cleaned =
+    String(
+      value || ""
+    )
+      .replace(
+        /\./g,
+        ""
+      )
+      .replace(
+        /\s/g,
+        ""
+      );
+
+  const number =
+    Number(cleaned);
+
+  return Number.isFinite(number)
+    ? Math.floor(number)
+    : 0;
+}
+
+
+function digitStringToGerman(
+  value
+) {
+
+  const digitWords = {
+    "0": "null",
+    "1": "eins",
+    "2": "zwei",
+    "3": "drei",
+    "4": "vier",
+    "5": "fünf",
+    "6": "sechs",
+    "7": "sieben",
+    "8": "acht",
+    "9": "neun"
+  };
+
+  return String(value)
+    .split("")
+    .map(
+      char =>
+        digitWords[char] ||
+        char
+    )
+    .join(" ");
+}
+
+
+function normalizeTextForSpeech(
+  text
+) {
+
+  let value =
+    String(
+      text || ""
+    );
+
+
+  /*
+    EUROBETRÄGE
+    7,69 €   -> sieben Euro neunundsechzig Cent
+    12,50 €  -> zwölf Euro fünfzig Cent
+    1.249,05 € -> eintausendzweihundertneunundvierzig Euro fünf Cent
+  */
+
+  value =
+    value.replace(
+      /(\d{1,3}(?:\.\d{3})*|\d+),(\d{2})\s*(?:€|EUR)(?!\w)/gi,
+      (
+        match,
+        euroValue,
+        centValue
+      ) => {
+
+        const euro =
+          parseGermanInteger(
+            euroValue
+          );
+
+        const cent =
+          Number(
+            centValue
+          );
+
+        const euroWord =
+          euro === 1
+            ? "ein Euro"
+            : `${germanIntegerToWords(euro)} Euro`;
+
+        const centWord =
+          cent === 0
+            ? ""
+            : cent === 1
+              ? " ein Cent"
+              : ` ${germanIntegerToWords(cent)} Cent`;
+
+        return `${euroWord}${centWord}`;
+      }
+    );
+
+
+  /*
+    Ganze Eurobeträge
+  */
+
+  value =
+    value.replace(
+      /(\d{1,3}(?:\.\d{3})*|\d+)\s*(?:€|EUR)(?!\w)/gi,
+      (
+        match,
+        euroValue
+      ) => {
+
+        const euro =
+          parseGermanInteger(
+            euroValue
+          );
+
+        return euro === 1
+          ? "ein Euro"
+          : `${germanIntegerToWords(euro)} Euro`;
+      }
+    );
+
+
+  /*
+    DATUM
+    17.08.2026 -> siebzehnter August zweitausendsechsundzwanzig
+    am 17.08.2026 -> am siebzehnten August zweitausendsechsundzwanzig
+  */
+
+  const germanMonths = {
+
+    1: "Januar",
+    2: "Februar",
+    3: "März",
+    4: "April",
+    5: "Mai",
+    6: "Juni",
+    7: "Juli",
+    8: "August",
+    9: "September",
+    10: "Oktober",
+    11: "November",
+    12: "Dezember"
+  };
+
+
+  const germanOrdinalNominative = {
+
+    1:"erster",2:"zweiter",3:"dritter",4:"vierter",5:"fünfter",
+    6:"sechster",7:"siebter",8:"achter",9:"neunter",10:"zehnter",
+    11:"elfter",12:"zwölfter",13:"dreizehnter",14:"vierzehnter",
+    15:"fünfzehnter",16:"sechzehnter",17:"siebzehnter",
+    18:"achtzehnter",19:"neunzehnter",20:"zwanzigster",
+    21:"einundzwanzigster",22:"zweiundzwanzigster",
+    23:"dreiundzwanzigster",24:"vierundzwanzigster",
+    25:"fünfundzwanzigster",26:"sechsundzwanzigster",
+    27:"siebenundzwanzigster",28:"achtundzwanzigster",
+    29:"neunundzwanzigster",30:"dreißigster",
+    31:"einunddreißigster"
+  };
+
+
+  const germanOrdinalDative = {
+
+    1:"ersten",2:"zweiten",3:"dritten",4:"vierten",5:"fünften",
+    6:"sechsten",7:"siebten",8:"achten",9:"neunten",10:"zehnten",
+    11:"elften",12:"zwölften",13:"dreizehnten",14:"vierzehnten",
+    15:"fünfzehnten",16:"sechzehnten",17:"siebzehnten",
+    18:"achtzehnten",19:"neunzehnten",20:"zwanzigsten",
+    21:"einundzwanzigsten",22:"zweiundzwanzigsten",
+    23:"dreiundzwanzigsten",24:"vierundzwanzigsten",
+    25:"fünfundzwanzigsten",26:"sechsundzwanzigsten",
+    27:"siebenundzwanzigsten",28:"achtundzwanzigsten",
+    29:"neunundzwanzigsten",30:"dreißigsten",
+    31:"einunddreißigsten"
+  };
+
+
+  value =
+    value.replace(
+      /\bam\s+(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/gi,
+      (
+        match,
+        day,
+        month,
+        year
+      ) => {
+
+        const d =
+          Number(day);
+
+        const m =
+          Number(month);
+
+
+        return `am ${germanOrdinalDative[d] || germanIntegerToWords(d)} ${germanMonths[m] || germanIntegerToWords(m)} ${germanIntegerToWords(year)}`;
+      }
+    );
+
+
+  value =
+    value.replace(
+      /\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/g,
+      (
+        match,
+        day,
+        month,
+        year
+      ) => {
+
+        const d =
+          Number(day);
+
+        const m =
+          Number(month);
+
+
+        return `${germanOrdinalNominative[d] || germanIntegerToWords(d)} ${germanMonths[m] || germanIntegerToWords(m)} ${germanIntegerToWords(year)}`;
+      }
+    );
+
+
+  /*
+    UHRZEIT
+    Muss vor Sportergebnissen laufen, sonst wird 23:10 als 23 zu 10 gelesen.
+  */
+
+  value =
+    value.replace(
+      /\b(\d{1,2}):(\d{2})\s*Uhr\b/gi,
+      (
+        match,
+        hour,
+        minute
+      ) => {
+
+        return `${germanIntegerToWords(hour)} Uhr${Number(minute) === 0 ? "" : ` ${germanIntegerToWords(minute)}`}`;
+      }
+    );
+
+
+  value =
+    value.replace(
+      /\bum\s+(\d{1,2}):(\d{2})\b/gi,
+      (
+        match,
+        hour,
+        minute
+      ) => {
+
+        return `um ${germanIntegerToWords(hour)} Uhr${Number(minute) === 0 ? "" : ` ${germanIntegerToWords(minute)}`}`;
+      }
+    );
+
+
+  /*
+    SPORTERGEBNISSE
+    0:0 -> null zu null
+    2:1 -> zwei zu eins
+  */
+
+  value =
+    value.replace(
+      /\b(\d{1,3})\s*:\s*(\d{1,3})\b/g,
+      (
+        match,
+        left,
+        right
+      ) =>
+        `${germanIntegerToWords(left)} zu ${germanIntegerToWords(right)}`
+    );
+
+
+  /*
+    PROZENT
+    12,5 % -> zwölf Komma fünf Prozent
+    45 %   -> fünfundvierzig Prozent
+  */
+
+  value =
+    value.replace(
+      /\b(\d+),(\d+)\s*%/g,
+      (
+        match,
+        whole,
+        decimal
+      ) =>
+        `${germanIntegerToWords(whole)} Komma ${digitStringToGerman(decimal)} Prozent`
+    );
+
+
+  value =
+    value.replace(
+      /\b(\d+)\s*%/g,
+      (
+        match,
+        whole
+      ) =>
+        `${germanIntegerToWords(whole)} Prozent`
+    );
+
+
+  return value;
+}
+
+
+/* =========================================================
+   TTS TEXT BUFFER
+   ========================================================= */
+
+function clearTtsTextBuffer() {
+
+  if (
+    ttsBufferTimer
+  ) {
+
+    clearTimeout(
+      ttsBufferTimer
+    );
+
+    ttsBufferTimer =
+      null;
+  }
+
+  ttsTextBuffer =
+    "";
+}
+
+
+function flushTtsTextBuffer() {
+
+  if (
+    ttsBufferTimer
+  ) {
+
+    clearTimeout(
+      ttsBufferTimer
+    );
+
+    ttsBufferTimer =
+      null;
+  }
+
+
+  const buffered =
+    ttsTextBuffer;
+
+  ttsTextBuffer =
+    "";
+
+
+  const clean =
+    normalizeTextForSpeech(
+      buffered
+    ).trim();
+
+
+  if (!clean) {
+    return;
+  }
+
+
+  sendTextToElevenLabs(
+    `${clean} `
+  );
+}
+
+
+function bufferTextForElevenLabs(
+  delta
+) {
+
+  const text =
+    String(
+      delta || ""
+    );
+
+
+  if (!text) {
+    return;
+  }
+
+
+  ttsTextBuffer +=
+    text;
+
+
+  if (
+    ttsBufferTimer
+  ) {
+
+    clearTimeout(
+      ttsBufferTimer
+    );
+  }
+
+
+  /*
+    Erst an sinnvollen Grenzen senden.
+    Dadurch bekommt ElevenLabs z.B. "12,50 €"
+    als Einheit und nicht "12" / "," / "50" / "€".
+  */
+
+  const hasNaturalBreak =
+    /(?:[.!?;]\s*|\n+)$/.test(
+      ttsTextBuffer
+    );
+
+  const isLongEnough =
+    ttsTextBuffer.length >=
+      TTS_BUFFER_MAX_CHARS;
+
+
+  if (
+    hasNaturalBreak ||
+    isLongEnough
+  ) {
+
+    flushTtsTextBuffer();
+    return;
+  }
+
+
+  ttsBufferTimer =
+    setTimeout(
+      () => {
+
+        flushTtsTextBuffer();
+
+      },
+      TTS_BUFFER_DELAY_MS
+    );
+}
+
+
+/* =========================================================
+   ELEVENLABS TEXT SEND
+   ========================================================= */
+
+function sendTextToElevenLabs(
+  text
+) {
+
+  const clean =
+    String(
+      text || ""
+    );
+
+
+  if (!clean) {
+    return;
+  }
+
+
+  if (
+    !elevenSocket ||
+    elevenSocket.readyState !==
+      WebSocket.OPEN ||
+    !elevenReady
+  ) {
+
+    console.warn(
+      "ElevenLabs nicht bereit."
+    );
+
+
+    debugSet(
+      "dbgEvent",
+      "ElevenLabs nicht bereit für Text"
+    );
+
+
+    return;
+  }
+
+
+  try {
+
+    elevenSocket.send(
+      JSON.stringify({
+
+        text:
+          clean,
+
+        try_trigger_generation:
+          true
+      })
+    );
+
+  } catch (error) {
+
+    console.error(
+      "ElevenLabs Text Sendefehler:",
+      error
+    );
+
+
+    debugSet(
+      "dbgEvent",
+      "ElevenLabs Text Sendefehler"
+    );
+  }
+}
+
+
+/* =========================================================
+   ELEVENLABS FLUSH
+   ========================================================= */
+
+function flushElevenLabs() {
+
+  if (
+    !elevenSocket ||
+    elevenSocket.readyState !==
+      WebSocket.OPEN ||
+    !elevenReady
+  ) {
+
+    return;
+  }
+
+
+  try {
+
+    /*
+      WICHTIG:
+      KEIN text:"" mehr.
+      Leerer Text würde den Socket beenden.
+
+      Leerzeichen + flush:true erzeugt den Rest
+      der Sprache, ohne die Verbindung zu schließen.
+    */
+
+    elevenSocket.send(
+      JSON.stringify({
+
+        text:
+          " ",
+
+        flush:
+          true
+      })
+    );
+
+
+    debugSet(
+      "dbgEvent",
+      "ElevenLabs Flush gesendet"
+    );
+
+  } catch (error) {
+
+    console.warn(
+      "ElevenLabs Flush Fehler:",
+      error
+    );
+
+
+    debugSet(
+      "dbgEvent",
+      "ElevenLabs Flush Fehler"
+    );
+  }
+}
+
+
+/* =========================================================
+   DIRECT ELEVENLABS SPEECH
+   ========================================================= */
+
+function speakTextWithElevenLabs(
+  text
+) {
+
+  const clean =
+    String(
+      text || ""
+    ).trim();
+
+
+  if (!clean) {
+    return false;
+  }
+
+
+  if (
+    !elevenReady ||
+    !elevenSocket ||
+    elevenSocket.readyState !==
+      WebSocket.OPEN
+  ) {
+
+    debugSet(
+      "dbgEvent",
+      "Direkte Sprache: ElevenLabs nicht verbunden"
+    );
+
+    return false;
+  }
+
+
+  responseInProgress =
+    true;
+
+
+  setMicrophoneEnabled(
+    false
+  );
+
+
+  sendTextToElevenLabs(
+    `${normalizeTextForSpeech(clean)} `
+  );
+
+
+  flushElevenLabs();
+
+
+  responseInProgress =
+    false;
+
+
+  return true;
+}
+
+
+/* =========================================================
+   TOOL CALL
+   ========================================================= */
+
+async function executeRealtimeTool(
+  event
+) {
+
+  const callId =
+    String(
+      event.call_id || ""
+    );
+
+
+  const toolName =
+    String(
+      event.name || ""
+    );
+
+
+  if (
+    !callId ||
+    !toolName
+  ) {
+
+    console.error(
+      "Ungültiger Tool Call:",
+      event
+    );
+
+    return;
+  }
+
+
+  if (
+    runningToolCalls.has(
+      callId
+    )
+  ) {
+
+    return;
+  }
+
+
+  runningToolCalls.add(
+    callId
+  );
+
+
+  setJarvisState(
+    "thinking"
+  );
+
+
+  setLog(
+    `${toolName} wird ausgeführt …`
+  );
+
+
+  setMicrophoneEnabled(
+    false
+  );
+
+
+  debugSet(
+    "dbgEvent",
+    `Tool: ${toolName}`
+  );
+
+
+  let args =
+    {};
+
+
+  try {
+
+    args =
+      event.arguments
+        ? JSON.parse(
+            event.arguments
+          )
+        : {};
+
+  } catch {
+
+    args =
+      {};
+  }
+
+
+  if (
+    (
+      toolName ===
+        "get_email_message" ||
+      toolName ===
+        "create_email_reply_draft" ||
+      toolName ===
+        "move_email_to_bearbeitet"
+    ) &&
+    !args.message_id &&
+    currentSelectedEmailId
+  ) {
+    args.message_id =
+      currentSelectedEmailId;
+  }
+
+
+  if (
+    toolName ===
+      "send_email_draft" &&
+    !args.draft_id &&
+    currentGmailDraftId
+  ) {
+    args.draft_id =
+      currentGmailDraftId;
+  }
+
+
+  if (
+    (
+      toolName ===
+        "get_whatsapp_conversation" ||
+      toolName ===
+        "create_whatsapp_reply_draft"
+    ) &&
+    !args.conversation_id &&
+    currentSelectedWhatsAppConversationId
+  ) {
+    args.conversation_id =
+      currentSelectedWhatsAppConversationId;
+  }
+
+
+  let effectiveToolName =
+    toolName;
+
+
+  if (
+    toolName ===
+      "create_email_draft" &&
+    currentSelectedEmailId &&
+    /\b(antwort|darauf|zurueck|zurück|reply|kundenmail|diese mail|die mail|schreib.*zurück)\b/i.test(
+      String(args.instruction || "")
+    )
+  ) {
+    effectiveToolName =
+      "create_email_reply_draft";
+
+    args.message_id =
+      currentSelectedEmailId;
+  }
+
+
+  console.log(
+    "[TOOL]",
+    effectiveToolName,
+    args
+  );
+
+
+  let toolResult;
+
+
+  try {
+
+    const response =
+      await fetch(
+        "/api/realtime-tool",
+        {
+
+          method:
+            "POST",
+
+          headers: {
+
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify({
+
+              name:
+                effectiveToolName,
+
+              arguments:
+                args
+            })
+        }
+      );
+
+
+    const raw =
+      await response.text();
+
+
+    try {
+
+      toolResult =
+        JSON.parse(raw);
+
+    } catch {
+
+      toolResult = {
+
+        ok:
+          false,
+
+        error:
+          raw ||
+          "Ungültige Tool-Antwort."
+      };
+    }
+
+
+    if (!response.ok) {
+
+      toolResult = {
+
+        ...toolResult,
+
+        ok:
+          false
+      };
+    }
+
+
+    if (
+      toolResult?.draft
+    ) {
+
+      showDraft(
+        toolResult.draft
+      );
+    }
+
+
+    if (
+      toolResult?.email
+    ) {
+      showGmailMail(
+        toolResult.email
+      );
+    }
+
+
+
+    if (
+      toolResult?.conversation?.id
+    ) {
+      currentSelectedWhatsAppConversationId =
+        toolResult.conversation.id;
+
+      currentSelectedWhatsAppConversation =
+        toolResult.conversation;
+    }
+
+
+    if (
+      toolResult?.whatsapp_draft?.text
+    ) {
+
+      pendingNewWhatsAppDraft =
+        toolName ===
+          "create_new_whatsapp_draft"
+          ? toolResult.whatsapp_draft
+          : null;
+
+      showDraft({
+        subject:
+          `WhatsApp · ${
+            toolResult.whatsapp_draft.recipient ||
+            toolResult.whatsapp_draft.contact_name ||
+            "Kunde"
+          }`,
+        body:
+          toolResult.whatsapp_draft.text
+      });
+    }
+
+
+    if (
+      toolResult?.whatsapp_sent?.sent ===
+        true
+    ) {
+      pendingNewWhatsAppDraft =
+        null;
+
+      loadWhatsAppDashboard();
+    }
+
+
+    if (
+      toolResult?.gmail_draft_id ||
+      toolResult?.draft?.gmail_draft_id
+    ) {
+      currentGmailDraftId =
+        toolResult.gmail_draft_id ||
+        toolResult.draft.gmail_draft_id;
+
+      try {
+        sessionStorage.setItem(
+          "jarvisGmailDraftId",
+          currentGmailDraftId
+        );
+      } catch {}
+    }
+
+
+    if (
+      toolResult?.sent?.sent ===
+        true
+    ) {
+      currentGmailDraftId =
+        null;
+
+      try {
+        sessionStorage.removeItem(
+          "jarvisGmailDraftId"
+        );
+      } catch {}
+
+      loadInboxDashboard();
+    }
+
+
+    if (
+      toolResult?.moved?.moved ===
+        true ||
+      toolResult?.result?.moved ===
+        true
+    ) {
+      currentSelectedEmailId =
+        null;
+
+      currentSelectedEmail =
+        null;
+
+      document.getElementById(
+        "gmailMailModal"
+      )?.classList.remove(
+        "open"
+      );
+
+      loadInboxDashboard();
+    }
+
+  } catch (error) {
+
+    console.error(
+      "Tool Request Fehler:",
+      error
+    );
+
+
+    toolResult = {
+
+      ok:
+        false,
+
+      error:
+        error.message ||
+        "Tool konnte nicht ausgeführt werden."
+    };
+  }
+
+
+  sendRealtimeEvent({
+
+    type:
+      "conversation.item.create",
+
+    item: {
+
+      type:
+        "function_call_output",
+
+      call_id:
+        callId,
+
+      output:
+        JSON.stringify(
+          toolResult
+        )
+    }
+  });
+
+
+  responseInProgress =
+    true;
+
+
+  sendRealtimeEvent({
+
+    type:
+      "response.create",
+
+    response: {
+
+      output_modalities: [
+        "text"
+      ]
+    }
+  });
+
+
+  runningToolCalls.delete(
+    callId
+  );
+}
+
+
+/* =========================================================
+   REALTIME EVENT HANDLER
+   ========================================================= */
+
+function handleRealtimeEvent(
+  event
+) {
+
+  if (!event?.type) {
+    return;
+  }
+
+
+  console.log(
+    "[REALTIME]",
+    event.type
+  );
+
+
+  switch (event.type) {
+
+
+    case "session.created":
+
+      debugSet(
+        "dbgOpenAI",
+        "✅"
+      );
+
+
+      debugSet(
+        "dbgEvent",
+        "OpenAI Session erstellt"
+      );
+
+
+      console.log(
+        "Realtime Session erstellt."
+      );
+
+      break;
+
+
+    case "session.updated":
+
+      console.log(
+        "Realtime Session aktualisiert."
+      );
+
+      break;
+
+
+    case "input_audio_buffer.speech_started":
+
+      userTurnInProgress =
+        true;
+
+
+      if (
+        assistantSpeaking ||
+        responseInProgress
+      ) {
+
+        handleUserInterruption();
+      }
+
+
+      if (
+        !active ||
+        greetingInProgress ||
+        assistantSpeaking
+      ) {
+        return;
+      }
+
+
+      setJarvisState(
+        "hearing"
+      );
+
+
+      setLog(
+        "Ich höre zu …"
+      );
+
+
+      debugSet(
+        "dbgEvent",
+        "Sprache erkannt"
+      );
+
+      break;
+
+
+    case "input_audio_buffer.speech_stopped":
+
+      if (
+        !active ||
+        greetingInProgress
+      ) {
+        return;
+      }
+
+
+      setJarvisState(
+        "thinking"
+      );
+
+
+      setLog(
+        "Denke nach …"
+      );
+
+
+      setMicrophoneEnabled(
+        false
+      );
+
+
+      debugSet(
+        "dbgEvent",
+        "Sprache beendet"
+      );
+
+      break;
+
+
+    case "response.function_call_arguments.done":
+
+      executeRealtimeTool(
+        event
+      );
+
+      break;
+
+
+    case "response.created":
+
+      responseInProgress =
+        true;
+
+
+      clearTtsTextBuffer();
+
+
+      currentResponseText =
+        "";
+
+
+      setJarvisState(
+        "thinking"
+      );
+
+
+      setLog(
+        "JARVIS denkt …"
+      );
+
+
+      debugSet(
+        "dbgEvent",
+        "OpenAI erzeugt Antwort"
+      );
+
+      break;
+
+
+    case "response.output_text.delta":
+
+      if (event.delta) {
+
+        const delta =
+          String(
+            event.delta
+          );
+
+
+        currentResponseText +=
+          delta;
+
+
+        debugSet(
+          "dbgText",
+          "✅"
+        );
+
+
+        debugSet(
+          "dbgEvent",
+          "OpenAI Text → ElevenLabs"
+        );
+
+
+        bufferTextForElevenLabs(
+          delta
+        );
+      }
+
+      break;
+
+
+    case "response.output_text.done":
+
+      if (event.text) {
+
+        console.log(
+          "JARVIS:",
+          event.text
+        );
+      }
+
+
+      flushTtsTextBuffer();
+
+
+      setTimeout(
+        () => {
+
+          flushElevenLabs();
+
+        },
+        60
+      );
+
+
+      debugSet(
+        "dbgEvent",
+        "OpenAI Text fertig · TTS-Puffer geleert"
+      );
+
+      break;
+
+
+    case "response.done": {
+
+      responseInProgress =
+        false;
+
+
+      const hasFunctionCall =
+        Array.isArray(
+          event.response?.output
+        ) &&
+        event.response.output.some(
+          item =>
+            item?.type ===
+            "function_call"
+        );
+
+
+      if (hasFunctionCall) {
+
+        setJarvisState(
+          "thinking"
+        );
+
+
+        setLog(
+          "Live-Daten werden geladen …"
+        );
+
+
+        debugSet(
+          "dbgEvent",
+          "Tool wird verarbeitet"
+        );
+
+
+        break;
+      }
+
+
+      userTurnInProgress =
+        false;
+
+      flushPendingProactiveNotice();
+
+
+      if (
+        !hasPendingElevenAudio()
+      ) {
+
+        if (
+          greetingInProgress
+        ) {
+
+          greetingInProgress =
+            false;
+        }
+
+
+        if (active) {
+
+          setTimeout(
+            () => {
+
+              if (
+                active &&
+                !assistantSpeaking &&
+                !responseInProgress &&
+                !hasPendingElevenAudio()
+              ) {
+
+                setJarvisState(
+                  "listening"
+                );
+
+
+                setLog(
+                  "JARVIS hört zu."
+                );
+
+
+                setMicrophoneEnabled(
+                  true
+                );
+              }
+
+            },
+            350
+          );
+        }
+      }
+
+      break;
+    }
+
+
+    case "error":
+
+      console.error(
+        "Realtime Fehler:",
+        event
+      );
+
+
+      responseInProgress =
+        false;
+
+
+      userTurnInProgress =
+        false;
+
+      flushPendingProactiveNotice();
+
+
+      assistantSpeaking =
+        false;
+
+
+      debugSet(
+        "dbgEvent",
+        `OpenAI Fehler: ${
+          event.error?.message ||
+          "unbekannt"
+        }`
+      );
+
+
+      setLog(
+        event.error?.message ||
+        "Realtime Fehler."
+      );
+
+
+      if (active) {
+
+        setTimeout(
+          () => {
+
+            if (
+              active &&
+              !assistantSpeaking
+            ) {
+
+              setMicrophoneEnabled(
+                true
+              );
+
+
+              setJarvisState(
+                "listening"
+              );
+            }
+
+          },
+          500
+        );
+      }
+
+      break;
+
+
+    default:
+
+      break;
+  }
+}
+
+
+/* =========================================================
+   OPENAI REALTIME WEBRTC
+   ========================================================= */
+
+async function connectRealtime() {
+
+  if (
+    realtimeConnected
+  ) {
+    return;
+  }
+
+
+  const pc =
+    new RTCPeerConnection();
+
+
+  peerConnection =
+    pc;
+
+
+  if (!micStream) {
+
+    await createMicrophoneStream();
+  }
+
+
+  const micTrack =
+    micStream
+      .getAudioTracks()[0];
+
+
+  if (!micTrack) {
+
+    throw new Error(
+      "Kein Mikrofon-Audiotrack gefunden."
+    );
+  }
+
+
+  pc.addTrack(
+    micTrack,
+    micStream
+  );
+
+
+  const dc =
+    pc.createDataChannel(
+      "oai-events"
+    );
+
+
+  dataChannel =
+    dc;
+
+
+  dc.addEventListener(
+    "open",
+    () => {
+
+      realtimeConnected =
+        true;
+
+
+      debugSet(
+        "dbgOpenAI",
+        "✅"
+      );
+
+
+      debugSet(
+        "dbgEvent",
+        "OpenAI DataChannel offen"
+      );
+
+
+      console.log(
+        "OpenAI DataChannel offen."
+      );
+    }
+  );
+
+
+  dc.addEventListener(
+    "close",
+    () => {
+
+      realtimeConnected =
+        false;
+
+
+      debugSet(
+        "dbgOpenAI",
+        "❌"
+      );
+
+
+      console.log(
+        "OpenAI DataChannel geschlossen."
+      );
+    }
+  );
+
+
+  dc.addEventListener(
+    "error",
+    error => {
+
+      console.error(
+        "OpenAI DataChannel Fehler:",
+        error
+      );
+
+
+      debugSet(
+        "dbgOpenAI",
+        "❌"
+      );
+
+
+      debugSet(
+        "dbgEvent",
+        "OpenAI DataChannel Fehler"
+      );
+    }
+  );
+
+
+  dc.addEventListener(
+    "message",
+    event => {
+
+      const message =
+        safeJsonParse(
+          event.data
+        );
+
+
+      if (!message) {
+        return;
+      }
+
+
+      handleRealtimeEvent(
+        message
+      );
+    }
+  );
+
+
+  const offer =
+    await pc.createOffer();
+
+
+  await pc.setLocalDescription(
+    offer
+  );
+
+
+  const response =
+    await fetch(
+      "/api/realtime-session",
+      {
+
+        method:
+          "POST",
+
+        headers: {
+
+          "Content-Type":
+            "application/sdp"
+        },
+
+        body:
+          offer.sdp
+      }
+    );
+
+
+  const answerSdp =
+    await response.text();
+
+
+  if (!response.ok) {
+
+    debugSet(
+      "dbgEvent",
+      "OpenAI Session Fehler"
+    );
+
+
+    throw new Error(
+      answerSdp ||
+      "OpenAI Realtime Verbindung fehlgeschlagen."
+    );
+  }
+
+
+  await pc.setRemoteDescription({
+
+    type:
+      "answer",
+
+    sdp:
+      answerSdp
+  });
+
+
+  const start =
+    Date.now();
+
+
+  while (
+    !dataChannel ||
+    dataChannel.readyState !==
+      "open"
+  ) {
+
+    if (
+      Date.now() -
+      start >
+      10000
+    ) {
+
+      throw new Error(
+        "OpenAI DataChannel Timeout."
+      );
+    }
+
+
+    await sleep(
+      50
+    );
+  }
+
+
+  realtimeConnected =
+    true;
+
+
+  debugSet(
+    "dbgOpenAI",
+    "✅"
+  );
+
+
+  debugSet(
+    "dbgEvent",
+    "OpenAI Realtime verbunden"
+  );
+
+
+  console.log(
+    "OpenAI Realtime verbunden."
+  );
+}
+
+
+/* =========================================================
+   DISCONNECT REALTIME
+   ========================================================= */
+
+function disconnectRealtime() {
+
+  realtimeConnected =
+    false;
+
+
+  debugSet(
+    "dbgOpenAI",
+    "❌"
+  );
+
+
+  if (dataChannel) {
+
+    try {
+      dataChannel.close();
+    } catch {}
+
+
+    dataChannel =
+      null;
+  }
+
+
+  if (peerConnection) {
+
+    try {
+      peerConnection.close();
+    } catch {}
+
+
+    peerConnection =
+      null;
+  }
+}
+
+
+/* =========================================================
+   RESPONSE CANCEL
+   ========================================================= */
+
+function cancelCurrentResponse() {
+
+  if (
+    responseInProgress
+  ) {
+
+    sendRealtimeEvent({
+      type:
+        "response.cancel"
+    });
+  }
+
+
+  responseInProgress =
+    false;
+
+
+  currentResponseText =
+    "";
+
+
+  clearTtsTextBuffer();
+
+
+  clearElevenAudio();
+
+
+  assistantSpeaking =
+    false;
+
+
+  if (active) {
+
+    setJarvisState(
+      "listening"
+    );
+
+
+    setLog(
+      "JARVIS hört zu."
+    );
+
+
+    setMicrophoneEnabled(
+      true
+    );
+  }
+}
+
+
+/* =========================================================
+   EXACT SPEECH
+   ========================================================= */
+
+function requestExactSpeech(
+  text
+) {
+
+  const clean =
+    String(
+      text || ""
+    ).trim();
+
+
+  if (!clean) {
+    return;
+  }
+
+
+  if (
+    !dataChannel ||
+    dataChannel.readyState !==
+      "open"
+  ) {
+
+    speakTextWithElevenLabs(
+      clean
+    );
+
+    return;
+  }
+
+
+  currentResponseText =
+    "";
+
+
+  responseInProgress =
+    true;
+
+
+  sendRealtimeEvent({
+
+    type:
+      "response.create",
+
+    response: {
+
+      output_modalities: [
+        "text"
+      ],
+
+      instructions:
+        `Antworte exakt mit folgendem deutschen Text und mit nichts anderem:
+
+${clean}`
+    }
+  });
+}
+
+
+/* =========================================================
+   GREETING
+   ========================================================= */
+
+async function speakGreeting() {
+
+  if (!active) {
+    return;
+  }
+
+
+  greetingInProgress =
+    true;
+
+
+  setMicrophoneEnabled(
+    false
+  );
+
+
+  setJarvisState(
+    "speaking"
+  );
+
+
+  setLog(
+    "JARVIS startet …"
+  );
+
+
+  debugSet(
+    "dbgEvent",
+    "Begrüßung wird vorbereitet"
+  );
+
+
+  await sleep(
+    INTRO_VOICE_DELAY_MS
+  );
+
+
+  if (!active) {
+    return;
+  }
+
+
+  const greeting =
+    getGreeting();
+
+
+  requestExactSpeech(
+    greeting
+  );
+
+
+  duckIntro();
+}
+
+
+function isBusyForProactiveSpeech() {
+
+  return (
+    !active ||
+    greetingInProgress ||
+    assistantSpeaking ||
+    responseInProgress ||
+    userTurnInProgress ||
+    runningToolCalls.size > 0 ||
+    hasPendingElevenAudio()
+  );
+}
+
+
+function flushPendingProactiveNotice() {
+
+  if (
+    pendingProactiveFlushTimer
+  ) {
+    clearTimeout(
+      pendingProactiveFlushTimer
+    );
+  }
+
+
+  pendingProactiveFlushTimer =
+    setTimeout(
+      () => {
+
+        pendingProactiveFlushTimer =
+          null;
+
+
+        if (
+          !pendingProactiveNotice
+        ) {
+          return;
+        }
+
+
+        if (
+          isBusyForProactiveSpeech()
+        ) {
+          flushPendingProactiveNotice();
+          return;
+        }
+
+
+        const text =
+          pendingProactiveNotice;
+
+
+        pendingProactiveNotice =
+          "";
+
+
+        if (
+          !speakProactiveMessage(
+            text
+          )
+        ) {
+          pendingProactiveNotice =
+            text;
+          flushPendingProactiveNotice();
+        }
+
+      },
+      700
+    );
+}
+
+
+function deliverOrQueueProactiveNotice(
+  text
+) {
+
+  const clean =
+    String(text || "")
+      .trim();
+
+
+  if (!clean) {
+    return false;
+  }
+
+
+  if (
+    isBusyForProactiveSpeech()
+  ) {
+    pendingProactiveNotice =
+      clean;
+    flushPendingProactiveNotice();
+    return false;
+  }
+
+
+  return speakProactiveMessage(
+    clean
+  );
+}
+
+
+/* =========================================================
+   PROACTIVE MESSAGE
+   ========================================================= */
+
+function speakProactiveMessage(
+  text
+) {
+
+  if (
+    !active ||
+    greetingInProgress ||
+    assistantSpeaking ||
+    responseInProgress ||
+    userTurnInProgress ||
+    runningToolCalls.size > 0 ||
+    hasPendingElevenAudio()
+  ) {
+
+    return false;
+  }
+
+
+  const clean =
+    String(
+      text || ""
+    ).trim();
+
+
+  if (!clean) {
+    return false;
+  }
+
+
+  setMicrophoneEnabled(
+    false
+  );
+
+
+  requestExactSpeech(
+    clean
+  );
+
+
+  return true;
+}
+
+
+/* =========================================================
+   GMAIL · MAIL-VOLLANSICHT / AKTUELLER KONTEXT
+   ========================================================= */
+
+function ensureGmailMailModal() {
+
+  let modal =
+    document.getElementById(
+      "gmailMailModal"
+    );
+
+
+  if (modal) {
+    return modal;
+  }
+
+
+  modal =
+    document.createElement(
+      "div"
+    );
+
+
+  modal.id =
+    "gmailMailModal";
+
+
+  modal.className =
+    "gmail-mail-modal";
+
+
+  modal.innerHTML = `
+    <div class="gmail-mail-card" role="dialog" aria-modal="true" aria-label="E-Mail">
+      <div class="gmail-mail-top">
+        <div>
+          <span class="gmail-mail-kicker">GMAIL · AKTUELLE MAIL</span>
+          <strong id="gmailMailSubject">E-Mail</strong>
+        </div>
+        <button type="button" id="gmailMailClose" class="gmail-mail-close">×</button>
+      </div>
+      <div class="gmail-mail-meta">
+        <div><span>VON</span><b id="gmailMailFrom">—</b></div>
+        <div><span>DATUM</span><b id="gmailMailDate">—</b></div>
+      </div>
+      <div id="gmailMailBody" class="gmail-mail-body"></div>
+      <div class="gmail-mail-actions">
+        <button type="button" id="gmailMailReadBtn">VORLESEN</button>
+        <button type="button" id="gmailMailReplyBtn" class="gmail-mail-ai-reply">JARVIS ANTWORTEN</button>
+        <button type="button" id="gmailMailCloseBtn">SCHLIESSEN</button>
+      </div>
+      <div class="gmail-mail-hint">Sag z. B. „Antworte darauf, dass …“ · Gesendet wird erst nach deinem ausdrücklichen „Senden“.</div>
+    </div>`;
+
+
+  document.body.appendChild(
+    modal
+  );
+
+
+  const close =
+    () => {
+      modal.classList.remove(
+        "open"
+      );
+    };
+
+
+  modal.querySelector(
+    "#gmailMailClose"
+  )?.addEventListener(
+    "click",
+    close
+  );
+
+
+  modal.querySelector(
+    "#gmailMailCloseBtn"
+  )?.addEventListener(
+    "click",
+    close
+  );
+
+
+  modal.addEventListener(
+    "click",
+    event => {
+      if (
+        event.target === modal
+      ) {
+        close();
+      }
+    }
+  );
+
+
+  modal.querySelector(
+    "#gmailMailReadBtn"
+  )?.addEventListener(
+    "click",
+    () => {
+
+      if (
+        !currentSelectedEmail?.body
+      ) {
+        return;
+      }
+
+
+      if (
+        active &&
+        elevenReady
+      ) {
+        speakTextWithElevenLabs(
+          `E-Mail von ${getSenderDisplayName(currentSelectedEmail.from)}. Betreff: ${currentSelectedEmail.subject}. ${currentSelectedEmail.body}`
+        );
+      }
+    }
+  );
+
+
+
+  modal.querySelector(
+    "#gmailMailReplyBtn"
+  )?.addEventListener(
+    "click",
+    async () => {
+
+      if (
+        !currentSelectedEmailId
+      ) {
+        return;
+      }
+
+      const button =
+        modal.querySelector(
+          "#gmailMailReplyBtn"
+        );
+
+      const original =
+        button?.textContent ||
+        "JARVIS ANTWORTEN";
+
+      if (
+        button
+      ) {
+        button.disabled =
+          true;
+        button.textContent =
+          "JARVIS DENKT …";
+      }
+
+      try {
+
+        const response =
+          await fetch(
+            "/api/realtime-tool",
+            {
+              method:
+                "POST",
+              headers: {
+                "Content-Type":
+                  "application/json"
+              },
+              body:
+                JSON.stringify({
+                  name:
+                    "create_email_reply_draft",
+                  arguments: {
+                    message_id:
+                      currentSelectedEmailId,
+                    instruction:
+                      "Formuliere selbstständig eine passende, professionelle und freundliche Antwort auf diese Kundenmail. Beantworte das Anliegen konkret anhand der vorhandenen Mail. Erfinde keine Preise, Liefertermine oder Zusagen."
+                  }
+                })
+            }
+          );
+
+        const data =
+          await response.json();
+
+        if (
+          !response.ok ||
+          !data?.ok ||
+          !data?.draft
+        ) {
+          throw new Error(
+            data?.error ||
+            "Antwortvorschlag konnte nicht erstellt werden."
+          );
+        }
+
+        if (
+          data?.gmail_draft_id ||
+          data?.draft?.gmail_draft_id
+        ) {
+          currentGmailDraftId =
+            data.gmail_draft_id ||
+            data.draft.gmail_draft_id;
+
+          try {
+            sessionStorage.setItem(
+              "jarvisGmailDraftId",
+              currentGmailDraftId
+            );
+          } catch {}
+        }
+
+        showDraft(
+          data.draft
+        );
+
+        modal.classList.remove(
+          "open"
+        );
+
+      } catch (
+        error
+      ) {
+
+        setLog(
+          error.message ||
+          "Antwortvorschlag fehlgeschlagen."
+        );
+
+      } finally {
+
+        if (
+          button
+        ) {
+          button.disabled =
+            false;
+          button.textContent =
+            original;
+        }
+      }
+    }
+  );
+
+
+  return modal;
+}
+
+
+function showGmailMail(email) {
+
+  if (!email?.id) {
+    return;
+  }
+
+
+  currentSelectedEmailId =
+    email.id;
+
+
+  currentSelectedEmail =
+    email;
+
+
+  const modal =
+    ensureGmailMailModal();
+
+
+  const subject =
+    modal.querySelector(
+      "#gmailMailSubject"
+    );
+
+
+  const from =
+    modal.querySelector(
+      "#gmailMailFrom"
+    );
+
+
+  const date =
+    modal.querySelector(
+      "#gmailMailDate"
+    );
+
+
+  const body =
+    modal.querySelector(
+      "#gmailMailBody"
+    );
+
+
+  if (subject) {
+    subject.textContent =
+      email.subject ||
+      "(kein Betreff)";
+  }
+
+
+  if (from) {
+    from.textContent =
+      email.from ||
+      "unbekannt";
+  }
+
+
+  if (date) {
+    const parsed =
+      email.date
+        ? new Date(email.date)
+        : null;
+
+
+    date.textContent =
+      parsed &&
+      !Number.isNaN(parsed.getTime())
+        ? new Intl.DateTimeFormat(
+            "de-DE",
+            {
+              timeZone:
+                "Europe/Berlin",
+              dateStyle:
+                "medium",
+              timeStyle:
+                "short"
+            }
+          ).format(parsed)
+        : "—";
+  }
+
+
+  if (body) {
+    body.textContent =
+      email.body ||
+      email.snippet ||
+      "Kein Textinhalt verfügbar.";
+  }
+
+
+  modal.classList.add(
+    "open"
+  );
+}
+
+
+async function openGmailMessage(messageId) {
+
+  const id =
+    String(messageId || "")
+      .trim();
+
+
+  if (!id) {
+    return;
+  }
+
+
+  try {
+
+    const response =
+      await fetch(
+        `/api/gmail-message/${encodeURIComponent(id)}`,
+        {
+          method:
+            "GET",
+          cache:
+            "no-store"
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    if (
+      !response.ok ||
+      !data?.ok ||
+      !data?.email
+    ) {
+      throw new Error(
+        data?.error ||
+        "E-Mail konnte nicht geöffnet werden."
+      );
+    }
+
+
+    showGmailMail(
+      data.email
+    );
+
+  } catch (error) {
+
+    console.warn(
+      "Gmail Mail öffnen Fehler:",
+      error
+    );
+
+
+    setLog(
+      error.message ||
+      "E-Mail konnte nicht geöffnet werden."
+    );
+  }
+}
+
+
+/* =========================================================
+   GMAIL DASHBOARD · LETZTE 5 POSTEINGANG
+   Läuft unabhängig davon, ob JARVIS gerade zuhört.
+   ========================================================= */
+
+let inboxRefreshTimer =
+  null;
+
+
+function escapeHtml(value) {
+
+  return String(
+    value ?? ""
+  )
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+
+function getSenderDisplayName(from) {
+
+  const value =
+    String(from || "")
+      .trim();
+
+
+  if (!value) {
+    return "Unbekannt";
+  }
+
+
+  const quoted =
+    value.match(/^\s*\"([^\"]+)\"\s*</);
+
+
+  if (quoted?.[1]) {
+    return quoted[1].trim();
+  }
+
+
+  const beforeAddress =
+    value.split("<")[0]
+      .trim()
+      .replace(/^\"|\"$/g, "");
+
+
+  if (beforeAddress) {
+    return beforeAddress;
+  }
+
+
+  const address =
+    value.match(/<([^>]+)>/)?.[1] ||
+    value;
+
+
+  return String(address)
+    .split("@")[0]
+    .trim() ||
+    "Unbekannt";
+}
+
+
+function getSenderInitials(name) {
+
+  const parts =
+    String(name || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+
+  if (!parts.length) {
+    return "ML";
+  }
+
+
+  if (parts.length === 1) {
+    return parts[0]
+      .slice(0, 2)
+      .toUpperCase();
+  }
+
+
+  return `${parts[0][0]}${parts[1][0]}`
+    .toUpperCase();
+}
+
+
+function formatInboxTime(email) {
+
+  const raw =
+    email?.internalDate
+      ? Number(email.internalDate)
+      : email?.date
+        ? Date.parse(email.date)
+        : NaN;
+
+
+  if (!Number.isFinite(raw)) {
+    return "—";
+  }
+
+
+  const date =
+    new Date(raw);
+
 
   const now =
     new Date();
 
 
-  const berlinParts =
+  const sameBerlinDay =
+    new Intl.DateTimeFormat(
+      "en-CA",
+      {
+        timeZone:
+          "Europe/Berlin",
+        year:
+          "numeric",
+        month:
+          "2-digit",
+        day:
+          "2-digit"
+      }
+    ).format(date) ===
     new Intl.DateTimeFormat(
       "en-CA",
       {
@@ -302,8292 +5639,1490 @@ function getPeriodDates(
     ).format(now);
 
 
-  const [
-    year,
-    month,
-    day
-  ] =
-    berlinParts
-      .split("-")
-      .map(Number);
-
-
-  const localDate =
-    new Date(
-      Date.UTC(
-        year,
-        month - 1,
-        day
-      )
-    );
-
-
-  if (
-    period ===
-    "yesterday"
-  ) {
-    localDate.setUTCDate(
-      localDate.getUTCDate() -
-      1
-    );
-  }
-
-
-  const startYear =
-    localDate.getUTCFullYear();
-
-  const startMonth =
-    localDate.getUTCMonth() +
-    1;
-
-  const startDay =
-    localDate.getUTCDate();
-
-
-  const nextLocalDate =
-    new Date(
-      Date.UTC(
-        startYear,
-        startMonth - 1,
-        startDay + 1
-      )
-    );
-
-
-  const start =
-    berlinMidnightToUtc(
-      startYear,
-      startMonth,
-      startDay
-    );
-
-
-  const end =
-    berlinMidnightToUtc(
-      nextLocalDate.getUTCFullYear(),
-      nextLocalDate.getUTCMonth() + 1,
-      nextLocalDate.getUTCDate()
-    );
-
-
-  return {
-    start:
-      start.toISOString(),
-    end:
-      end.toISOString()
-  };
-}
-
-
-
-async function getJarvisDailyBriefing() {
-
-  const result = {
-    generated_at:
-      new Date().toISOString(),
-    unread_emails: [],
-    shopify: {
-      today:
-        null,
-      yesterday:
-        null
-    },
-    weather:
-      null
-  };
-
-
-  try {
-
-    if (
-      isGmailConfigured()
-    ) {
-      result.unread_emails =
-        await getUnreadEmails();
-    }
-
-  } catch (error) {
-
-    result.gmail_error =
-      error.message ||
-      "Gmail konnte nicht gelesen werden.";
-  }
-
-
-  try {
-    result.shopify.today =
-      await getShopifySummary(
-        "today"
-      );
-  } catch (error) {
-    result.shopify_today_error =
-      error.message ||
-      "Shopify heute konnte nicht gelesen werden.";
-  }
-
-
-  try {
-    result.shopify.yesterday =
-      await getShopifySummary(
-        "yesterday"
-      );
-  } catch (error) {
-    result.shopify_yesterday_error =
-      error.message ||
-      "Shopify gestern konnte nicht gelesen werden.";
-  }
-
-
-  try {
-    result.weather =
-      await getWeather();
-  } catch (error) {
-    result.weather_error =
-      error.message ||
-      "Wetter konnte nicht gelesen werden.";
-  }
-
-
-  return result;
-}
-
-
-/* =========================================================
-   JARVIS PERSONALITY
-   ========================================================= */
-
-function buildJarvisInstructions() {
-
-  const hour =
-    getBerlinHour();
-
-
-  let dayPart =
-    "Tag";
-
-
-  if (
-    hour >= 5 &&
-    hour < 11
-  ) {
-
-    dayPart =
-      "Morgen";
-  }
-
-  else if (
-    hour >= 11 &&
-    hour < 14
-  ) {
-
-    dayPart =
-      "Mittag";
-  }
-
-  else if (
-    hour >= 14 &&
-    hour < 18
-  ) {
-
-    dayPart =
-      "Nachmittag";
-  }
-
-  else if (
-    hour >= 18 &&
-    hour < 23
-  ) {
-
-    dayPart =
-      "Abend";
-  }
-
-  else {
-
-    dayPart =
-      "Nacht";
-  }
-
-
-  return `
-Du bist JARVIS, Mattls persönlicher KI-Assistent.
-
-Der Nutzer heißt Mattl.
-Du arbeitest primär für Mattl und sein Unternehmen Druckelite24.
-
-Aktuelle Tageszeit:
-${dayPart}
-
-SPRACHE:
-- Antworte ausschließlich auf Deutsch.
-- Verwende natürliches, klares deutsches Hochdeutsch.
-- Formuliere wie ein deutscher Muttersprachler.
-- Keine englischen Begrüßungen, wenn Mattl Deutsch spricht.
-- Keine unnötigen englischen Begriffe.
-- Kurze, natürliche Sätze.
-- Keine künstliche Synchronsprecher-Sprache.
-- Keine übertriebene Betonung.
-- Keine unnötigen Wiederholungen.
-
-CHARAKTER:
-- intelligent
-- aufmerksam
-- selbstständig
-- ruhig
-- souverän
-- trocken humorvoll
-- gelegentlich leicht sarkastisch
-- aber nie respektlos
-- hilfreich
-- geschäftlich kompetent
-
-Du darfst gelegentlich einen trockenen Kommentar oder ein Wortspiel machen.
-Übertreibe es aber nicht.
-
-BEISPIEL:
-Mattl: "Was steht heute an?"
-JARVIS: "Schauen wir mal. Irgendwas brennt ja meistens."
-
-ANREDE:
-- Der Nutzer heißt Mattl.
-- Im normalen Gespräch kannst du ihn gelegentlich Mattl, Meister oder Chef nennen.
-- "Daddy" nur sehr selten und ausschließlich locker-humorvoll.
-- Nicht in jeder Antwort eine Anrede verwenden.
-- Sprich Mattl natürlich aus.
-- Deutliches T, kein englischer Klang.
-- Die Startbegrüßung wird von der Browser-App erzeugt und darf besonders spektakulär, souverän und humorvoll klingen.
-
-GESPRÄCH:
-- Höre Mattl vollständig zu.
-- Unterbrich ihn nicht unnötig.
-- Kurze Denkpausen bedeuten nicht automatisch, dass der Satz beendet ist.
-- Wenn Mattl "ähm" sagt oder kurz überlegt, warte.
-- Wenn Mattl eine Aufzählung beginnt, warte bis sie inhaltlich abgeschlossen ist.
-- Wenn Mattl dich unterbricht, beende deine aktuelle Antwort sofort.
-- Fahre eine unterbrochene alte Antwort später nicht parallel fort.
-- Erzeuge niemals zwei Antworten gleichzeitig.
-- Beginne eine neue Antwort erst, wenn die vorherige beendet oder abgebrochen wurde.
-- Sobald Mattls Gedanke klar abgeschlossen ist, antworte zügig.
-
-ANTWORTSTIL:
-- Standardmäßig kurz und konkret.
-- Keine langen Vorträge, außer Mattl möchte Details.
-- Keine unnötige Einleitung.
-- Keine Zusammenfassung, wenn sie nicht nötig ist.
-- Keine Floskeln wie "Natürlich helfe ich dir gerne".
-- Sag direkt, was Sache ist.
-AUSSPRACHE VON ZAHLEN, GELD UND SPORTERGEBNISSEN:
-
-- Fußball- und Sportergebnisse niemals als Dezimalzahl formulieren.
-- Ein Ergebnis wie 0:0 immer als „null zu null“ ausgeben.
-- 1:0 = „eins zu null“.
-- 2:1 = „zwei zu eins“.
-- 3:3 = „drei zu drei“.
-- Niemals bei Sportergebnissen „null Komma null“, „zwei Komma eins“ usw. sagen.
-
-EUROBETRÄGE:
-- Geldbeträge immer vollständig und natürlich für Sprachausgabe formulieren.
-- Nachkommastellen niemals verschlucken.
-- 7,69 € = „sieben Euro neunundsechzig Cent“.
-- 12,50 € = „zwölf Euro fünfzig Cent“.
-- 19,99 € = „neunzehn Euro neunundneunzig Cent“.
-- 9,05 € = „neun Euro fünf Cent“.
-- 1.249,95 € = „eintausendzweihundertneunundvierzig Euro fünfundneunzig Cent“.
-- Beträge niemals nur als Dezimalzahl vorlesen.
-- Bei Preisen mit Nachkommastellen immer Euro UND Cent vollständig nennen.
-
-GENERELL:
-- Zahlen so formulieren, dass ElevenLabs sie natürlich auf Deutsch ausspricht.
-- Bei gesprochenen Antworten Verständlichkeit vor mathematischer Kurzschreibweise.
-
-GESCHÄFT:
-Du kennst Druckelite24 als Mattls Hauptunternehmen.
-
-Wenn Mattl nach:
-- Bestellungen
-- Umsatz
-- offenen Bestellungen
-- E-Mails
-- Wetter
-- Notizen
-- Erinnerungen
-- aktuellen Informationen
-fragt, verwende die verfügbaren Tools.
-
-BRIEFING:
-Wenn Mattl „Briefing“, „Morning Briefing“, „Tagesbriefing“ oder sinngleich sagt:
-→ get_daily_briefing
-Das Briefing ist AUSFÜHRLICH und strukturiert. Nenne mindestens:
-- ungelesene E-Mails: Anzahl, wichtigste Absender/Betreffe und kurz, was Aufmerksamkeit braucht
-- Shopify HEUTE: Umsatz, Bestellungen und Durchschnittsbestellwert
-- Shopify GESTERN/VORTAG: Umsatz, Bestellungen und Durchschnittsbestellwert
-- aktuelles Wetter
-- zum Schluss eine kurze Prioritäten-Einschätzung für Mattl
-Formuliere Zahlen natürlich auf Deutsch. Beispiele:
-1 ungelesene Mail → „eine ungelesene Mail“
-2 ungelesene Mails → „zwei ungelesene Mails“
-1 Bestellung → „eine Bestellung“
-Nie Formulierungen wie „eins ungelesene Mail“ verwenden.
-Offene/unbearbeitete Bestellungen NICHT im Briefing erwähnen.
-Wenn einzelne Daten fehlen, sage das knapp. Erfinde nichts.
-WICHTIG: Diese ausführliche Zusammenfassung nur auf ausdrücklichen Briefing-Befehl geben. Beim normalen Start KEIN automatisches Mail-/Bestell-Briefing vorlesen.
-
-WICHTIG:
-Erfinde niemals Live-Daten.
-
-Wenn aktuelle Daten benötigt werden:
-- benutze das passende Tool
-- warte auf das Tool-Ergebnis
-- antworte danach anhand der gelieferten Daten
-
-INTERNET:
-Wenn Mattl nach:
-- aktuellen Nachrichten
-- heutigen Ereignissen
-- aktuellen Preisen
-- aktuellen Öffnungszeiten
-- neuen Produkten
-- aktuellen Firmeninformationen
-- Politik
-- Sport
-- Wetter außerhalb des Wetter-Tools
-- aktuellen Softwareständen
-- aktuellen Gesetzen
-fragt, verwende search_internet.
-
-SHOPIFY:
-Für Druckelite24 Bestell- und Umsatzfragen nutze Shopify-Tools.
-
-Beispiele:
-"Wie viel Umsatz heute?"
-→ get_shopify_summary
-
-"Wie viele Bestellungen sind offen?"
-→ get_shopify_open_orders
-
-"Wie lief die Woche?"
-→ get_shopify_week
-
-E-MAIL:
-Wenn Mattl ungelesene Mails wissen möchte:
-→ get_unread_emails
-
-Wenn Mattl sagt „lies die Mail“, „lies die letzte Mail“, „was will der Kunde?“ oder nach einer Mail von einer Person fragt:
-→ get_email_message
-Nutze message_id, wenn die aktuell ausgewählte Mail bekannt ist. Sonst sender_query oder search_query.
-
-Wenn Mattl auf die aktuelle/ausgewählte Mail antworten möchte:
-→ IMMER create_email_reply_draft
-NIEMALS create_email_draft für eine Antwort auf eine vorhandene Mail verwenden.
-create_email_reply_draft erstellt einen echten Gmail-Entwurf mit Gmail-Draft-ID, sendet aber NICHT.
-
-Nur wenn Mattl ausdrücklich eine komplett neue, unabhängige E-Mail formulieren möchte:
-Wenn der Empfänger noch nicht eindeutig bekannt ist, FRAGE ZUERST kurz: „An wen soll die Mail gehen?“
-Erst wenn Empfänger und Inhalt/Anweisung bekannt sind:
-→ create_email_draft
-create_email_draft speichert ebenfalls einen ECHTEN Gmail-Entwurf mit Gmail-Draft-ID. Kein reiner HUD-Entwurf mehr.
-
-E-MAIL SENDEN:
-Eine E-Mail darf ausschließlich dann gesendet werden, wenn Mattl unmittelbar und ausdrücklich „senden“, „abschicken“ oder „versenden“ sagt.
-Dann → send_email_draft.
-Ohne diesen ausdrücklichen Sende-Befehl darf send_email_draft NIEMALS verwendet werden.
-Nach einem Entwurf fragst du kurz, ob er ihn senden möchte.
-
-E-MAIL BEARBEITET:
-Wenn Mattl sagt „verschiebe die Mail nach Bearbeitet“, „markiere sie als bearbeitet“, „die ist erledigt“ oder sinngleich:
-→ move_email_to_bearbeitet
-Nutze die aktuell ausgewählte Mail. Niemals eine andere Mail raten.
-Eindeutige Werbe-/Newsletter-Mails werden im Hintergrund nur bei sehr hoher Sicherheit automatisch nach „Bearbeitet“ verschoben. Kunden-, Bestell-, Rechnungs-, Zahlungs-, Versand-, Reklamations-, Angebots-, Sicherheits- und sonstige Geschäftsmails dürfen niemals automatisch verschoben werden.
-
-Der E-Mail-Entwurf wird im HUD angezeigt.
-
-WHATSAPP / SUPERCHAT:
-- Für die letzten WhatsApp-Chats → get_whatsapp_conversations
-- Wenn ein Chat ausgewählt ist und Mattl fragt „Was will der Kunde?“, „lies den Chat“ oder sinngleich → get_whatsapp_conversation
-- Wenn Mattl auf den ausgewählten WhatsApp-Chat antworten möchte → create_whatsapp_reply_draft
-- create_whatsapp_reply_draft erstellt nur einen Entwurf und sendet NICHT.
-- WhatsApp darf ausschließlich nach dem unmittelbaren ausdrücklichen Befehl „senden“, „abschicken“ oder „versenden“ gesendet werden.
-- Dann → send_whatsapp_draft
-- Ohne ausdrücklichen Sende-Befehl darf send_whatsapp_draft NIEMALS verwendet werden.
-
-NOTIZEN:
-Wenn Mattl sagt:
-"Merke dir..."
-"Notier..."
-"Schreib auf..."
-→ save_note
-
-Wenn er nach seinen Notizen fragt:
-→ list_notes
-
-ERINNERUNGEN:
-Wenn Mattl eine Erinnerung möchte:
-→ set_reminder
-
-Wenn er nach Erinnerungen fragt:
-→ list_reminders
-
-WETTER:
-Für heutiges oder morgiges Wetter:
-→ get_weather
-
-Sei proaktiv, aber nicht nervig.
-
-Wenn dir ein Tool einen wichtigen Sachverhalt liefert,
-weise Mattl kurz darauf hin.
-
-Du bist kein neutraler Chatbot.
-Du bist Mattls persönlicher JARVIS.
-`;
-}
-
-
-/* =========================================================
-   REALTIME TOOLS
-   ========================================================= */
-
-const REALTIME_TOOLS = [
-
-  {
-    type:
-      "function",
-
-    name:
-      "search_internet",
-
-    description:
-      "Sucht aktuelle Informationen live im Internet.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {
-
-        query: {
-          type:
-            "string",
-
-          description:
-            "Die konkrete Suchanfrage."
-        }
-      },
-
-      required: [
-        "query"
-      ],
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "get_shopify_summary",
-
-    description:
-      "Liest Bestellungen, Umsatz und durchschnittlichen Bestellwert für heute oder gestern aus Shopify.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {
-
-        period: {
-          type:
-            "string",
-
-          enum: [
-            "today",
-            "yesterday"
-          ]
-        }
-      },
-
-      required: [
-        "period"
-      ],
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "get_shopify_open_orders",
-
-    description:
-      "Liest aktuell offene beziehungsweise noch nicht erfüllte Shopify-Bestellungen.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {},
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "get_shopify_week",
-
-    description:
-      "Liest Umsatz und Bestellanzahl der letzten sieben Tage aus Shopify.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {},
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "get_unread_emails",
-
-    description:
-      "Liest die letzten ungelesenen Gmail-Nachrichten.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {},
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "get_email_message",
-
-    description:
-      "Liest eine vollständige Gmail-Nachricht. Kann die aktuell ausgewählte Mail per message_id, die letzte Mail oder eine Mail anhand Absender/Suchbegriff finden.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {
-        message_id: {
-          type:
-            "string"
-        },
-        sender_query: {
-          type:
-            "string"
-        },
-        search_query: {
-          type:
-            "string"
-        },
-        scope: {
-          type:
-            "string",
-          enum: [
-            "inbox",
-            "all"
-          ]
-        }
-      },
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "create_email_reply_draft",
-
-    description:
-      "Pflicht-Tool für Antworten auf eine vorhandene oder aktuell ausgewählte Gmail-Nachricht. Erstellt einen echten Gmail-Antwortentwurf inklusive Gmail-Draft-ID. Sendet nichts.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {
-        message_id: {
-          type:
-            "string"
-        },
-        instruction: {
-          type:
-            "string"
-        }
-      },
-
-      required: [
-        "instruction"
-      ],
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "send_email_draft",
-
-    description:
-      "Sendet einen bereits erstellten Gmail-Entwurf. DARF NUR nach einem unmittelbaren ausdrücklichen Befehl von Mattl wie 'senden', 'abschicken' oder 'versenden' verwendet werden.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {
-        draft_id: {
-          type:
-            "string"
-        },
-        confirmation_text: {
-          type:
-            "string",
-          description:
-            "Mattls unmittelbarer ausdrücklicher Sende-Befehl, z.B. 'senden'."
-        }
-      },
-
-      required: [
-        "confirmation_text"
-      ],
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "move_email_to_bearbeitet",
-
-    description:
-      "Verschiebt die aktuell ausgewählte Gmail-Nachricht aus dem Posteingang in das Gmail-Label Bearbeitet. Nur auf ausdrücklichen Wunsch von Mattl.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {
-        message_id: {
-          type:
-            "string"
-        }
-      },
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "get_daily_briefing",
-
-    description:
-      "Erstellt Mattls ausführliches Business-Briefing aus Gmail, Shopify heute, Shopify gestern und Wetter. Nur auf ausdrücklichen Briefing-Befehl verwenden.",
-
-    parameters: {
-      type:
-        "object",
-      properties: {},
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "get_weather",
-
-    description:
-      "Liest das Wetter für heute oder morgen für einen Ort.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {
-
-        location: {
-          type:
-            "string"
-        },
-
-        day: {
-          type:
-            "string",
-
-          enum: [
-            "today",
-            "tomorrow"
-          ]
-        }
-      },
-
-      required: [
-        "location",
-        "day"
-      ],
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "save_note",
-
-    description:
-      "Speichert eine Notiz dauerhaft für JARVIS.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {
-
-        text: {
-          type:
-            "string"
-        }
-      },
-
-      required: [
-        "text"
-      ],
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "list_notes",
-
-    description:
-      "Liest alle gespeicherten JARVIS-Notizen.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {},
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "set_reminder",
-
-    description:
-      "Speichert eine Erinnerung für eine Anzahl Minuten ab jetzt.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {
-
-        minutes_from_now: {
-          type:
-            "integer",
-
-          minimum:
-            1
-        },
-
-        reminder_text: {
-          type:
-            "string"
-        }
-      },
-
-      required: [
-        "minutes_from_now",
-        "reminder_text"
-      ],
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "list_reminders",
-
-    description:
-      "Liest alle aktuell aktiven Erinnerungen.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {},
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "get_whatsapp_conversations",
-
-    description:
-      "Liest die letzten WhatsApp-Konversationen aus Superchat.",
-
-    parameters: {
-      type:
-        "object",
-      properties: {},
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "get_whatsapp_conversation",
-
-    description:
-      "Liest den aktuell ausgewählten Superchat-WhatsApp-Chat.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {
-        conversation_id: {
-          type:
-            "string"
-        }
-      },
-
-      required: [
-        "conversation_id"
-      ],
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "create_whatsapp_reply_draft",
-
-    description:
-      "Erstellt einen WhatsApp-Antwortentwurf für den ausgewählten Superchat-Chat. Sendet nichts.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {
-        conversation_id: {
-          type:
-            "string"
-        },
-
-        instruction: {
-          type:
-            "string"
-        }
-      },
-
-      required: [
-        "conversation_id",
-        "instruction"
-      ],
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "send_whatsapp_draft",
-
-    description:
-      "Sendet den letzten WhatsApp-Entwurf. DARF NUR nach einem unmittelbaren ausdrücklichen Befehl wie senden, abschicken oder versenden benutzt werden.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {
-        confirmation_text: {
-          type:
-            "string"
-        }
-      },
-
-      required: [
-        "confirmation_text"
-      ],
-
-      additionalProperties:
-        false
-    }
-  },
-
-
-  {
-    type:
-      "function",
-
-    name:
-      "create_email_draft",
-
-    description:
-      "Erstellt NUR eine neue, unabhängige E-Mail. Niemals für eine Antwort auf eine vorhandene/ausgewählte Gmail-Nachricht verwenden. Für Antworten immer create_email_reply_draft nutzen. Versendet nichts.",
-
-    parameters: {
-      type:
-        "object",
-
-      properties: {
-
-        to: {
-          type:
-            "string",
-          description:
-            "Empfänger-E-Mail-Adresse oder eindeutiger Empfänger, den Mattl genannt hat."
-        },
-
-        instruction: {
-          type:
-            "string"
-        }
-      },
-
-      required: [
-        "to",
-        "instruction"
-      ],
-
-      additionalProperties:
-        false
-    }
-  }
-];
-
-
-/* =========================================================
-   REALTIME SESSION
-
-   MUSS VOR express.json STEHEN
-   ========================================================= */
-
-app.post(
-  "/api/realtime-session",
-
-  express.text({
-    type: [
-      "application/sdp",
-      "text/plain"
-    ],
-
-    limit:
-      "1mb"
-  }),
-
-  async (
-    req,
-    res
-  ) => {
-
-    try {
-
-      if (
-        !process.env
-          .OPENAI_API_KEY
-      ) {
-        return res
-          .status(500)
-          .send(
-            "OPENAI_API_KEY fehlt."
-          );
-      }
-
-
-      const sdp =
-        req.body;
-
-
-      if (
-        typeof sdp !==
-          "string" ||
-        !sdp.startsWith(
-          "v=0"
-        )
-      ) {
-        return res
-          .status(400)
-          .send(
-            "Ungültiges SDP."
-          );
-      }
-
-
-      const model =
-        process.env
-          .OPENAI_REALTIME_MODEL ||
-        "gpt-realtime-2.1";
-
-
-      const sessionConfig =
-        JSON.stringify({
-
-          type:
-            "realtime",
-
-          model,
-
-          output_modalities: [
-            "text"
-          ],
-
-          instructions:
-            buildJarvisInstructions(),
-
-          tools:
-            REALTIME_TOOLS,
-
-          tool_choice:
-            "auto",
-
-          audio: {
-
-            input: {
-
-              noise_reduction: {
-
-                type:
-                  process.env
-                    .OPENAI_NOISE_REDUCTION ||
-                  "far_field"
-              },
-
-              turn_detection: {
-
-                type:
-                  "semantic_vad",
-
-                eagerness:
-                  "low",
-
-                create_response:
-                  true,
-
-                interrupt_response:
-                  true
-              }
-            }
-          }
-        });
-
-
-      const form =
-        new FormData();
-
-
-      form.set(
-        "sdp",
-        sdp
-      );
-
-
-      form.set(
-        "session",
-        sessionConfig
-      );
-
-
-      console.log(
-        `[REALTIME] Modell=${model} Output=text ElevenLabs=extern Tools=${REALTIME_TOOLS.length}`
-      );
-
-
-      const response =
-        await fetch(
-          "https://api.openai.com/v1/realtime/calls",
-          {
-
-            method:
-              "POST",
-
-            headers: {
-
-              Authorization:
-                `Bearer ${process.env.OPENAI_API_KEY}`
-            },
-
-            body:
-              form,
-
-            signal:
-              timeoutSignal(
-                20000
-              )
-          }
-        );
-
-
-      const answer =
-        await response.text();
-
-
-      if (
-        !response.ok
-      ) {
-
-        console.error(
-          "[REALTIME ERROR]",
-          response.status,
-          answer
-        );
-
-
-        return res
-          .status(
-            response.status
-          )
-          .send(
-            answer
-          );
-      }
-
-
-      res.setHeader(
-        "Content-Type",
-        "application/sdp"
-      );
-
-
-      return res.send(
-        answer
-      );
-
-
-    } catch (
-      error
-    ) {
-
-      console.error(
-        "[REALTIME SESSION ERROR]",
-        error
-      );
-
-
-      return res
-        .status(500)
-        .send(
-          error.message ||
-          "Realtime-Verbindung fehlgeschlagen."
-        );
-    }
-  }
-);
-
-
-/* =========================================================
-   JSON BODY
-   ========================================================= */
-
-app.use(
-  express.json({
-    limit:
-      "2mb"
-  })
-);
-
-
-/* =========================================================
-   ELEVENLABS · SINGLE-USE TOKEN FOR BROWSER WEBSOCKET
-   ========================================================= */
-
-app.get(
-  "/api/elevenlabs-token",
-
-  async (
-    req,
-    res
-  ) => {
-
-    try {
-
-      const apiKey =
-        process.env
-          .ELEVENLABS_API_KEY;
-
-
-      const voiceId =
-        process.env
-          .ELEVENLABS_VOICE_ID ||
-        "Vje4UYe2YPbNqyQwJGra";
-
-
-      const modelId =
-        process.env
-          .ELEVENLABS_MODEL ||
-        "eleven_flash_v2_5";
-
-
-      if (
-        !apiKey
-      ) {
-
-        return res
-          .status(500)
-          .json({
-
-            ok:
-              false,
-
-            error:
-              "ELEVENLABS_API_KEY fehlt."
-          });
-      }
-
-
-      if (
-        !voiceId
-      ) {
-
-        return res
-          .status(500)
-          .json({
-
-            ok:
-              false,
-
-            error:
-              "ELEVENLABS_VOICE_ID fehlt."
-          });
-      }
-
-
-      const response =
-        await fetch(
-          "https://api.elevenlabs.io/v1/single-use-token/tts_websocket",
-          {
-
-            method:
-              "POST",
-
-            headers: {
-
-              "xi-api-key":
-                apiKey
-            },
-
-            signal:
-              timeoutSignal(
-                10000
-              )
-          }
-        );
-
-
-      const data =
-        await response.json();
-
-
-      if (
-        !response.ok ||
-        !data?.token
-      ) {
-
-        console.error(
-          "[ELEVENLABS TOKEN ERROR]",
-          response.status,
-          data
-        );
-
-
-        return res
-          .status(
-            response.status ||
-            500
-          )
-          .json({
-
-            ok:
-              false,
-
-            error:
-              data?.detail?.message ||
-              data?.detail ||
-              "ElevenLabs-Token konnte nicht erstellt werden."
-          });
-      }
-
-
-      return res.json({
-
-        ok:
-          true,
-
-        token:
-          data.token,
-
-        voice_id:
-          voiceId,
-
-        model_id:
-          modelId,
-
-        language_code:
-          "de"
-      });
-
-
-    } catch (
-      error
-    ) {
-
-      console.error(
-        "[ELEVENLABS TOKEN ERROR]",
-        error
-      );
-
-
-      return res
-        .status(500)
-        .json({
-
-          ok:
-            false,
-
-          error:
-            error.message ||
-            "ElevenLabs-Verbindung fehlgeschlagen."
-        });
-    }
-  }
-);/* =========================================================
-   OPENAI RESPONSE HELPER
-   ========================================================= */
-
-function extractResponseText(
-  data
-) {
-
-  if (!data) {
-    return "";
-  }
-
-
-  const direct =
-    String(
-      data.output_text ||
-      ""
-    ).trim();
-
-
-  if (direct) {
-    return direct;
-  }
-
-
-  const pieces = [];
-
-
-  for (
-    const item of
-    data.output || []
-  ) {
-
-    if (
-      item?.type !==
-      "message"
-    ) {
-      continue;
-    }
-
-
-    for (
-      const content of
-      item.content || []
-    ) {
-
-      if (
-        content?.type ===
-          "output_text" &&
-        content?.text
-      ) {
-
-        pieces.push(
-          content.text
-        );
-      }
-    }
-  }
-
-
-  return pieces
-    .join("\n")
-    .trim();
-}
-
-
-/* =========================================================
-   INTERNET SEARCH
-   ========================================================= */
-
-async function searchInternet(
-  query
-) {
-
-  const cleanQuery =
-    String(
-      query || ""
-    ).trim();
-
-
-  if (!cleanQuery) {
-
-    throw new Error(
-      "Keine Suchanfrage angegeben."
-    );
-  }
-
-
-  console.log(
-    "[WEB SEARCH]",
-    cleanQuery
-  );
-
-
-  const response =
-    await fetch(
-      "https://api.openai.com/v1/responses",
+  if (sameBerlinDay) {
+    return new Intl.DateTimeFormat(
+      "de-DE",
       {
-
-        method:
-          "POST",
-
-        headers: {
-
-          Authorization:
-            `Bearer ${process.env.OPENAI_API_KEY}`,
-
-          "Content-Type":
-            "application/json"
-        },
-
-
-        body:
-          JSON.stringify({
-
-            model:
-              process.env
-                .OPENAI_WEB_MODEL ||
-              "gpt-5.6",
-
-            reasoning: {
-              effort:
-                "low"
-            },
-
-            tools: [
-              {
-                type:
-                  "web_search"
-              }
-            ],
-
-            tool_choice:
-              "auto",
-
-            input:
-              `Beantworte die folgende Frage mithilfe aktueller Informationen aus dem Web.
-
-Frage:
-${cleanQuery}
-
-Vorgaben:
-- antworte auf Deutsch
-- nutze zuverlässige aktuelle Quellen
-- nenne konkrete Daten, Namen und Zahlen, wenn relevant
-- keine langen URLs
-- keine Markdown-Tabelle
-- keine unnötige Einleitung
-- formuliere so, dass ein Sprachassistent die Antwort natürlich vorlesen kann
-- technische Datumsangaben in natürliche deutsche Datumsformen umwandeln`,
-
-            store:
-              false
-          }),
-
-
-        signal:
-          timeoutSignal(
-            30000
-          )
+        timeZone:
+          "Europe/Berlin",
+        hour:
+          "2-digit",
+        minute:
+          "2-digit"
       }
-    );
-
-
-  const data =
-    await response.json();
-
-
-  if (
-    !response.ok
-  ) {
-
-    console.error(
-      "[WEB SEARCH ERROR]",
-      data
-    );
-
-
-    throw new Error(
-      data?.error?.message ||
-      "Internetsuche fehlgeschlagen."
-    );
+    ).format(date);
   }
 
 
-  const text =
-    extractResponseText(
-      data
-    );
-
-
-  if (!text) {
-
-    throw new Error(
-      "Die Internetsuche hat keine Antwort geliefert."
-    );
-  }
-
-
-  return {
-
-    query:
-      cleanQuery,
-
-    answer:
-      text,
-
-    searched_live_web:
-      true
-  };
-}
-
-
-/* =========================================================
-   SHOPIFY AUTH
-   ========================================================= */
-
-let shopifyTokenCache = {
-
-  token:
-    null,
-
-  expiresAt:
-    0
-};
-
-
-async function getShopifyAccessToken() {
-
-  if (
-    shopifyTokenCache.token &&
-    Date.now() <
-      shopifyTokenCache.expiresAt -
-        5 * 60 * 1000
-  ) {
-
-    return shopifyTokenCache.token;
-  }
-
-
-  const domain =
-    process.env
-      .SHOPIFY_STORE_DOMAIN;
-
-
-  const clientId =
-    process.env
-      .SHOPIFY_CLIENT_ID;
-
-
-  const clientSecret =
-    process.env
-      .SHOPIFY_CLIENT_SECRET;
-
-
-  if (
-    !domain ||
-    !clientId ||
-    !clientSecret
-  ) {
-
-    throw new Error(
-      "Shopify ist nicht vollständig konfiguriert."
-    );
-  }
-
-
-  const params =
-    new URLSearchParams({
-
-      grant_type:
-        "client_credentials",
-
-      client_id:
-        clientId,
-
-      client_secret:
-        clientSecret
-    });
-
-
-  const response =
-    await fetch(
-      `https://${domain}/admin/oauth/access_token`,
-      {
-
-        method:
-          "POST",
-
-        headers: {
-
-          "Content-Type":
-            "application/x-www-form-urlencoded"
-        },
-
-        body:
-          params,
-
-        signal:
-          timeoutSignal(
-            10000
-          )
-      }
-    );
-
-
-  const data =
-    await response.json();
-
-
-  if (
-    !response.ok ||
-    !data.access_token
-  ) {
-
-    throw new Error(
-      "Shopify-Authentifizierung fehlgeschlagen."
-    );
-  }
-
-
-  shopifyTokenCache = {
-
-    token:
-      data.access_token,
-
-    expiresAt:
-      Date.now() +
-      Number(
-        data.expires_in ||
-        86399
-      ) *
-        1000
-  };
-
-
-  return data.access_token;
-}
-
-
-/* =========================================================
-   SHOPIFY SUMMARY
-   ========================================================= */
-
-async function getShopifySummary(
-  period =
-    "today"
-) {
-
-  const domain =
-    process.env
-      .SHOPIFY_STORE_DOMAIN;
-
-
-  const apiVersion =
-    process.env
-      .SHOPIFY_API_VERSION ||
-    "2026-07";
-
-
-  const token =
-    await getShopifyAccessToken();
-
-
-  const {
-    start,
-    end
-  } =
-    getPeriodDates(
-      period
-    );
-
-
-  const startDate =
-    new Date(
-      start
-    );
-
-
-  const endDate =
-    new Date(
-      end
-    );
-
-
-  const query = `
-    query JarvisOrders {
-      orders(
-        first: 100,
-        sortKey: CREATED_AT,
-        reverse: true
-      ) {
-        nodes {
-
-          name
-
-          createdAt
-
-          cancelledAt
-
-          currentTotalPriceSet {
-
-            shopMoney {
-
-              amount
-
-              currencyCode
-            }
-          }
-        }
-      }
-    }
-  `;
-
-
-  const response =
-    await fetch(
-      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-      {
-
-        method:
-          "POST",
-
-        headers: {
-
-          "Content-Type":
-            "application/json",
-
-          "X-Shopify-Access-Token":
-            token
-        },
-
-        body:
-          JSON.stringify({
-            query
-          }),
-
-        signal:
-          timeoutSignal(
-            10000
-          )
-      }
-    );
-
-
-  const data =
-    await response.json();
-
-
-  if (
-    !response.ok ||
-    data.errors
-  ) {
-
-    console.error(
-      "[SHOPIFY SUMMARY ERROR]",
-      data.errors
-    );
-
-
-    throw new Error(
-      "Shopify-Daten konnten nicht gelesen werden."
-    );
-  }
-
-
-  const orders =
-    data.data?.orders
-      ?.nodes || [];
-
-
-  const valid =
-    orders.filter(
-      order => {
-
-        if (
-          order.cancelledAt
-        ) {
-          return false;
-        }
-
-
-        const created =
-          new Date(
-            order.createdAt
-          );
-
-
-        return (
-          created >=
-            startDate &&
-          created <
-            endDate
-        );
-      }
-    );
-
-
-  const revenue =
-    valid.reduce(
-      (
-        total,
-        order
-      ) =>
-        total +
-        Number(
-          order
-            .currentTotalPriceSet
-            ?.shopMoney
-            ?.amount ||
-          0
-        ),
-      0
-    );
-
-
-  const currency =
-    valid[0]
-      ?.currentTotalPriceSet
-      ?.shopMoney
-      ?.currencyCode ||
-    "EUR";
-
-
-  const average =
-    valid.length
-      ? revenue /
-        valid.length
-      : 0;
-
-
-  return {
-
-    shop:
-      "Druckelite24",
-
-    period,
-
-    orders:
-      valid.length,
-
-    revenue:
-      Number(
-        revenue.toFixed(2)
-      ),
-
-    average_order_value:
-      Number(
-        average.toFixed(2)
-      ),
-
-    currency
-  };
-}
-
-
-/* =========================================================
-   SHOPIFY OPEN ORDERS
-   ========================================================= */
-
-async function getShopifyOpenOrders() {
-
-  const domain =
-    process.env
-      .SHOPIFY_STORE_DOMAIN;
-
-
-  const apiVersion =
-    process.env
-      .SHOPIFY_API_VERSION ||
-    "2026-07";
-
-
-  const token =
-    await getShopifyAccessToken();
-
-
-  const query = `
-    query JarvisOpenOrders {
-
-      orders(
-        first: 50,
-        query: "fulfillment_status:unfulfilled",
-        sortKey: CREATED_AT,
-        reverse: false
-      ) {
-
-        nodes {
-
-          name
-
-          createdAt
-
-          cancelledAt
-        }
-      }
-    }
-  `;
-
-
-  const response =
-    await fetch(
-      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-      {
-
-        method:
-          "POST",
-
-        headers: {
-
-          "Content-Type":
-            "application/json",
-
-          "X-Shopify-Access-Token":
-            token
-        },
-
-        body:
-          JSON.stringify({
-            query
-          }),
-
-        signal:
-          timeoutSignal(
-            10000
-          )
-      }
-    );
-
-
-  const data =
-    await response.json();
-
-
-  if (
-    !response.ok ||
-    data.errors
-  ) {
-
-    throw new Error(
-      "Offene Bestellungen konnten nicht gelesen werden."
-    );
-  }
-
-
-  const orders =
-    (
-      data.data?.orders
-        ?.nodes || []
-    ).filter(
-      order =>
-        !order.cancelledAt
-    );
-
-
-  return {
-
-    count:
-      orders.length,
-
-    oldest_order_name:
-      orders[0]?.name ||
-      null,
-
-    oldest_order_created_at:
-      orders[0]?.createdAt ||
-      null,
-
-    orders:
-      orders.slice(
-        0,
-        15
-      )
-  };
-}
-
-
-/* =========================================================
-   SHOPIFY WEEK
-   ========================================================= */
-
-async function getShopifyWeek() {
-
-  const domain =
-    process.env
-      .SHOPIFY_STORE_DOMAIN;
-
-
-  const apiVersion =
-    process.env
-      .SHOPIFY_API_VERSION ||
-    "2026-07";
-
-
-  const token =
-    await getShopifyAccessToken();
-
-
-  const query = `
-    query JarvisWeek {
-
-      orders(
-        first: 250,
-        sortKey: CREATED_AT,
-        reverse: true
-      ) {
-
-        nodes {
-
-          createdAt
-
-          cancelledAt
-
-          currentTotalPriceSet {
-
-            shopMoney {
-
-              amount
-
-              currencyCode
-            }
-          }
-        }
-      }
-    }
-  `;
-
-
-  const response =
-    await fetch(
-      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-      {
-
-        method:
-          "POST",
-
-        headers: {
-
-          "Content-Type":
-            "application/json",
-
-          "X-Shopify-Access-Token":
-            token
-        },
-
-        body:
-          JSON.stringify({
-            query
-          }),
-
-        signal:
-          timeoutSignal(
-            10000
-          )
-      }
-    );
-
-
-  const data =
-    await response.json();
-
-
-  if (
-    !response.ok ||
-    data.errors
-  ) {
-
-    throw new Error(
-      "Shopify-Wochendaten konnten nicht gelesen werden."
-    );
-  }
-
-
-  const today =
-    berlinDate();
-
-
-  const days =
-    [];
-
-
-  for (
-    let i = 6;
-    i >= 0;
-    i--
-  ) {
-
-    const date =
-      new Date(
-        `${today}T12:00:00Z`
-      );
-
-
-    date.setUTCDate(
-      date.getUTCDate() -
-      i
-    );
-
-
-    days.push({
-
-      date:
-        date
-          .toISOString()
-          .slice(
-            0,
-            10
-          ),
-
-      orders:
-        0,
-
-      revenue:
-        0
-    });
-  }
-
-
-  const map =
-    new Map(
-      days.map(
-        day => [
-          day.date,
-          day
-        ]
-      )
-    );
-
-
-  for (
-    const order of
-    data.data?.orders
-      ?.nodes || []
-  ) {
-
-    if (
-      order.cancelledAt
-    ) {
-
-      continue;
-    }
-
-
-    const date =
-      new Intl.DateTimeFormat(
-        "en-CA",
-        {
-
-          timeZone:
-            "Europe/Berlin",
-
-          year:
-            "numeric",
-
-          month:
-            "2-digit",
-
-          day:
-            "2-digit"
-        }
-      ).format(
-        new Date(
-          order.createdAt
-        )
-      );
-
-
-    const bucket =
-      map.get(
-        date
-      );
-
-
-    if (
-      !bucket
-    ) {
-
-      continue;
-    }
-
-
-    bucket.orders +=
-      1;
-
-
-    bucket.revenue +=
-      Number(
-        order
-          .currentTotalPriceSet
-          ?.shopMoney
-          ?.amount ||
-        0
-      );
-  }
-
-
-  for (
-    const day of
-    days
-  ) {
-
-    day.revenue =
-      Number(
-        day.revenue
-          .toFixed(
-            2
-          )
-      );
-  }
-
-
-  return {
-
-    days,
-
-    currency:
-      "EUR"
-  };
-}
-
-
-/* =========================================================
-   SHOPIFY METAFIELDS
-   ========================================================= */
-
-async function getShopId() {
-
-  const domain =
-    process.env
-      .SHOPIFY_STORE_DOMAIN;
-
-
-  const apiVersion =
-    process.env
-      .SHOPIFY_API_VERSION ||
-    "2026-07";
-
-
-  const token =
-    await getShopifyAccessToken();
-
-
-  const response =
-    await fetch(
-      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-      {
-
-        method:
-          "POST",
-
-        headers: {
-
-          "Content-Type":
-            "application/json",
-
-          "X-Shopify-Access-Token":
-            token
-        },
-
-        body:
-          JSON.stringify({
-
-            query:
-              "query { shop { id } }"
-          }),
-
-        signal:
-          timeoutSignal(
-            10000
-          )
-      }
-    );
-
-
-  const data =
-    await response.json();
-
-
-  if (
-    !response.ok ||
-    data.errors ||
-    !data.data?.shop?.id
-  ) {
-
-    throw new Error(
-      "Shop-ID konnte nicht ermittelt werden."
-    );
-  }
-
-
-  return data.data.shop.id;
-}
-
-
-async function readJarvisField(
-  key
-) {
-
-  const domain =
-    process.env
-      .SHOPIFY_STORE_DOMAIN;
-
-
-  const apiVersion =
-    process.env
-      .SHOPIFY_API_VERSION ||
-    "2026-07";
-
-
-  const token =
-    await getShopifyAccessToken();
-
-
-  const query = `
-    query JarvisMeta {
-
-      shop {
-
-        metafield(
-          namespace: "jarvis",
-          key: "${key}"
-        ) {
-
-          value
-        }
-      }
-    }
-  `;
-
-
-  const response =
-    await fetch(
-      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-      {
-
-        method:
-          "POST",
-
-        headers: {
-
-          "Content-Type":
-            "application/json",
-
-          "X-Shopify-Access-Token":
-            token
-        },
-
-        body:
-          JSON.stringify({
-            query
-          }),
-
-        signal:
-          timeoutSignal(
-            10000
-          )
-      }
-    );
-
-
-  const data =
-    await response.json();
-
-
-  if (
-    !response.ok ||
-    data.errors
-  ) {
-
-    throw new Error(
-      `${key} konnte nicht gelesen werden.`
-    );
-  }
-
-
-  const raw =
-    data.data?.shop
-      ?.metafield
-      ?.value;
-
-
-  if (
-    !raw
-  ) {
-
-    return [];
-  }
-
-
-  try {
-
-    const parsed =
-      JSON.parse(
-        raw
-      );
-
-
-    return Array.isArray(
-      parsed
-    )
-      ? parsed
-      : [];
-
-
-  } catch {
-
-    return [];
-  }
-}
-
-
-async function writeJarvisField(
-  key,
-  value
-) {
-
-  const domain =
-    process.env
-      .SHOPIFY_STORE_DOMAIN;
-
-
-  const apiVersion =
-    process.env
-      .SHOPIFY_API_VERSION ||
-    "2026-07";
-
-
-  const token =
-    await getShopifyAccessToken();
-
-
-  const shopId =
-    await getShopId();
-
-
-  const mutation = `
-    mutation SetJarvis(
-      $metafields: [MetafieldsSetInput!]!
-    ) {
-
-      metafieldsSet(
-        metafields: $metafields
-      ) {
-
-        userErrors {
-
-          field
-
-          message
-        }
-      }
-    }
-  `;
-
-
-  const response =
-    await fetch(
-      `https://${domain}/admin/api/${apiVersion}/graphql.json`,
-      {
-
-        method:
-          "POST",
-
-        headers: {
-
-          "Content-Type":
-            "application/json",
-
-          "X-Shopify-Access-Token":
-            token
-        },
-
-        body:
-          JSON.stringify({
-
-            query:
-              mutation,
-
-            variables: {
-
-              metafields: [
-
-                {
-
-                  ownerId:
-                    shopId,
-
-                  namespace:
-                    "jarvis",
-
-                  key,
-
-                  type:
-                    "json",
-
-                  value:
-                    JSON.stringify(
-                      value
-                    )
-                }
-              ]
-            }
-          }),
-
-        signal:
-          timeoutSignal(
-            10000
-          )
-      }
-    );
-
-
-  const data =
-    await response.json();
-
-
-  const errors =
-    data.data
-      ?.metafieldsSet
-      ?.userErrors ||
-    [];
-
-
-  if (
-    !response.ok ||
-    data.errors ||
-    errors.length
-  ) {
-
-    console.error(
-      "[SHOPIFY METAFIELD ERROR]",
-      data.errors ||
-      errors
-    );
-
-
-    throw new Error(
-      `Speichern von ${key} fehlgeschlagen.`
-    );
-  }
-
-
-  return true;
-}
-
-
-/* =========================================================
-   NOTES
-   ========================================================= */
-
-async function saveNote(
-  text
-) {
-
-  const cleanText =
-    String(
-      text || ""
-    ).trim();
-
-
-  if (
-    !cleanText
-  ) {
-
-    throw new Error(
-      "Die Notiz ist leer."
-    );
-  }
-
-
-  const notes =
-    await readJarvisField(
-      "notes"
-    );
-
-
-  notes.push({
-
-    id:
-      String(
-        Date.now()
-      ),
-
-    text:
-      cleanText,
-
-    created_at:
-      new Date()
-        .toISOString()
-  });
-
-
-  await writeJarvisField(
-    "notes",
-    notes
-  );
-
-
-  return {
-
-    saved:
-      true,
-
-    text:
-      cleanText,
-
-    total:
-      notes.length
-  };
-}
-
-
-/* =========================================================
-   REMINDERS
-   ========================================================= */
-
-async function setReminder(
-  minutes,
-  text
-) {
-
-  const reminders =
-    await readJarvisField(
-      "reminders"
-    );
-
-
-  const safeMinutes =
-    Math.max(
-      1,
-      Math.round(
-        Number(
-          minutes
-        ) || 1
-      )
-    );
-
-
-  const cleanText =
-    String(
-      text || ""
-    ).trim();
-
-
-  if (
-    !cleanText
-  ) {
-
-    throw new Error(
-      "Erinnerungstext fehlt."
-    );
-  }
-
-
-  const dueAt =
-    new Date(
-      Date.now() +
-      safeMinutes *
-        60000
-    )
-      .toISOString();
-
-
-  reminders.push({
-
-    id:
-      String(
-        Date.now()
-      ),
-
-    text:
-      cleanText,
-
-    due_at:
-      dueAt,
-
-    fired:
-      false
-  });
-
-
-  await writeJarvisField(
-    "reminders",
-    reminders
-  );
-
-
-  return {
-
-    saved:
-      true,
-
-    reminder_text:
-      cleanText,
-
-    minutes_from_now:
-      safeMinutes,
-
-    due_at:
-      dueAt
-  };
-}
-
-
-async function getActiveReminders() {
-
-  const reminders =
-    await readJarvisField(
-      "reminders"
-    );
-
-
-  return reminders
-    .filter(
-      reminder =>
-        !reminder.fired
-    );
-}
-
-
-async function checkAndFireDueReminders() {
-
-  const reminders =
-    await readJarvisField(
-      "reminders"
-    );
-
-
-  const now =
-    Date.now();
-
-
-  const due =
-    reminders.filter(
-      reminder =>
-        !reminder.fired &&
-        new Date(
-          reminder.due_at
-        ).getTime() <=
-          now
-    );
-
-
-  if (
-    !due.length
-  ) {
-
-    return [];
-  }
-
-
-  const dueIds =
-    new Set(
-      due.map(
-        reminder =>
-          reminder.id
-      )
-    );
-
-
-  const updated =
-    reminders.map(
-      reminder =>
-
-        dueIds.has(
-          reminder.id
-        )
-
-          ? {
-
-              ...reminder,
-
-              fired:
-                true,
-
-              fired_at:
-                new Date()
-                  .toISOString()
-            }
-
-          : reminder
-    );
-
-
-  await writeJarvisField(
-    "reminders",
-    updated
-  );
-
-
-  return due;
-}
-/* =========================================================
-   SUPERCHAT · WHATSAPP
-   ========================================================= */
-
-const SUPERCHAT_BASE_URL =
-  "https://api.superchat.com/v1.0";
-
-let lastSuperchatDraft =
-  null;
-
-function isSuperchatConfigured() {
-  return Boolean(
-    process.env.SUPERCHAT_API_KEY
-  );
-}
-
-async function superchatRequest(
-  path,
-  options = {}
-) {
-
-  if (
-    !isSuperchatConfigured()
-  ) {
-    throw new Error(
-      "SUPERCHAT_API_KEY fehlt."
-    );
-  }
-
-  const response =
-    await fetch(
-      `${SUPERCHAT_BASE_URL}${path}`,
-      {
-        ...options,
-        headers: {
-          "X-API-KEY":
-            process.env.SUPERCHAT_API_KEY,
-          "Accept":
-            "application/json",
-          ...(options.body
-            ? {
-                "Content-Type":
-                  "application/json"
-              }
-            : {}),
-          ...(options.headers || {})
-        },
-        signal:
-          timeoutSignal(
-            15000
-          )
-      }
-    );
-
-  const raw =
-    await response.text();
-
-  let data;
-
-  try {
-    data =
-      raw
-        ? JSON.parse(raw)
-        : {};
-  } catch {
-    data = {
-      raw
-    };
-  }
-
-  if (
-    !response.ok
-  ) {
-    throw new Error(
-      data?.message ||
-      data?.error?.message ||
-      data?.error ||
-      `Superchat Fehler ${response.status}.`
-    );
-  }
-
-  return data;
-}
-
-function superchatArray(
-  data
-) {
-
-  if (
-    Array.isArray(data)
-  ) {
-    return data;
-  }
-
-  const preferredKeys = [
-    "data",
-    "items",
-    "objects",
-    "conversations",
-    "channels",
-    "contacts",
-    "results",
-    "records"
-  ];
-
-  for (
-    const key of
-    preferredKeys
-  ) {
-    if (
-      Array.isArray(
-        data?.[key]
-      )
-    ) {
-      return data[key];
-    }
-  }
-
-  /*
-    Superchat kann Listen in einem zusätzlichen Wrapper liefern.
-    Maximal zwei Ebenen durchsuchen, ohne Metadaten blind zu rendern.
-  */
-  if (
-    data &&
-    typeof data ===
-      "object"
-  ) {
-    for (
-      const value of
-      Object.values(data)
-    ) {
-      if (
-        Array.isArray(value)
-      ) {
-        const usable =
-          value.filter(
-            item =>
-              item &&
-              typeof item ===
-                "object"
-          );
-
-        if (
-          usable.length
-        ) {
-          return usable;
-        }
-      }
-
-      if (
-        value &&
-        typeof value ===
-          "object" &&
-        !Array.isArray(value)
-      ) {
-        for (
-          const key of
-          preferredKeys
-        ) {
-          if (
-            Array.isArray(
-              value?.[key]
-            )
-          ) {
-            return value[key];
-          }
-        }
-      }
-    }
-  }
-
-  return [];
-}
-
-function firstNonEmpty(
-  ...values
-) {
-
-  for (
-    const value of
-    values
-  ) {
-    if (
-      value !==
-        undefined &&
-      value !==
-        null &&
-      String(value)
-        .trim()
-    ) {
-      return value;
-    }
-  }
-
-  return "";
-}
-
-function normalizeSuperchatConversation(
-  conversation
-) {
-
-  const conversationContacts =
-    Array.isArray(
-      conversation?.contacts
-    )
-      ? conversation.contacts
-      : [];
-
-  const firstConversationContact =
-    conversationContacts[0];
-
-  const contact =
-    (
-      firstConversationContact &&
-      typeof firstConversationContact ===
-        "object"
-    )
-      ? firstConversationContact
-      : (
-          conversation?.contact ||
-          conversation?.customer ||
-          conversation?.participant ||
-          {}
-        );
-
-  const directContactName =
-    [
-      contact?.first_name,
-      contact?.last_name
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-
-  const directHandles =
-    Array.isArray(
-      contact?.handles
-    )
-      ? contact.handles
-      : [];
-
-  const bestDirectHandle =
-    directHandles.find(
-      item =>
-        JSON.stringify(
-          item || {}
-        )
-          .toLowerCase()
-          .includes(
-            "whatsapp"
-          )
-    ) ||
-    directHandles[0] ||
-    null;
-
-  const directHandleValue =
-    String(
-      firstNonEmpty(
-        bestDirectHandle?.value,
-        bestDirectHandle?.identifier,
-        bestDirectHandle?.phone,
-        bestDirectHandle?.number,
-        bestDirectHandle?.email,
-        ""
-      ) || ""
-    ).trim();
-
-  const name =
-    firstNonEmpty(
-      directContactName,
-      contact?.display_name,
-      contact?.displayName,
-      contact?.name,
-      directHandleValue,
-      conversation?.contact_name,
-      conversation?.title,
-      conversation?.name,
-      "WhatsApp-Kontakt"
-    );
-
-  const candidateMessages = [
-    conversation?.last_message,
-    conversation?.lastMessage,
-    conversation?.latest_message,
-    conversation?.latestMessage,
-    conversation?.message,
-    conversation?.latest_inbound_message,
-    conversation?.latestInboundMessage,
-    conversation?.last_inbound_message,
-    conversation?.lastInboundMessage
-  ]
-    .filter(Boolean);
-
-  let lastMessage =
-    candidateMessages[0] ||
-    {};
-
-  if (
-    !candidateMessages.length &&
-    Array.isArray(
-      conversation?.messages
-    ) &&
-    conversation.messages.length
-  ) {
-    lastMessage =
-      conversation.messages[
-        conversation.messages.length - 1
-      ] || {};
-  }
-
-  const text =
-    firstNonEmpty(
-      lastMessage?.text,
-      lastMessage?.content?.text,
-      lastMessage?.content?.body,
-      lastMessage?.body,
-      lastMessage?.message,
-      conversation?.last_message_text,
-      conversation?.lastMessageText,
-      conversation?.preview,
-      ""
-    );
-
-  const contactId =
-    firstNonEmpty(
-      contact?.id,
-      typeof firstConversationContact ===
-        "string"
-        ? firstConversationContact
-        : "",
-      conversation?.contact_id,
-      conversation?.contactId,
-      ""
-    );
-
-  const channelId =
-    firstNonEmpty(
-      conversation?.channel?.id,
-      conversation?.channel_id,
-      conversation?.channelId,
-      lastMessage?.channel?.id,
-      lastMessage?.channel_id,
-      ""
-    );
-
-  const updatedAt =
-    firstNonEmpty(
-      conversation?.updated_at,
-      conversation?.updatedAt,
-      lastMessage?.created_at,
-      lastMessage?.createdAt,
-      lastMessage?.timestamp,
-      conversation?.created_at,
-      conversation?.createdAt,
-      ""
-    );
-
-  return {
-    id:
-      firstNonEmpty(
-        conversation?.id,
-        conversation?.conversation_id,
-        conversation?.conversationId
-      ),
-    contact_id:
-      contactId,
-    channel_id:
-      channelId,
-    name:
-      String(
-        name ||
-        "WhatsApp-Kontakt"
-      ),
-    handle:
-      directHandleValue,
-    preview:
-      String(
-        text ||
-        "Chat öffnen"
-      ),
-    updated_at:
-      updatedAt,
-    raw:
-      conversation
-  };
-}
-
-async function getSuperchatWhatsAppChannelId() {
-
-  const configured =
-    String(
-      process.env
-        .SUPERCHAT_CHANNEL_ID ||
-      ""
-    ).trim();
-
-  if (
-    configured
-  ) {
-    return configured;
-  }
-
-  const data =
-    await superchatRequest(
-      "/channels?limit=100"
-    );
-
-  const channels =
-    superchatArray(
-      data
-    );
-
-  const whatsapp =
-    channels.find(
-      channel => {
-        const haystack =
-          JSON.stringify(
-            channel || {}
-          )
-            .toLowerCase();
-
-        return haystack
-          .includes(
-            "whatsapp"
-          );
-      }
-    );
-
-  const id =
-    firstNonEmpty(
-      whatsapp?.id,
-      whatsapp?.channel_id,
-      whatsapp?.channelId
-    );
-
-  if (
-    !id
-  ) {
-    throw new Error(
-      "Kein WhatsApp-Kanal in Superchat gefunden."
-    );
-  }
-
-  return String(id);
-}
-
-
-
-const superchatContactDetailCache =
-  new Map();
-
-async function getSuperchatContactById(
-  contactId
-) {
-
-  const id =
-    String(
-      contactId || ""
-    ).trim();
-
-  if (
-    !id
-  ) {
-    return null;
-  }
-
-  const cached =
-    superchatContactDetailCache.get(
-      id
-    );
-
-  if (
-    cached &&
-    Date.now() -
-      cached.at <
-      10 * 60 * 1000
-  ) {
-    return cached.contact;
-  }
-
-  const data =
-    await superchatRequest(
-      `/contacts/${encodeURIComponent(id)}`
-    );
-
-  const raw =
-    data?.data &&
-    !Array.isArray(data.data)
-      ? data.data
-      : data;
-
-  const contact =
-    raw?.result &&
-    typeof raw.result ===
-      "object"
-      ? raw.result
-      : raw;
-
-  superchatContactDetailCache.set(
-    id,
+  return new Intl.DateTimeFormat(
+    "de-DE",
     {
-      at:
-        Date.now(),
-      contact
+      timeZone:
+        "Europe/Berlin",
+      day:
+        "2-digit",
+      month:
+        "2-digit"
     }
-  );
-
-  return contact;
+  ).format(date);
 }
 
 
-function superchatContactDisplay(
-  contact
-) {
-
-  if (
-    !contact ||
-    typeof contact !==
-      "object"
-  ) {
-    return {
-      name:
-        "",
-      handle:
-        ""
-    };
-  }
-
-  const firstName =
-    String(
-      firstNonEmpty(
-        contact?.first_name,
-        contact?.firstName,
-        ""
-      ) || ""
-    ).trim();
-
-  const lastName =
-    String(
-      firstNonEmpty(
-        contact?.last_name,
-        contact?.lastName,
-        ""
-      ) || ""
-    ).trim();
-
-  const fullName =
-    [
-      firstName,
-      lastName
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-
-  const handles =
-    Array.isArray(
-      contact?.handles
-    )
-      ? contact.handles
-      : [];
-
-  const bestHandle =
-    handles.find(
-      item =>
-        JSON.stringify(
-          item || {}
-        )
-          .toLowerCase()
-          .includes(
-            "whatsapp"
-          )
-    ) ||
-    handles[0] ||
-    null;
-
-  const handle =
-    String(
-      firstNonEmpty(
-        bestHandle?.value,
-        bestHandle?.identifier,
-        bestHandle?.phone,
-        bestHandle?.phone_number,
-        bestHandle?.number,
-        bestHandle?.email,
-        ""
-      ) || ""
-    ).trim();
-
-  return {
-    name:
-      fullName ||
-      String(
-        firstNonEmpty(
-          contact?.name,
-          contact?.display_name,
-          contact?.displayName,
-          handle,
-          ""
-        )
-      ),
-    handle
-  };
-}
-
-
-function extractSuperchatContactId(
-  conversation
-) {
-
-  const contacts =
-    Array.isArray(
-      conversation?.contacts
-    )
-      ? conversation.contacts
-      : [];
-
-  const first =
-    contacts[0];
-
-  return String(
-    firstNonEmpty(
-      typeof first ===
-        "string"
-        ? first
-        : "",
-      first?.id,
-      first?.contact_id,
-      first?.contactId,
-      conversation?.contact_id,
-      conversation?.contactId,
-      ""
-    ) || ""
-  ).trim();
-}
-
-
-async function getSuperchatContactsMap() {
-
-  const data =
-    await superchatRequest(
-      "/contacts?limit=100"
-    );
-
-  const contacts =
-    superchatArray(
-      data
-    );
-
-  const map =
-    new Map();
-
-  for (
-    const contact of
-    contacts
-  ) {
-
-    const id =
-      String(
-        firstNonEmpty(
-          contact?.id,
-          contact?.contact_id,
-          contact?.contactId
-        ) || ""
-      ).trim();
-
-    if (
-      !id
-    ) {
-      continue;
-    }
-
-    const firstName =
-      String(
-        firstNonEmpty(
-          contact?.first_name,
-          contact?.firstName,
-          ""
-        ) || ""
-      ).trim();
-
-    const lastName =
-      String(
-        firstNonEmpty(
-          contact?.last_name,
-          contact?.lastName,
-          ""
-        ) || ""
-      ).trim();
-
-    const fullName =
-      [
-        firstName,
-        lastName
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .trim();
-
-    const handles =
-      Array.isArray(
-        contact?.handles
-      )
-        ? contact.handles
-        : [];
-
-    const bestHandle =
-      handles.find(
-        item => {
-          const haystack =
-            JSON.stringify(
-              item || {}
-            )
-              .toLowerCase();
-
-          return haystack
-            .includes(
-              "whatsapp"
-            );
-        }
-      ) ||
-      handles[0] ||
-      null;
-
-    const handleValue =
-      String(
-        firstNonEmpty(
-          bestHandle?.value,
-          bestHandle?.identifier,
-          bestHandle?.phone,
-          bestHandle?.number,
-          bestHandle?.email,
-          ""
-        ) || ""
-      ).trim();
-
-    const displayName =
-      fullName ||
-      String(
-        firstNonEmpty(
-          contact?.name,
-          contact?.display_name,
-          contact?.displayName,
-          handleValue,
-          "WhatsApp-Kontakt"
-        )
-      );
-
-    map.set(
-      id,
-      {
-        id,
-        name:
-          displayName,
-        handle:
-          handleValue,
-        raw:
-          contact
-      }
-    );
-  }
-
-  return map;
-}
-
-
-
-async function readSuperchatMessageHistory() {
-
-  try {
-    const history =
-      await readJarvisField(
-        "superchat_messages"
-      );
-
-    return Array.isArray(
-      history
-    )
-      ? history
-      : [];
-  } catch (
-    error
-  ) {
-    console.warn(
-      "[SUPERCHAT HISTORY READ WARN]",
-      error
-    );
-
-    return [];
-  }
-}
-
-
-async function writeSuperchatMessageHistory(
-  history
-) {
-
-  const safe =
-    Array.isArray(history)
-      ? history.slice(
-          -120
-        )
-      : [];
-
-  try {
-    await writeJarvisField(
-      "superchat_messages",
-      safe
-    );
-  } catch (
-    error
-  ) {
-    console.warn(
-      "[SUPERCHAT HISTORY WRITE WARN]",
-      error
-    );
-  }
-}
-
-
-function deepFindSuperchatValue(
-  value,
-  keys,
-  depth = 0
-) {
-
-  if (
-    depth > 6 ||
-    value === null ||
-    value === undefined
-  ) {
-    return "";
-  }
-
-  if (
-    Array.isArray(value)
-  ) {
-    for (
-      const item of
-      value
-    ) {
-      const found =
-        deepFindSuperchatValue(
-          item,
-          keys,
-          depth + 1
-        );
-
-      if (
-        found !==
-          "" &&
-        found !==
-          null &&
-        found !==
-          undefined
-      ) {
-        return found;
-      }
-    }
-
-    return "";
-  }
-
-  if (
-    typeof value !==
-      "object"
-  ) {
-    return "";
-  }
-
-  for (
-    const key of
-    keys
-  ) {
-    if (
-      Object.prototype
-        .hasOwnProperty
-        .call(
-          value,
-          key
-        )
-    ) {
-      const candidate =
-        value[key];
-
-      if (
-        typeof candidate ===
-          "string" ||
-        typeof candidate ===
-          "number"
-      ) {
-        const clean =
-          String(
-            candidate
-          ).trim();
-
-        if (
-          clean
-        ) {
-          return clean;
-        }
-      }
-    }
-  }
-
-  for (
-    const child of
-    Object.values(value)
-  ) {
-    const found =
-      deepFindSuperchatValue(
-        child,
-        keys,
-        depth + 1
-      );
-
-    if (
-      found !==
-        "" &&
-      found !==
-        null &&
-      found !==
-        undefined
-    ) {
-      return found;
-    }
-  }
-
-  return "";
-}
-
-
-function extractSuperchatWebhookMessage(
-  payload
-) {
-
-  const conversationId =
-    String(
-      deepFindSuperchatValue(
-        payload,
-        [
-          "conversation_id",
-          "conversationId"
-        ]
-      ) ||
-      payload?.conversation?.id ||
-      payload?.data?.conversation?.id ||
-      ""
-    ).trim();
-
-  const contactId =
-    String(
-      deepFindSuperchatValue(
-        payload,
-        [
-          "contact_id",
-          "contactId"
-        ]
-      ) ||
-      payload?.contact?.id ||
-      payload?.data?.contact?.id ||
-      ""
-    ).trim();
-
-  const channelId =
-    String(
-      deepFindSuperchatValue(
-        payload,
-        [
-          "channel_id",
-          "channelId"
-        ]
-      ) ||
-      payload?.channel?.id ||
-      payload?.data?.channel?.id ||
-      ""
-    ).trim();
-
-  const eventType =
-    String(
-      firstNonEmpty(
-        payload?.event,
-        payload?.type,
-        payload?.name,
-        payload?.event_type,
-        payload?.eventType,
-        ""
-      )
-    ).trim();
-
-  let text =
-    String(
-      firstNonEmpty(
-        payload?.message?.content?.text,
-        payload?.message?.text,
-        payload?.data?.message?.content?.text,
-        payload?.data?.message?.text,
-        payload?.content?.text,
-        payload?.data?.content?.text,
-        ""
-      )
-    ).trim();
-
-  if (
-    !text
-  ) {
-    text =
-      String(
-        deepFindSuperchatValue(
-          payload,
-          [
-            "text"
-          ]
-        ) || ""
-      ).trim();
-  }
-
-  const createdAt =
-    String(
-      firstNonEmpty(
-        payload?.created_at,
-        payload?.createdAt,
-        payload?.message?.created_at,
-        payload?.message?.createdAt,
-        payload?.data?.message?.created_at,
-        payload?.data?.message?.createdAt,
-        new Date()
-          .toISOString()
-      )
-    );
-
-  const directionRaw =
-    String(
-      firstNonEmpty(
-        payload?.direction,
-        payload?.message?.direction,
-        payload?.data?.message?.direction,
-        ""
-      )
-    )
-      .toLowerCase()
-      .trim();
-
-  const eventLower =
-    eventType
-      .toLowerCase();
-
-  const direction =
-    directionRaw ||
-    (
-      eventLower.includes(
-        "inbound"
-      ) ||
-      eventLower.includes(
-        "incoming"
-      )
-        ? "inbound"
-        : eventLower.includes(
-            "outbound"
-          )
-          ? "outbound"
-          : ""
-    );
-
-  if (
-    !conversationId ||
-    !text
-  ) {
-    return null;
-  }
-
-  return {
-    id:
-      String(
-        deepFindSuperchatValue(
-          payload,
-          [
-            "message_id",
-            "messageId"
-          ]
-        ) ||
-        payload?.message?.id ||
-        payload?.data?.message?.id ||
-        `${conversationId}-${Date.now()}`
-      ),
-    conversation_id:
-      conversationId,
-    contact_id:
-      contactId,
-    channel_id:
-      channelId,
-    text,
-    created_at:
-      createdAt,
-    direction,
-    event_type:
-      eventType
-  };
-}
-
-
-async function getSuperchatHistoryForConversation(
-  conversationId
-) {
-
-  const id =
-    String(
-      conversationId || ""
-    ).trim();
-
-  if (
-    !id
-  ) {
-    return [];
-  }
-
-  const history =
-    await readSuperchatMessageHistory();
-
-  return history
-    .filter(
-      item =>
-        String(
-          item?.conversation_id ||
-          ""
-        ) ===
-        id
-    )
-    .sort(
-      (
-        a,
-        b
-      ) =>
-        new Date(
-          a?.created_at ||
-          0
-        ).getTime() -
-        new Date(
-          b?.created_at ||
-          0
-        ).getTime()
-    )
-    .slice(
-      -20
-    );
-}
-
-
-async function getSuperchatConversations(
-  limit = 20
-) {
-
-  const safeLimit =
-    Math.max(
-      1,
-      Math.min(
-        100,
-        Number(limit) ||
-        20
-      )
-    );
-
-  const [
-    conversationData,
-    history
-  ] =
-    await Promise.all([
-      superchatRequest(
-        `/conversations?limit=${safeLimit}`
-      ),
-      readSuperchatMessageHistory()
-    ]);
-
-  const rawConversations =
-    superchatArray(
-      conversationData
-    );
-
-  const normalized =
-    rawConversations
-      .map(
-        normalizeSuperchatConversation
-      )
-      .filter(
-        item =>
-          item.id
-      );
-
-  const enriched =
-    [];
-
-  for (
-    let index = 0;
-    index <
-      normalized.length;
-    index += 1
-  ) {
-
-    const item =
-      normalized[index];
-
-    const raw =
-      rawConversations[index] ||
-      item.raw ||
-      {};
-
-    const contactId =
-      item.contact_id ||
-      extractSuperchatContactId(
-        raw
-      );
-
-    if (
-      contactId
-    ) {
-      item.contact_id =
-        contactId;
-
-      try {
-        const contact =
-          await getSuperchatContactById(
-            contactId
-          );
-
-        const display =
-          superchatContactDisplay(
-            contact
-          );
-
-        if (
-          display.name
-        ) {
-          item.name =
-            display.name;
-        }
-
-        if (
-          display.handle
-        ) {
-          item.handle =
-            display.handle;
-
-          if (
-            !item.name ||
-            item.name ===
-              "WhatsApp-Kontakt"
-          ) {
-            item.name =
-              display.handle;
-          }
-        }
-      } catch (
-        error
-      ) {
-        console.warn(
-          "[SUPERCHAT CONTACT DETAIL WARN]",
-          contactId,
-          error
-        );
-      }
-    }
-
-    const messages =
-      history
-        .filter(
-          message =>
-            String(
-              message?.conversation_id ||
-              ""
-            ) ===
-            String(
-              item.id
-            )
-        )
-        .sort(
-          (
-            a,
-            b
-          ) =>
-            new Date(
-              a?.created_at ||
-              0
-            ).getTime() -
-            new Date(
-              b?.created_at ||
-              0
-            ).getTime()
-        );
-
-    const latest =
-      messages[
-        messages.length - 1
-      ];
-
-    if (
-      latest?.text
-    ) {
-      item.preview =
-        latest.text;
-      item.updated_at =
-        latest.created_at ||
-        item.updated_at;
-    }
-
-    item.messages =
-      messages.slice(
-        -10
-      );
-
-    enriched.push(
-      item
-    );
-  }
-
-  const clearlyWhatsApp =
-    enriched.filter(
-      item =>
-        JSON.stringify(
-          item.raw || {}
-        )
-          .toLowerCase()
-          .includes(
-            "whatsapp"
-          )
-    );
-
-  return (
-    clearlyWhatsApp.length
-      ? clearlyWhatsApp
-      : enriched
-  );
-}
-
-async function getSuperchatConversation(
-  conversationId
-) {
-
-  const id =
-    String(
-      conversationId || ""
-    ).trim();
-
-  if (
-    !id
-  ) {
-    throw new Error(
-      "Keine Superchat Conversation ausgewählt."
-    );
-  }
-
-  const data =
-    await superchatRequest(
-      `/conversations/${encodeURIComponent(id)}`
-    );
-
-  const raw =
-    data?.data &&
-    !Array.isArray(data.data)
-      ? data.data
-      : (
-          data?.result &&
-          typeof data.result ===
-            "object"
-            ? data.result
-            : data
-        );
-
-  const conversation =
-    normalizeSuperchatConversation(
-      raw
-    );
-
-  const contactId =
-    conversation.contact_id ||
-    extractSuperchatContactId(
-      raw
-    );
-
-  if (
-    contactId
-  ) {
-    conversation.contact_id =
-      contactId;
-
-    try {
-      const contact =
-        await getSuperchatContactById(
-          contactId
-        );
-
-      const display =
-        superchatContactDisplay(
-          contact
-        );
-
-      if (
-        display.name
-      ) {
-        conversation.name =
-          display.name;
-      }
-
-      if (
-        display.handle
-      ) {
-        conversation.handle =
-          display.handle;
-
-        if (
-          !conversation.name ||
-          conversation.name ===
-            "WhatsApp-Kontakt"
-        ) {
-          conversation.name =
-            display.handle;
-        }
-      }
-    } catch (
-      error
-    ) {
-      console.warn(
-        "[SUPERCHAT CONTACT DETAIL WARN]",
-        contactId,
-        error
-      );
-    }
-  }
-
-  const messages =
-    await getSuperchatHistoryForConversation(
-      id
-    );
-
-  conversation.messages =
-    messages;
-
-  const latest =
-    messages[
-      messages.length - 1
-    ];
-
-  if (
-    latest?.text
-  ) {
-    conversation.preview =
-      latest.text;
-    conversation.updated_at =
-      latest.created_at ||
-      conversation.updated_at;
-  }
-
-  return conversation;
-}
-
-async function createSuperchatReplyDraft(
-  conversationId,
-  instruction
-) {
-
-  const conversation =
-    await getSuperchatConversation(
-      conversationId
-    );
-
-  const cleanInstruction =
-    String(
-      instruction || ""
-    ).trim();
-
-  if (
-    !cleanInstruction
-  ) {
-    throw new Error(
-      "Anweisung für die WhatsApp-Antwort fehlt."
-    );
-  }
-
-  const response =
-    await fetch(
-      "https://api.openai.com/v1/responses",
-      {
-        method:
-          "POST",
-        headers: {
-          Authorization:
-            `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type":
-            "application/json"
-        },
-        body:
-          JSON.stringify({
-            model:
-              process.env
-                .OPENAI_TEXT_MODEL ||
-              "gpt-5.6-terra",
-            instructions:
-              "Formuliere eine kurze, professionelle und natürliche deutsche WhatsApp-Antwort für Druckelite24. Keine erfundenen Preise, Liefertermine oder Zusagen. Antworte ausschließlich als gültiges JSON mit dem Feld text.",
-            input:
-              `Kontakt: ${conversation.name}\nChatverlauf:\n${(conversation.messages || []).slice(-10).map(message => `${message.direction || "message"}: ${message.text}`).join("\n") || conversation.preview}\nAnweisung von Mattl: ${cleanInstruction}`,
-            reasoning: {
-              effort:
-                "low"
-            },
-            text: {
-              format: {
-                type:
-                  "json_schema",
-                name:
-                  "whatsapp_reply",
-                strict:
-                  true,
-                schema: {
-                  type:
-                    "object",
-                  properties: {
-                    text: {
-                      type:
-                        "string"
-                    }
-                  },
-                  required: [
-                    "text"
-                  ],
-                  additionalProperties:
-                    false
-                }
-              }
-            },
-            store:
-              false
-          }),
-        signal:
-          timeoutSignal(
-            30000
-          )
-      }
-    );
-
-  const data =
-    await response.json();
-
-  if (
-    !response.ok
-  ) {
-    throw new Error(
-      data?.error?.message ||
-      "WhatsApp-Entwurf konnte nicht erstellt werden."
-    );
-  }
-
-  const parsed =
-    JSON.parse(
-      extractResponseText(
-        data
-      )
-    );
-
-  const text =
-    String(
-      parsed?.text ||
-      ""
-    ).trim();
-
-  if (
-    !text
-  ) {
-    throw new Error(
-      "WhatsApp-Entwurf ist leer."
-    );
-  }
-
-  lastSuperchatDraft = {
-    conversation_id:
-      conversation.id,
-    contact_id:
-      conversation.contact_id,
-    channel_id:
-      conversation.channel_id,
-    contact_name:
-      conversation.name,
-    text,
-    created_at:
-      new Date()
-        .toISOString()
-  };
-
-  return {
-    ...lastSuperchatDraft,
-    sent:
-      false
-  };
-}
-
-async function sendSuperchatDraft(
-  confirmationText
-) {
-
-  const confirmation =
-    normalize(
-      confirmationText
-    );
-
-  if (
-    !/\b(senden|abschicken|versenden)\b/i.test(
-      confirmation
-    )
-  ) {
-    throw new Error(
-      "WhatsApp darf nur nach ausdrücklichem Sende-Befehl gesendet werden."
-    );
-  }
-
-  if (
-    !lastSuperchatDraft
-  ) {
-    throw new Error(
-      "Kein WhatsApp-Entwurf zum Senden vorhanden."
-    );
-  }
-
-  const channelId =
-    lastSuperchatDraft
-      .channel_id ||
-    await getSuperchatWhatsAppChannelId();
-
-  const contactId =
-    String(
-      lastSuperchatDraft
-        .contact_id ||
-      ""
-    ).trim();
-
-  if (
-    !contactId
-  ) {
-    throw new Error(
-      "Superchat Kontakt-ID fehlt. Bitte Chat neu auswählen."
-    );
-  }
-
-  const data =
-    await superchatRequest(
-      "/messages",
-      {
-        method:
-          "POST",
-        body:
-          JSON.stringify({
-            to: [
-              {
-                identifier:
-                  contactId
-              }
-            ],
-            from: {
-              channel_id:
-                channelId
-            },
-            content: {
-              type:
-                "text",
-              text:
-                lastSuperchatDraft
-                  .text
-            }
-          })
-      }
-    );
-
-  const sent =
-    {
-      sent:
-        true,
-      conversation_id:
-        lastSuperchatDraft
-          .conversation_id,
-      contact_name:
-        lastSuperchatDraft
-          .contact_name,
-      text:
-        lastSuperchatDraft
-          .text,
-      superchat_response:
-        data
-    };
-
-  lastSuperchatDraft =
-    null;
-
-  return sent;
-}
-
-
-/* Dashboard: letzte 5 Chats */
-
-
-/* =========================================================
-   SUPERCHAT WEBHOOK · INBOUND MESSAGES
-   Superchat liefert eingehende Nachrichten über Webhooks.
-   ========================================================= */
-
-app.post(
-  "/api/superchat-webhook",
-  async (
-    req,
-    res
-  ) => {
-
-    try {
-
-      const message =
-        extractSuperchatWebhookMessage(
-          req.body
-        );
-
-      if (
-        !message
-      ) {
-        return res.json({
-          ok:
-            true,
-          stored:
-            false
-        });
-      }
-
-      const history =
-        await readSuperchatMessageHistory();
-
-      const exists =
-        history.some(
-          item =>
-            String(
-              item?.id ||
-              ""
-            ) ===
-            String(
-              message.id
-            )
-        );
-
-      if (
-        !exists
-      ) {
-        history.push(
-          message
-        );
-
-        await writeSuperchatMessageHistory(
-          history
-        );
-      }
-
-      return res.json({
-        ok:
-          true,
-        stored:
-          !exists
-      });
-
-    } catch (
-      error
-    ) {
-
-      console.error(
-        "[SUPERCHAT WEBHOOK ERROR]",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          ok:
-            false
-        });
-    }
-  }
-);
-
-
-app.get(
-  "/api/superchat-conversations",
-  async (
-    req,
-    res
-  ) => {
-
-    try {
-      const conversations =
-        await getSuperchatConversations(
-          20
-        );
-
-      return res.json({
-        ok:
-          true,
-        configured:
-          isSuperchatConfigured(),
-        count:
-          conversations.length,
-        conversations:
-          conversations.slice(
-            0,
-            5
-          )
-      });
-
-    } catch (
-      error
-    ) {
-      console.error(
-        "[SUPERCHAT CONVERSATIONS ERROR]",
-        error
-      );
-
-      return res
-        .status(500)
-        .json({
-          ok:
-            false,
-          error:
-            error.message ||
-            "Superchat-Chats konnten nicht geladen werden."
-        });
-    }
-  }
-);
-
-
-app.get(
-  "/api/superchat-conversation/:id",
-  async (
-    req,
-    res
-  ) => {
-
-    try {
-      const conversation =
-        await getSuperchatConversation(
-          req.params.id
-        );
-
-      return res.json({
-        ok:
-          true,
-        conversation
-      });
-
-    } catch (
-      error
-    ) {
-      return res
-        .status(500)
-        .json({
-          ok:
-            false,
-          error:
-            error.message ||
-            "Superchat-Chat konnte nicht geladen werden."
-        });
-    }
-  }
-);
-
-/* =========================================================
-   GMAIL
-   ========================================================= */
-
-let gmailTokenCache = {
-
-  token:
-    null,
-
-  expiresAt:
-    0
-};
-
-
-function isGmailConfigured() {
-
-  return Boolean(
-
-    process.env
-      .GOOGLE_CLIENT_ID &&
-
-    process.env
-      .GOOGLE_CLIENT_SECRET &&
-
-    process.env
-      .GOOGLE_REFRESH_TOKEN
-  );
-}
-
-
-async function getGmailAccessToken() {
-
-  if (
-    gmailTokenCache.token &&
-    Date.now() <
-      gmailTokenCache.expiresAt -
-        5 * 60 * 1000
-  ) {
-
-    return gmailTokenCache.token;
-  }
-
-
-  if (
-    !isGmailConfigured()
-  ) {
-
-    throw new Error(
-      "Gmail ist nicht konfiguriert."
-    );
-  }
-
-
-  const params =
-    new URLSearchParams({
-
-      client_id:
-        process.env
-          .GOOGLE_CLIENT_ID,
-
-      client_secret:
-        process.env
-          .GOOGLE_CLIENT_SECRET,
-
-      refresh_token:
-        process.env
-          .GOOGLE_REFRESH_TOKEN,
-
-      grant_type:
-        "refresh_token"
-    });
-
-
-  const response =
-    await fetch(
-      "https://oauth2.googleapis.com/token",
-      {
-
-        method:
-          "POST",
-
-        headers: {
-
-          "Content-Type":
-            "application/x-www-form-urlencoded"
-        },
-
-        body:
-          params,
-
-        signal:
-          timeoutSignal(
-            10000
-          )
-      }
+function renderInboxEmails(emails) {
+
+  const list =
+    document.getElementById(
+      "inboxList"
     );
 
 
-  const data =
-    await response.json();
-
-
-  if (
-    !response.ok ||
-    !data.access_token
-  ) {
-
-    throw new Error(
-      "Gmail-Anmeldung fehlgeschlagen."
-    );
-  }
-
-
-  gmailTokenCache = {
-
-    token:
-      data.access_token,
-
-    expiresAt:
-      Date.now() +
-      Number(
-        data.expires_in ||
-        3600
-      ) *
-        1000
-  };
-
-
-  return data.access_token;
-}
-
-
-function looksLikeOffer(
-  email
-) {
-
-  const text =
-    normalize(
-      `${email.subject} ${email.snippet}`
-    );
-
-
-  return [
-
-    "angebot",
-    "anfrage",
-    "preisanfrage",
-    "kostenvoranschlag",
-    "was kostet",
-    "wie viel kostet",
-    "wieviel kostet",
-    "angebot anfordern"
-
-  ].some(
-    word =>
-      text.includes(
-        word
-      )
-  );
-}
-
-
-
-let lastCreatedGmailDraftId =
-  null;
-
-
-let bearbeitetLabelCache = {
-  id: null,
-  at: 0
-};
-
-const advertisingCheckedEmailIds =
-  new Set();
-
-
-async function getBearbeitetLabelId() {
-
-  const now =
-    Date.now();
-
-
-  if (
-    bearbeitetLabelCache.id &&
-    now - bearbeitetLabelCache.at < 10 * 60 * 1000
-  ) {
-    return bearbeitetLabelCache.id;
-  }
-
-
-  const token =
-    await getGmailAccessToken();
-
-
-  const listResponse =
-    await fetch(
-      "https://gmail.googleapis.com/gmail/v1/users/me/labels",
-      {
-        headers: {
-          Authorization:
-            `Bearer ${token}`
-        },
-        signal:
-          timeoutSignal(10000)
-      }
-    );
-
-
-  const listData =
-    await listResponse.json();
-
-
-  if (!listResponse.ok) {
-    throw new Error(
-      listData?.error?.message ||
-      "Gmail-Labels konnten nicht geladen werden."
-    );
-  }
-
-
-  let label =
-    (listData.labels || []).find(
-      item =>
-        String(item?.name || "")
-          .trim()
-          .toLowerCase() ===
-        "bearbeitet"
-    );
-
-
-  if (!label) {
-
-    const createResponse =
-      await fetch(
-        "https://gmail.googleapis.com/gmail/v1/users/me/labels",
-        {
-          method:
-            "POST",
-          headers: {
-            Authorization:
-              `Bearer ${token}`,
-            "Content-Type":
-              "application/json"
-          },
-          body:
-            JSON.stringify({
-              name:
-                "Bearbeitet",
-              labelListVisibility:
-                "labelShow",
-              messageListVisibility:
-                "show"
-            }),
-          signal:
-            timeoutSignal(10000)
-        }
-      );
-
-
-    const createData =
-      await createResponse.json();
-
-
-    if (!createResponse.ok) {
-      throw new Error(
-        createData?.error?.message ||
-        "Gmail-Label Bearbeitet konnte nicht erstellt werden."
-      );
-    }
-
-
-    label =
-      createData;
-  }
-
-
-  bearbeitetLabelCache = {
-    id:
-      label.id,
-    at:
-      now
-  };
-
-
-  return label.id;
-}
-
-
-async function moveGmailMessageToBearbeitet(messageId) {
-
-  const id =
-    String(messageId || "")
-      .trim();
-
-
-  if (!id) {
-    throw new Error(
-      "Keine E-Mail zum Verschieben ausgewählt."
-    );
-  }
-
-
-  const token =
-    await getGmailAccessToken();
-
-
-  const labelId =
-    await getBearbeitetLabelId();
-
-
-  const response =
-    await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}/modify`,
-      {
-        method:
-          "POST",
-        headers: {
-          Authorization:
-            `Bearer ${token}`,
-          "Content-Type":
-            "application/json"
-        },
-        body:
-          JSON.stringify({
-            addLabelIds: [
-              labelId
-            ],
-            removeLabelIds: [
-              "INBOX"
-            ]
-          }),
-        signal:
-          timeoutSignal(12000)
-      }
-    );
-
-
-  const data =
-    await response.json();
-
-
-  if (!response.ok) {
-    throw new Error(
-      data?.error?.message ||
-      "E-Mail konnte nicht nach Bearbeitet verschoben werden."
-    );
-  }
-
-
-  return {
-    moved:
-      true,
-    message_id:
-      id,
-    label:
-      "Bearbeitet"
-  };
-}
-
-
-function getAdvertisingHeader(headers, name) {
-
-  return (
-    headers || []
-  ).find(
-    header =>
-      String(header?.name || "")
-        .toLowerCase() ===
-      String(name || "")
-        .toLowerCase()
-  )?.value || "";
-}
-
-
-function classifyObviousAdvertising(email) {
-
-  const subject =
-    normalize(email.subject || "");
-
-  const from =
-    normalize(email.from || "");
-
-  const snippet =
-    normalize(email.snippet || "");
-
-  const combined =
-    `${subject} ${from} ${snippet}`;
-
-
-  const protectedSignals = [
-    "bestellung",
-    "bestellbestatigung",
-    "auftragsbestatigung",
-    "auftrag",
-    "rechnung",
-    "invoice",
-    "zahlung",
-    "payment",
-    "versand",
-    "sendungsverfolgung",
-    "tracking",
-    "lieferung",
-    "retoure",
-    "reklamation",
-    "kundenanfrage",
-    "anfrage",
-    "preisanfrage",
-    "kostenvoranschlag",
-    "angebot anfordern",
-    "passwort",
-    "password",
-    "sicherheitswarnung",
-    "security alert",
-    "verifizierung",
-    "verification",
-    "login",
-    "konto",
-    "account",
-    "shopify",
-    "paypal",
-    "klarna",
-    "billie",
-    "dhl"
-  ];
-
-
-  if (
-    protectedSignals.some(
-      signal =>
-        combined.includes(signal)
-    )
-  ) {
-    return {
-      advertising:
-        false,
-      score:
-        0,
-      reason:
-        "geschuetztes Geschaefts-Signal"
-    };
-  }
-
-
-  let score =
-    0;
-
-  const reasons =
-    [];
-
-
-  if (email.listUnsubscribe) {
-    score += 3;
-    reasons.push(
-      "List-Unsubscribe"
-    );
-  }
-
-
-  if (email.listId) {
-    score += 2;
-    reasons.push(
-      "List-ID"
-    );
-  }
-
-
-  if (
-    /\b(bulk|list)\b/i.test(
-      email.precedence || ""
-    )
-  ) {
-    score += 2;
-    reasons.push(
-      "Bulk/List"
-    );
-  }
-
-
-  const strongMarketingSignals = [
-    "newsletter",
-    "unsubscribe",
-    "abbestellen",
-    "sale",
-    "rabatt",
-    "gutschein",
-    "jetzt sparen",
-    "nur heute",
-    "black friday",
-    "summer sale",
-    "special offer",
-    "exklusiver deal",
-    "deal der woche",
-    "prozent sparen",
-    "% sparen",
-    "% rabatt"
-  ];
-
-
-  const marketingHits =
-    strongMarketingSignals.filter(
-      signal =>
-        combined.includes(signal)
-    );
-
-
-  if (marketingHits.length) {
-    score += Math.min(
-      3,
-      marketingHits.length * 2
-    );
-    reasons.push(
-      ...marketingHits.slice(0, 2)
-    );
-  }
-
-
-  const advertising =
-    score >= 5;
-
-
-  return {
-    advertising,
-    score,
-    reason:
-      reasons.join(", ") ||
-      "keine eindeutigen Werbe-Signale"
-  };
-}
-
-
-async function autoMoveObviousAdvertising() {
-
-  const token =
-    await getGmailAccessToken();
-
-
-  const listResponse =
-    await fetch(
-      "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in%3Ainbox%20is%3Aunread&maxResults=10",
-      {
-        headers: {
-          Authorization:
-            `Bearer ${token}`
-        },
-        signal:
-          timeoutSignal(10000)
-      }
-    );
-
-
-  const listData =
-    await listResponse.json();
-
-
-  if (!listResponse.ok) {
-    throw new Error(
-      "Werbe-Mail-Prüfung konnte den Posteingang nicht lesen."
-    );
-  }
-
-
-  const moved =
-    [];
-
-
-  for (
-    const ref of
-    listData.messages || []
-  ) {
-
-    if (
-      advertisingCheckedEmailIds.has(
-        ref.id
-      )
-    ) {
-      continue;
-    }
-
-
-    advertisingCheckedEmailIds.add(
-      ref.id
-    );
-
-
-    try {
-
-      const response =
-        await fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${ref.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=List-Unsubscribe&metadataHeaders=List-Id&metadataHeaders=Precedence`,
-          {
-            headers: {
-              Authorization:
-                `Bearer ${token}`
-            },
-            signal:
-              timeoutSignal(10000)
-          }
-        );
-
-
-      const data =
-        await response.json();
-
-
-      if (!response.ok) {
-        continue;
-      }
-
-
-      const headers =
-        data.payload?.headers || [];
-
-
-      const email = {
-        id:
-          ref.id,
-        subject:
-          getAdvertisingHeader(
-            headers,
-            "Subject"
-          ) || "(kein Betreff)",
-        from:
-          getAdvertisingHeader(
-            headers,
-            "From"
-          ) || "unbekannt",
-        snippet:
-          data.snippet || "",
-        listUnsubscribe:
-          getAdvertisingHeader(
-            headers,
-            "List-Unsubscribe"
-          ),
-        listId:
-          getAdvertisingHeader(
-            headers,
-            "List-Id"
-          ),
-        precedence:
-          getAdvertisingHeader(
-            headers,
-            "Precedence"
-          )
-      };
-
-
-      const classification =
-        classifyObviousAdvertising(
-          email
-        );
-
-
-      if (
-        !classification.advertising
-      ) {
-        continue;
-      }
-
-
-      await moveGmailMessageToBearbeitet(
-        email.id
-      );
-
-
-      moved.push({
-        id:
-          email.id,
-        from:
-          email.from,
-        subject:
-          email.subject,
-        score:
-          classification.score,
-        reason:
-          classification.reason
-      });
-
-
-      console.log(
-        "[GMAIL AUTO-WERBUNG] → Bearbeitet:",
-        email.subject,
-        classification.reason
-      );
-
-    } catch (error) {
-
-      console.warn(
-        "[GMAIL AUTO-WERBUNG ERROR]",
-        ref.id,
-        error
-      );
-    }
-  }
-
-
-  return moved;
-}
-
-
-async function getUnreadEmails() {
-
-  const token =
-    await getGmailAccessToken();
-
-
-  const listResponse =
-    await fetch(
-      "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in%3Ainbox%20is%3Aunread&maxResults=10",
-      {
-
-        headers: {
-
-          Authorization:
-            `Bearer ${token}`
-        },
-
-        signal:
-          timeoutSignal(
-            10000
-          )
-      }
-    );
-
-
-  const listData =
-    await listResponse.json();
-
-
-  if (
-    !listResponse.ok
-  ) {
-
-    throw new Error(
-      "E-Mails konnten nicht gelesen werden."
-    );
-  }
-
-
-  const refs =
-    listData.messages ||
-    [];
-
-
-  const emails =
-    [];
-
-
-  for (
-    const ref of
-    refs
-  ) {
-
-    try {
-
-      const response =
-        await fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${ref.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
-          {
-
-            headers: {
-
-              Authorization:
-                `Bearer ${token}`
-            },
-
-            signal:
-              timeoutSignal(
-                10000
-              )
-          }
-        );
-
-
-      const data =
-        await response.json();
-
-
-      if (
-        !response.ok
-      ) {
-
-        continue;
-      }
-
-
-      const headers =
-        data.payload
-          ?.headers ||
-        [];
-
-
-      const email = {
-
-        id:
-          ref.id,
-
-        subject:
-          headers.find(
-            header =>
-              header.name ===
-              "Subject"
-          )?.value ||
-          "(kein Betreff)",
-
-        from:
-          headers.find(
-            header =>
-              header.name ===
-              "From"
-          )?.value ||
-          "unbekannt",
-
-        snippet:
-          data.snippet ||
-          ""
-      };
-
-
-      email.possible_offer_inquiry =
-        looksLikeOffer(
-          email
-        );
-
-
-      emails.push(
-        email
-      );
-
-
-    } catch (
-      error
-    ) {
-
-      console.warn(
-        "[GMAIL SINGLE ERROR]",
-        error
-      );
-    }
-  }
-
-
-  return emails;
-}
-
-
-/* =========================================================
-   GMAIL · LETZTE 5 IM POSTEINGANG
-   Gelesen + ungelesen, aber nur Nachrichten, die aktuell noch
-   im Gmail-Posteingang liegen.
-   ========================================================= */
-
-async function getLatestInboxEmails() {
-
-  const token =
-    await getGmailAccessToken();
-
-
-  const listResponse =
-    await fetch(
-      "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in%3Ainbox&maxResults=5",
-      {
-        headers: {
-          Authorization:
-            `Bearer ${token}`
-        },
-        signal:
-          timeoutSignal(
-            10000
-          )
-      }
-    );
-
-
-  const listData =
-    await listResponse.json();
-
-
-  if (!listResponse.ok) {
-    throw new Error(
-      "Posteingang konnte nicht gelesen werden."
-    );
-  }
-
-
-  const emails = [];
-
-
-  for (
-    const ref of
-    listData.messages || []
-  ) {
-
-    try {
-
-      const response =
-        await fetch(
-          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${ref.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
-          {
-            headers: {
-              Authorization:
-                `Bearer ${token}`
-            },
-            signal:
-              timeoutSignal(
-                10000
-              )
-          }
-        );
-
-
-      const data =
-        await response.json();
-
-
-      if (!response.ok) {
-        continue;
-      }
-
-
-      const headers =
-        data.payload?.headers || [];
-
-
-      const getHeader =
-        name =>
-          headers.find(
-            header =>
-              String(header.name || "")
-                .toLowerCase() ===
-              String(name || "")
-                .toLowerCase()
-          )?.value || "";
-
-
-      emails.push({
-        id:
-          ref.id,
-        threadId:
-          data.threadId || null,
-        from:
-          getHeader("From") ||
-          "unbekannt",
-        subject:
-          getHeader("Subject") ||
-          "(kein Betreff)",
-        date:
-          getHeader("Date") ||
-          null,
-        internalDate:
-          data.internalDate ||
-          null,
-        snippet:
-          data.snippet ||
-          "",
-        unread:
-          Array.isArray(data.labelIds) &&
-          data.labelIds.includes("UNREAD")
-      });
-
-    } catch (error) {
-      console.warn(
-        "[GMAIL INBOX SINGLE ERROR]",
-        error
-      );
-    }
-  }
-
-
-  return emails;
-}
-
-
-/* =========================================================
-   GMAIL · MAIL-KONTEXT / VOLLANSICHT / ANTWORTEN
-   ========================================================= */
-
-function decodeGmailBase64Url(value) {
-
-  if (!value) {
-    return "";
-  }
-
-
-  const normalized =
-    String(value)
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
-
-
-  const padding =
-    "=".repeat(
-      (4 - normalized.length % 4) % 4
-    );
-
-
-  return Buffer
-    .from(
-      normalized + padding,
-      "base64"
-    )
-    .toString("utf8");
-}
-
-
-function encodeGmailBase64Url(value) {
-
-  return Buffer
-    .from(
-      String(value || ""),
-      "utf8"
-    )
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-}
-
-
-function stripHtmlToText(value) {
-
-  return String(value || "")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/p>/gi, "\n")
-    .replace(/<\/div>/gi, "\n")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/[ \t]{2,}/g, " ")
-    .trim();
-}
-
-
-function getGmailHeader(headers, name) {
-
-  return (
-    headers || []
-  ).find(
-    header =>
-      String(header?.name || "")
-        .toLowerCase() ===
-      String(name || "")
-        .toLowerCase()
-  )?.value || "";
-}
-
-
-function collectGmailBodies(part, result) {
-
-  if (!part) {
+  if (!list) {
     return;
   }
 
 
-  const mimeType =
-    String(part.mimeType || "")
-      .toLowerCase();
+  const items =
+    Array.isArray(emails)
+      ? emails.slice(0, 5)
+      : [];
 
 
-  const data =
-    part.body?.data;
+  if (!items.length) {
+    list.innerHTML =
+      `<div class="email-row">
+        <div class="avatar">✓</div>
+        <div class="email-sender">Gmail</div>
+        <div class="email-copy">
+          <div class="email-subject">Posteingang leer</div>
+          <div class="email-snippet">Aktuell liegen keine Nachrichten im Posteingang.</div>
+        </div>
+        <div class="email-time">—</div>
+      </div>`;
+    return;
+  }
 
 
-  if (data) {
+  list.innerHTML =
+    items.map(
+      email => {
 
-    const decoded =
-      decodeGmailBase64Url(data);
+        const sender =
+          getSenderDisplayName(
+            email.from
+          );
+
+
+        const subject =
+          String(
+            email.subject ||
+            "(kein Betreff)"
+          );
+
+
+        const snippet =
+          String(
+            email.snippet ||
+            ""
+          );
+
+
+        const unreadMark =
+          email.unread
+            ? "● "
+            : "";
+
+
+        return `
+          <div class="email-row" data-mail-id="${escapeHtml(email.id || "")}">
+            <div class="avatar">${escapeHtml(getSenderInitials(sender))}</div>
+            <div class="email-sender">${escapeHtml(sender)}</div>
+            <div class="email-copy">
+              <div class="email-subject">${unreadMark}${escapeHtml(subject)}</div>
+              <div class="email-snippet">${escapeHtml(snippet)}</div>
+            </div>
+            <div class="email-time">${escapeHtml(formatInboxTime(email))}</div>
+          </div>`;
+      }
+    ).join("");
+
+  list.querySelectorAll(
+    "[data-mail-id]"
+  ).forEach(
+    row => {
+      row.setAttribute(
+        "role",
+        "button"
+      );
+
+      row.setAttribute(
+        "tabindex",
+        "0"
+      );
+
+      row.title =
+        "Mail öffnen";
+    }
+  );
+}
+
+
+
+function setWhatsAppStatus(
+  text,
+  state = ""
+) {
+
+  const el =
+    document.querySelector(
+      ".modern-whatsapp .wa-state"
+    );
+
+  if (
+    !el
+  ) {
+    return;
+  }
+
+  el.textContent =
+    text;
+
+  el.dataset.state =
+    state;
+}
+
+
+function getWhatsAppListElement() {
+
+  return (
+    document.querySelector(
+      ".wa-modern-list"
+    ) ||
+    document.querySelector(
+      ".modern-whatsapp .modern-message-list"
+    ) ||
+    document.querySelector(
+      ".whatsapp-list"
+    )
+  );
+}
+
+
+function formatWhatsAppTime(
+  value
+) {
+
+  if (
+    !value
+  ) {
+    return "—";
+  }
+
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "—";
+  }
+
+  return new Intl.DateTimeFormat(
+    "de-DE",
+    {
+      timeZone:
+        "Europe/Berlin",
+      hour:
+        "2-digit",
+      minute:
+        "2-digit"
+    }
+  ).format(date);
+}
+
+
+function renderWhatsAppConversations(
+  conversations
+) {
+
+  const list =
+    getWhatsAppListElement();
+
+  if (
+    !list
+  ) {
+    return;
+  }
+
+  const items =
+    Array.isArray(
+      conversations
+    )
+      ? conversations.slice(
+          0,
+          5
+        )
+      : [];
+
+  if (
+    !items.length
+  ) {
+    list.innerHTML =
+      `<div class="message-row modern-message-row">
+        <div class="sender-avatar wa-avatar">WA</div>
+        <div class="msg-copy"><b>Keine Chats geladen</b><span>Superchat liefert aktuell keine Konversationen.</span></div>
+        <time>—</time>
+      </div>`;
+
+    return;
+  }
+
+  list.innerHTML =
+    items.map(
+      (
+        item,
+        index
+      ) => {
+
+        const displayName =
+          item.name &&
+          item.name !==
+            "WhatsApp-Kontakt"
+            ? item.name
+            : (
+                item.handle ||
+                "WhatsApp-Kontakt"
+              );
+
+        const name =
+          escapeHtml(
+            displayName
+          );
+
+        const preview =
+          escapeHtml(
+            item.preview &&
+            item.preview !==
+              "Chat öffnen"
+              ? item.preview
+              : "Chat auswählen"
+          );
+
+        const id =
+          escapeHtml(
+            item.id ||
+            ""
+          );
+
+        return `
+          <div class="message-row modern-message-row" data-wa-conversation-id="${id}" role="button" tabindex="0">
+            <div class="sender-avatar wa-avatar">${String(index + 1).padStart(2, "0")}</div>
+            <div class="msg-copy"><b>${name}</b><span>${preview}</span></div>
+            <time>${escapeHtml(formatWhatsAppTime(item.updated_at))}</time>
+          </div>`;
+      }
+    ).join("");
+
+  list.querySelectorAll(
+    "[data-wa-conversation-id]"
+  ).forEach(
+    row => {
+
+      const select =
+        async () => {
+
+          const id =
+            row.dataset
+              .waConversationId;
+
+          if (
+            !id
+          ) {
+            return;
+          }
+
+          currentSelectedWhatsAppConversationId =
+            id;
+
+          list.querySelectorAll(
+            "[data-wa-conversation-id]"
+          ).forEach(
+            item =>
+              item.classList.toggle(
+                "selected",
+                item === row
+              )
+          );
+
+          try {
+            const response =
+              await fetch(
+                `/api/superchat-conversation/${encodeURIComponent(id)}`,
+                {
+                  cache:
+                    "no-store"
+                }
+              );
+
+            const data =
+              await response.json();
+
+            if (
+              response.ok &&
+              data?.ok
+            ) {
+              currentSelectedWhatsAppConversation =
+                data.conversation;
+
+              setLog(
+                `WhatsApp: ${data.conversation?.name || "Chat"} ausgewählt.`
+              );
+            }
+          } catch (
+            error
+          ) {
+            console.warn(
+              "WhatsApp-Chat konnte nicht geöffnet werden:",
+              error
+            );
+          }
+        };
+
+      row.addEventListener(
+        "click",
+        select
+      );
+
+      row.addEventListener(
+        "keydown",
+        event => {
+          if (
+            event.key ===
+              "Enter" ||
+            event.key ===
+              " "
+          ) {
+            event.preventDefault();
+            select();
+          }
+        }
+      );
+    }
+  );
+}
+
+
+async function loadWhatsAppDashboard() {
+
+  const list =
+    getWhatsAppListElement();
+
+  if (
+    !list
+  ) {
+    return;
+  }
+
+  try {
+    const response =
+      await fetch(
+        "/api/superchat-conversations",
+        {
+          cache:
+            "no-store"
+        }
+      );
+
+    const data =
+      await response.json();
+
+    if (
+      !response.ok ||
+      !data?.ok
+    ) {
+      throw new Error(
+        data?.error ||
+        "Superchat konnte nicht geladen werden."
+      );
+    }
+
+    renderWhatsAppConversations(
+      data.conversations
+    );
+
+    setWhatsAppStatus(
+      Array.isArray(data.conversations) &&
+      data.conversations.length
+        ? "● LIVE"
+        : "● VERBUNDEN · 0 CHATS",
+      "ok"
+    );
+
+  } catch (
+    error
+  ) {
+    console.warn(
+      "Superchat Dashboard Fehler:",
+      error
+    );
+
+    setWhatsAppStatus(
+      "● FEHLER",
+      "error"
+    );
+
+    const list =
+      getWhatsAppListElement();
+
+    if (
+      list
+    ) {
+      list.innerHTML =
+        `<div class="message-row modern-message-row superchat-error-row">
+          <div class="sender-avatar wa-avatar">!</div>
+          <div class="msg-copy">
+            <b>Superchat nicht geladen</b>
+            <span>${escapeHtml(error?.message || "Unbekannter Fehler")}</span>
+          </div>
+          <time>—</time>
+        </div>`;
+    }
+  }
+}
+
+
+async function loadInboxDashboard() {
+
+  const list =
+    document.getElementById(
+      "inboxList"
+    );
+
+
+  if (!list) {
+    return;
+  }
+
+
+  try {
+
+    const response =
+      await fetch(
+        "/api/gmail-inbox",
+        {
+          method:
+            "GET",
+          cache:
+            "no-store"
+        }
+      );
+
+
+    const data =
+      await response.json();
 
 
     if (
-      mimeType === "text/plain"
+      !response.ok ||
+      !data?.ok
     ) {
-      result.plain.push(decoded);
-    }
-    else if (
-      mimeType === "text/html"
-    ) {
-      result.html.push(decoded);
-    }
-  }
-
-
-  for (
-    const child of
-    part.parts || []
-  ) {
-    collectGmailBodies(
-      child,
-      result
-    );
-  }
-}
-
-
-async function getGmailMessageById(messageId) {
-
-  const id =
-    String(messageId || "")
-      .trim();
-
-
-  if (!id) {
-    throw new Error(
-      "Keine Gmail-Message-ID angegeben."
-    );
-  }
-
-
-  const token =
-    await getGmailAccessToken();
-
-
-  const response =
-    await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}?format=full`,
-      {
-        headers: {
-          Authorization:
-            `Bearer ${token}`
-        },
-        signal:
-          timeoutSignal(
-            15000
-          )
-      }
-    );
-
-
-  const data =
-    await response.json();
-
-
-  if (!response.ok) {
-    throw new Error(
-      data?.error?.message ||
-      "E-Mail konnte nicht gelesen werden."
-    );
-  }
-
-
-  const headers =
-    data.payload?.headers || [];
-
-
-  const bodies = {
-    plain: [],
-    html: []
-  };
-
-
-  collectGmailBodies(
-    data.payload,
-    bodies
-  );
-
-
-  let body =
-    bodies.plain
-      .filter(Boolean)
-      .join("\n\n")
-      .trim();
-
-
-  if (!body) {
-    body =
-      stripHtmlToText(
-        bodies.html
-          .filter(Boolean)
-          .join("\n\n")
+      throw new Error(
+        data?.error ||
+        "Gmail konnte nicht geladen werden."
       );
+    }
+
+
+    renderInboxEmails(
+      data.emails
+    );
+
+  } catch (error) {
+
+    console.warn(
+      "Gmail Dashboard Fehler:",
+      error
+    );
+
+
+    list.innerHTML =
+      `<div class="email-row">
+        <div class="avatar">!</div>
+        <div class="email-sender">Gmail</div>
+        <div class="email-copy">
+          <div class="email-subject">Posteingang nicht verfügbar</div>
+          <div class="email-snippet">${escapeHtml(error.message || "Abruf fehlgeschlagen")}</div>
+        </div>
+        <div class="email-time">—</div>
+      </div>`;
   }
-
-
-  if (!body) {
-    body =
-      String(
-        data.snippet ||
-        ""
-      ).trim();
-  }
-
-
-  return {
-    id:
-      data.id,
-    threadId:
-      data.threadId ||
-      null,
-    labelIds:
-      data.labelIds ||
-      [],
-    unread:
-      Array.isArray(data.labelIds) &&
-      data.labelIds.includes("UNREAD"),
-    from:
-      getGmailHeader(
-        headers,
-        "From"
-      ) || "unbekannt",
-    replyTo:
-      getGmailHeader(
-        headers,
-        "Reply-To"
-      ) || "",
-    to:
-      getGmailHeader(
-        headers,
-        "To"
-      ) || "",
-    subject:
-      getGmailHeader(
-        headers,
-        "Subject"
-      ) || "(kein Betreff)",
-    date:
-      getGmailHeader(
-        headers,
-        "Date"
-      ) || null,
-    messageIdHeader:
-      getGmailHeader(
-        headers,
-        "Message-ID"
-      ) ||
-      getGmailHeader(
-        headers,
-        "Message-Id"
-      ) ||
-      "",
-    references:
-      getGmailHeader(
-        headers,
-        "References"
-      ) || "",
-    snippet:
-      data.snippet ||
-      "",
-    body:
-      body.slice(0, 30000)
-  };
 }
 
 
-async function findGmailMessage({
-  message_id = "",
-  sender_query = "",
-  search_query = "",
-  scope = "inbox"
-} = {}) {
+function startInboxDashboardRefresh() {
 
-  if (
-    String(message_id || "")
-      .trim()
-  ) {
-    return getGmailMessageById(
-      message_id
+  if (inboxRefreshTimer) {
+    clearInterval(
+      inboxRefreshTimer
     );
   }
 
 
-  const token =
-    await getGmailAccessToken();
+  loadInboxDashboard();
 
 
-  const queryParts = [];
-
-
-  if (
-    scope !== "all"
-  ) {
-    queryParts.push(
-      "in:inbox"
+  inboxRefreshTimer =
+    setInterval(
+      () => {
+        loadInboxDashboard();
+      },
+      5 * 1000
     );
-  }
-
-
-  const sender =
-    String(sender_query || "")
-      .trim();
-
-
-  if (sender) {
-    queryParts.push(
-      `from:${sender}`
-    );
-  }
-
-
-  const freeQuery =
-    String(search_query || "")
-      .trim();
-
-
-  if (freeQuery) {
-    queryParts.push(
-      freeQuery
-    );
-  }
-
-
-  const q =
-    queryParts.join(" ") ||
-    "in:inbox";
-
-
-  const listUrl =
-    new URL(
-      "https://gmail.googleapis.com/gmail/v1/users/me/messages"
-    );
-
-
-  listUrl.searchParams.set(
-    "q",
-    q
-  );
-
-
-  listUrl.searchParams.set(
-    "maxResults",
-    "1"
-  );
-
-
-  const response =
-    await fetch(
-      listUrl,
-      {
-        headers: {
-          Authorization:
-            `Bearer ${token}`
-        },
-        signal:
-          timeoutSignal(
-            12000
-          )
-      }
-    );
-
-
-  const data =
-    await response.json();
-
-
-  if (!response.ok) {
-    throw new Error(
-      data?.error?.message ||
-      "E-Mail-Suche fehlgeschlagen."
-    );
-  }
-
-
-  const id =
-    data.messages?.[0]?.id;
-
-
-  if (!id) {
-    throw new Error(
-      "Keine passende E-Mail gefunden."
-    );
-  }
-
-
-  return getGmailMessageById(id);
 }
 
 
-function extractEmailAddress(value) {
+/* =========================================================
+   PROACTIVE CHECK
+   ========================================================= */
 
-  const text =
-    String(value || "")
-      .trim();
+async function runProactiveCheck() {
+
+  if (
+    proactiveCheckInFlight ||
+    !active ||
+    greetingInProgress ||
+    assistantSpeaking ||
+    responseInProgress ||
+    userTurnInProgress ||
+    runningToolCalls.size > 0
+  ) {
+
+    return;
+  }
 
 
-  const angle =
-    text.match(/<([^>]+)>/);
+  proactiveCheckInFlight =
+    true;
 
 
-  return (
-    angle?.[1] ||
-    text
-  ).trim();
+  try {
+
+    const response =
+      await fetch(
+        "/api/jarvis-checkin",
+        {
+
+          method:
+            "POST",
+
+          headers: {
+
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            "{}"
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    if (
+      !response.ok ||
+      !data?.hasNotice ||
+      !data?.text
+    ) {
+      return;
+    }
+
+
+    deliverOrQueueProactiveNotice(
+      data.text
+    );
+
+  } catch (error) {
+
+    console.warn(
+      "Proactive Check Fehler:",
+      error
+    );
+
+  } finally {
+
+    proactiveCheckInFlight =
+      false;
+  }
 }
 
 
-function ensureReplySubject(subject) {
+/* =========================================================
+   REMINDER CHECK
+   ========================================================= */
 
-  const clean =
-    String(subject || "")
-      .trim();
-
+async function runReminderCheck() {
 
   if (
-    /^re:/i.test(clean)
+    !active ||
+    greetingInProgress ||
+    assistantSpeaking ||
+    responseInProgress ||
+    userTurnInProgress
   ) {
-    return clean;
+    return;
   }
 
 
-  return `Re: ${clean || "Ihre Nachricht"}`;
+  try {
+
+    const response =
+      await fetch(
+        "/api/jarvis-reminder-check",
+        {
+
+          method:
+            "POST",
+
+          headers: {
+
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            "{}"
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    if (
+      !response.ok ||
+      !data?.hasNotice ||
+      !data?.text
+    ) {
+      return;
+    }
+
+
+    deliverOrQueueProactiveNotice(
+      data.text
+    );
+
+  } catch (error) {
+
+    console.warn(
+      "Reminder Check Fehler:",
+      error
+    );
+  }
 }
 
 
-async function createGmailReplyDraft(
-  messageId,
-  instruction
-) {
+/* =========================================================
+   BACKGROUND TIMERS
+   ========================================================= */
 
-  const original =
-    await getGmailMessageById(
-      messageId
+function startBackgroundChecks() {
+
+  stopBackgroundChecks();
+
+
+  proactiveFirstCheckTimer =
+    setTimeout(
+      () => {
+
+        runProactiveCheck();
+
+      },
+      PROACTIVE_FIRST_CHECK_DELAY_MS
     );
 
 
-  const recipient =
-    extractEmailAddress(
-      original.replyTo ||
-      original.from
+  proactiveCheckTimer =
+    setInterval(
+      () => {
+
+        runProactiveCheck();
+
+      },
+      PROACTIVE_CHECK_INTERVAL_MS
     );
 
 
-  if (!recipient) {
-    throw new Error(
-      "Empfänger der Antwort konnte nicht ermittelt werden."
+  reminderCheckTimer =
+    setInterval(
+      () => {
+
+        runReminderCheck();
+
+      },
+      REMINDER_CHECK_INTERVAL_MS
     );
-  }
-
-
-  const response =
-    await fetch(
-      "https://api.openai.com/v1/responses",
-      {
-        method:
-          "POST",
-        headers: {
-          Authorization:
-            `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type":
-            "application/json"
-        },
-        body:
-          JSON.stringify({
-            model:
-              process.env
-                .OPENAI_TEXT_MODEL ||
-              "gpt-5.6-terra",
-            instructions:
-              `Formuliere eine professionelle, natürliche deutsche Antwort-E-Mail für Druckelite24.\n` +
-              `Antworte nur als gültiges JSON mit dem Feld body.\n` +
-              `Keine erfundenen Fakten, Preise, Zusagen oder Liefertermine.\n` +
-              `Wenn die Anweisung des Nutzers etwas nicht vorgibt, bleibe neutral und knapp.`,
-            input:
-              `Kundenmail:\nAbsender: ${original.from}\nBetreff: ${original.subject}\nInhalt:\n${original.body}\n\n` +
-              `Anweisung von Mattl:\n${String(instruction || "Bitte professionell antworten.")}`,
-            reasoning: {
-              effort:
-                "low"
-            },
-            text: {
-              format: {
-                type:
-                  "json_schema",
-                name:
-                  "gmail_reply_draft",
-                strict:
-                  true,
-                schema: {
-                  type:
-                    "object",
-                  properties: {
-                    body: {
-                      type:
-                        "string"
-                    }
-                  },
-                  required: [
-                    "body"
-                  ],
-                  additionalProperties:
-                    false
-                }
-              }
-            },
-            store:
-              false
-          }),
-        signal:
-          timeoutSignal(
-            30000
-          )
-      }
-    );
-
-
-  const aiData =
-    await response.json();
-
-
-  if (!response.ok) {
-    throw new Error(
-      aiData?.error?.message ||
-      "Antwortentwurf konnte nicht erstellt werden."
-    );
-  }
-
-
-  const parsed =
-    JSON.parse(
-      extractResponseText(
-        aiData
-      )
-    );
-
-
-  const subject =
-    ensureReplySubject(
-      original.subject
-    );
-
-
-  const replyBody =
-    String(parsed.body || "")
-      .trim();
-
-
-  const headers = [
-    `To: ${recipient}`,
-    `Subject: ${subject}`,
-    "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: 8bit"
-  ];
-
-
-  if (
-    original.messageIdHeader
-  ) {
-    headers.push(
-      `In-Reply-To: ${original.messageIdHeader}`
-    );
-
-
-    const references =
-      `${original.references || ""} ${original.messageIdHeader}`
-        .trim();
-
-
-    headers.push(
-      `References: ${references}`
-    );
-  }
-
-
-  const raw =
-    encodeGmailBase64Url(
-      `${headers.join("\r\n")}\r\n\r\n${replyBody}`
-    );
-
-
-  const token =
-    await getGmailAccessToken();
-
-
-  const draftResponse =
-    await fetch(
-      "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
-      {
-        method:
-          "POST",
-        headers: {
-          Authorization:
-            `Bearer ${token}`,
-          "Content-Type":
-            "application/json"
-        },
-        body:
-          JSON.stringify({
-            message: {
-              threadId:
-                original.threadId ||
-                undefined,
-              raw
-            }
-          }),
-        signal:
-          timeoutSignal(
-            15000
-          )
-      }
-    );
-
-
-  const draftData =
-    await draftResponse.json();
-
-
-  if (!draftResponse.ok) {
-    throw new Error(
-      draftData?.error?.message ||
-      "Gmail-Entwurf konnte nicht gespeichert werden."
-    );
-  }
-
-
-  lastCreatedGmailDraftId =
-    draftData.id;
-
-
-  return {
-    gmail_draft_id:
-      draftData.id,
-    message_id:
-      original.id,
-    thread_id:
-      original.threadId,
-    to:
-      recipient,
-    subject,
-    body:
-      replyBody,
-    created_in_gmail:
-      true,
-    sent:
-      false
-  };
 }
 
 
-async function sendGmailDraft(
-  draftId,
-  confirmationText
-) {
-
-  const id =
-    String(
-      draftId ||
-      lastCreatedGmailDraftId ||
-      ""
-    )
-      .trim();
-
-
-  if (!id) {
-    throw new Error(
-      "Kein Gmail-Entwurf zum Senden ausgewählt."
-    );
-  }
-
-
-  const confirmation =
-    String(confirmationText || "")
-      .trim();
-
+function stopBackgroundChecks() {
 
   if (
-    !/\b(senden|abschicken|versenden)\b/i.test(
-      confirmation
-    )
+    proactiveFirstCheckTimer
   ) {
-    throw new Error(
-      "Senden abgebrochen: Es fehlt Mattls ausdrücklicher Sende-Befehl."
-    );
-  }
 
-
-  const token =
-    await getGmailAccessToken();
-
-
-  const response =
-    await fetch(
-      "https://gmail.googleapis.com/gmail/v1/users/me/drafts/send",
-      {
-        method:
-          "POST",
-        headers: {
-          Authorization:
-            `Bearer ${token}`,
-          "Content-Type":
-            "application/json"
-        },
-        body:
-          JSON.stringify({
-            id
-          }),
-        signal:
-          timeoutSignal(
-            15000
-          )
-      }
+    clearTimeout(
+      proactiveFirstCheckTimer
     );
 
 
-  const data =
-    await response.json();
-
-
-  if (!response.ok) {
-    throw new Error(
-      data?.error?.message ||
-      "E-Mail konnte nicht gesendet werden."
-    );
-  }
-
-
-  if (
-    id ===
-      lastCreatedGmailDraftId
-  ) {
-    lastCreatedGmailDraftId =
+    proactiveFirstCheckTimer =
       null;
   }
 
 
-  return {
-    sent:
-      true,
-    message_id:
-      data.id ||
-      null,
-    thread_id:
-      data.threadId ||
-      null
-  };
+  if (
+    proactiveCheckTimer
+  ) {
+
+    clearInterval(
+      proactiveCheckTimer
+    );
+
+
+    proactiveCheckTimer =
+      null;
+  }
+
+
+  if (
+    reminderCheckTimer
+  ) {
+
+    clearInterval(
+      reminderCheckTimer
+    );
+
+
+    reminderCheckTimer =
+      null;
+  }
 }
 
 
 /* =========================================================
-   WEATHER
+   INTERRUPTION
    ========================================================= */
 
-async function getWeatherData(
-  location =
-    "Ludwigshafen am Rhein",
-  day =
-    "today"
-) {
+function handleUserInterruption() {
 
-  const placeName =
-    String(
-      location ||
-      "Ludwigshafen am Rhein"
-    ).trim();
-
-
-  const geo =
-    new URL(
-      "https://geocoding-api.open-meteo.com/v1/search"
-    );
-
-
-  geo.searchParams.set(
-    "name",
-    placeName
-  );
-
-
-  geo.searchParams.set(
-    "count",
-    "5"
-  );
-
-
-  geo.searchParams.set(
-    "language",
-    "de"
-  );
-
-
-  geo.searchParams.set(
-    "format",
-    "json"
-  );
-
-
-  const geoResponse =
-    await fetch(
-      geo,
-      {
-
-        signal:
-          timeoutSignal(
-            8000
-          )
-      }
-    );
-
-
-  const geoData =
-    await geoResponse.json();
-
-
-  const candidates =
-    geoData.results ||
-    [];
-
-
-  if (
-    !candidates.length
-  ) {
-
-    throw new Error(
-      "Ort nicht gefunden."
-    );
+  if (!active) {
+    return;
   }
 
 
-  const place =
-    candidates.find(
-      item =>
-        item.country_code ===
-        "DE"
-    ) ||
-    candidates[0];
+  if (
+    !assistantSpeaking &&
+    !responseInProgress
+  ) {
+    return;
+  }
 
 
-  const weather =
-    new URL(
-      "https://api.open-meteo.com/v1/forecast"
-    );
-
-
-  weather.searchParams.set(
-    "latitude",
-    String(
-      place.latitude
-    )
+  console.log(
+    "Mattl unterbricht JARVIS."
   );
 
 
-  weather.searchParams.set(
-    "longitude",
-    String(
-      place.longitude
-    )
+  debugSet(
+    "dbgEvent",
+    "JARVIS wurde unterbrochen"
   );
 
 
-  weather.searchParams.set(
-    "current",
-    "temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m"
+  cancelCurrentResponse();
+
+
+  clearElevenAudio();
+
+
+  assistantSpeaking =
+    false;
+
+
+  greetingInProgress =
+    false;
+
+
+  setMicrophoneEnabled(
+    true
   );
 
 
-  weather.searchParams.set(
-    "daily",
-    "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+  setJarvisState(
+    "hearing"
   );
 
 
-  weather.searchParams.set(
-    "timezone",
-    "auto"
+  setLog(
+    "Ich höre zu …"
   );
-
-
-  weather.searchParams.set(
-    "forecast_days",
-    "2"
-  );
-
-
-  const response =
-    await fetch(
-      weather,
-      {
-
-        signal:
-          timeoutSignal(
-            8000
-          )
-      }
-    );
-
-
-  const data =
-    await response.json();
-
-
-  const index =
-    day ===
-    "tomorrow"
-      ? 1
-      : 0;
-
-
-  return {
-
-    source:
-      "Open-Meteo",
-
-    location: {
-
-      name:
-        place.name,
-
-      region:
-        place.admin1 ||
-        "",
-
-      country:
-        place.country ||
-        ""
-    },
-
-    requested_day:
-      day,
-
-    current:
-      day ===
-      "today"
-        ? data.current
-        : null,
-
-    forecast: {
-
-      date:
-        data.daily
-          ?.time?.[
-            index
-          ],
-
-      max_temperature:
-        data.daily
-          ?.temperature_2m_max
-          ?.[
-            index
-          ],
-
-      min_temperature:
-        data.daily
-          ?.temperature_2m_min
-          ?.[
-            index
-          ],
-
-      precipitation_probability:
-        data.daily
-          ?.precipitation_probability_max
-          ?.[
-            index
-          ],
-
-      weather_code:
-        data.daily
-          ?.weather_code
-          ?.[
-            index
-          ]
-    }
-  };
 }
 
 
 /* =========================================================
-   EMAIL DRAFT
+   START JARVIS
    ========================================================= */
 
-async function createEmailDraft(
-  instruction,
-  recipient
-) {
-
-  const to =
-    String(recipient || "")
-      .trim();
-
-
-  if (!to) {
-    throw new Error(
-      "Für eine neue E-Mail fehlt der Empfänger. Frage Mattl zuerst, an wen die Mail gehen soll."
-    );
-  }
-
-
-  const response =
-    await fetch(
-      "https://api.openai.com/v1/responses",
-      {
-
-        method:
-          "POST",
-
-        headers: {
-
-          Authorization:
-            `Bearer ${process.env.OPENAI_API_KEY}`,
-
-          "Content-Type":
-            "application/json"
-        },
-
-        body:
-          JSON.stringify({
-
-            model:
-              process.env
-                .OPENAI_TEXT_MODEL ||
-              "gpt-5.6-terra",
-
-            instructions:
-              `Erstelle einen professionellen deutschen E-Mail-Entwurf für Mattl von Druckelite24.
-Antworte ausschließlich als gültiges JSON mit den Feldern subject und body.`,
-
-            input:
-              String(
-                instruction ||
-                ""
-              ),
-
-            reasoning: {
-              effort:
-                "low"
-            },
-
-            text: {
-
-              format: {
-
-                type:
-                  "json_schema",
-
-                name:
-                  "email_draft",
-
-                strict:
-                  true,
-
-                schema: {
-
-                  type:
-                    "object",
-
-                  properties: {
-
-                    subject: {
-                      type:
-                        "string"
-                    },
-
-                    body: {
-                      type:
-                        "string"
-                    }
-                  },
-
-                  required: [
-                    "subject",
-                    "body"
-                  ],
-
-                  additionalProperties:
-                    false
-                }
-              }
-            },
-
-            store:
-              false
-          }),
-
-        signal:
-          timeoutSignal(
-            30000
-          )
-      }
-    );
-
-
-  const data =
-    await response.json();
-
+async function startJarvis() {
 
   if (
-    !response.ok
+    active ||
+    starting
   ) {
-
-    throw new Error(
-      data?.error?.message ||
-      "E-Mail-Entwurf fehlgeschlagen."
-    );
+    return;
   }
 
 
-  const text =
-    extractResponseText(
-      data
+  starting =
+    true;
+
+
+  stopping =
+    false;
+
+
+  debugSet(
+    "dbgOpenAI",
+    "❌"
+  );
+
+
+  debugSet(
+    "dbgEleven",
+    "❌"
+  );
+
+
+  debugSet(
+    "dbgToken",
+    "❌"
+  );
+
+
+  debugSet(
+    "dbgVoice",
+    "-"
+  );
+
+
+  debugSet(
+    "dbgSocket",
+    "-"
+  );
+
+
+  debugSet(
+    "dbgText",
+    "❌"
+  );
+
+
+  debugSet(
+    "dbgAudio",
+    "❌"
+  );
+
+
+  debugSet(
+    "dbgPlayback",
+    "❌"
+  );
+
+
+  debugSet(
+    "dbgClose",
+    "-"
+  );
+
+
+  debugSet(
+    "dbgEvent",
+    "JARVIS startet"
+  );
+
+
+  setButtonActive(
+    true
+  );
+
+
+  setStatus(
+    "Verbinde …"
+  );
+
+
+  setJarvisState(
+    "starting"
+  );
+
+
+  setLog(
+    "JARVIS wird gestartet …"
+  );
+
+
+  try {
+
+    /*
+      AudioContext sofort im echten Button-Klick
+      aktivieren.
+    */
+
+    await ensureAudioContext();
+
+
+    debugSet(
+      "dbgPlayback",
+      "bereit"
     );
 
 
-  const parsed =
-    JSON.parse(
-      text
+    const introPromise =
+      startIntro();
+
+
+    await createMicrophoneStream();
+
+
+    setLog(
+      "ElevenLabs wird verbunden …"
     );
 
 
-  const subject =
-    String(
-      parsed.subject || ""
-    ).trim();
-
-
-  const body =
-    String(
-      parsed.body || ""
-    ).trim();
-
-
-  const raw =
-    encodeGmailBase64Url(
-      [
-        `To: ${to}`,
-        `Subject: ${subject}`,
-        "MIME-Version: 1.0",
-        'Content-Type: text/plain; charset="UTF-8"',
-        "Content-Transfer-Encoding: 8bit",
-        "",
-        body
-      ].join("\r\n")
+    debugSet(
+      "dbgEvent",
+      "ElevenLabs wird verbunden"
     );
 
 
-  const gmailToken =
-    await getGmailAccessToken();
+    await connectElevenLabs();
 
 
-  const draftResponse =
-    await fetch(
-      "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
-      {
-        method:
-          "POST",
-        headers: {
-          Authorization:
-            `Bearer ${gmailToken}`,
-          "Content-Type":
-            "application/json"
-        },
-        body:
-          JSON.stringify({
-            message: {
-              raw
-            }
-          }),
-        signal:
-          timeoutSignal(
-            15000
-          )
-      }
+    setLog(
+      "OpenAI Realtime wird verbunden …"
     );
 
 
-  const draftData =
-    await draftResponse.json();
-
-
-  if (!draftResponse.ok) {
-    throw new Error(
-      draftData?.error?.message ||
-      "Gmail-Entwurf konnte nicht gespeichert werden."
+    debugSet(
+      "dbgEvent",
+      "OpenAI wird verbunden"
     );
-  }
 
 
-  lastCreatedGmailDraftId =
-    draftData.id;
+    await connectRealtime();
 
 
-  return {
-    to,
-    subject,
-    body,
-    gmail_draft_id:
-      draftData.id,
-    created_in_gmail:
-      true,
-    sent:
+    await introPromise;
+
+
+    active =
+      true;
+
+
+    await requestScreenWakeLock();
+
+
+    setStatus(
+      "Online"
+    );
+
+
+    setJarvisState(
+      "online"
+    );
+
+
+    debugSet(
+      "dbgEvent",
+      "JARVIS Online"
+    );
+
+
+    startBackgroundChecks();
+
+
+    await speakGreeting();
+
+  } catch (error) {
+
+    console.error(
+      "JARVIS Startfehler:",
+      error
+    );
+
+
+    setStatus(
+      "Fehler"
+    );
+
+
+    setLog(
+      error.message ||
+      "JARVIS konnte nicht gestartet werden."
+    );
+
+
+    debugSet(
+      "dbgEvent",
+      `STARTFEHLER: ${
+        error.message ||
+        "unbekannt"
+      }`
+    );
+
+
+    active =
+      false;
+
+
+    disconnectElevenLabs();
+
+
+    disconnectRealtime();
+
+
+    stopMicrophone();
+
+
+    stopIntro();
+
+
+    clearElevenAudio();
+
+
+    setButtonActive(
       false
-  };
+    );
+
+
+    setJarvisState(
+      "offline"
+    );
+
+  } finally {
+
+    starting =
+      false;
+  }
 }
 
 
 /* =========================================================
-   REALTIME TOOL DISPATCHER
+   STOP JARVIS
    ========================================================= */
 
-app.post(
-  "/api/realtime-tool",
+async function stopJarvis(
+  updateUi = true
+) {
 
-  async (
-    req,
-    res
-  ) => {
-
-    const name =
-      String(
-        req.body?.name ||
-        ""
-      );
+  if (stopping) {
+    return;
+  }
 
 
-    const args =
-      req.body?.arguments ||
-      {};
+  stopping =
+    true;
 
 
-    console.log(
-      "[TOOL]",
-      name,
-      args
+  active =
+    false;
+
+
+  await releaseScreenWakeLock();
+
+
+  greetingInProgress =
+    false;
+
+
+  assistantSpeaking =
+    false;
+
+
+  stopStopSpeechRecognition();
+
+
+  responseInProgress =
+    false;
+
+
+  stopBackgroundChecks();
+
+
+  setMicrophoneEnabled(
+    false
+  );
+
+
+  clearTtsTextBuffer();
+
+
+  clearElevenAudio();
+
+
+  disconnectElevenLabs();
+
+
+  disconnectRealtime();
+
+
+  stopMicrophone();
+
+
+  stopIntro();
+
+
+  runningToolCalls.clear();
+
+
+  if (updateUi) {
+
+    setButtonActive(
+      false
     );
 
 
-    try {
+    setStatus(
+      "Offline"
+    );
 
-      let data;
 
+    setJarvisState(
+      "offline"
+    );
 
-      switch (
-        name
-      ) {
 
+    setLog(
+      "JARVIS ist offline."
+    );
 
-        case "search_internet":
 
-          data =
-            await searchInternet(
-              args.query
-            );
-
-          break;
-
-
-        case "get_shopify_summary":
-
-          data =
-            await getShopifySummary(
-              args.period ===
-                "yesterday"
-                ? "yesterday"
-                : "today"
-            );
-
-          break;
-
-
-        case "get_shopify_open_orders":
-
-          data =
-            await getShopifyOpenOrders();
-
-          break;
-
-
-        case "get_shopify_week":
-
-          data =
-            await getShopifyWeek();
-
-          break;
-
-
-        case "get_unread_emails":
-
-          data = {
-
-            emails:
-              await getUnreadEmails()
-          };
-
-          break;
-
-
-        case "get_email_message": {
-
-          const email =
-            await findGmailMessage({
-              message_id:
-                args.message_id ||
-                "",
-              sender_query:
-                args.sender_query ||
-                "",
-              search_query:
-                args.search_query ||
-                "",
-              scope:
-                args.scope === "all"
-                  ? "all"
-                  : "inbox"
-            });
-
-
-          return res.json({
-            ok:
-              true,
-            email,
-            result: {
-              found:
-                true,
-              from:
-                email.from,
-              subject:
-                email.subject,
-              body:
-                email.body,
-              instruction:
-                "Die vollständige Mail ist im HUD geöffnet. Wenn Mattl ausdrücklich 'lies sie vor' sagt, darfst du den Inhalt natürlich vorlesen."
-            }
-          });
-        }
-
-
-        case "create_email_reply_draft": {
-
-          if (
-            !args.message_id
-          ) {
-            throw new Error(
-              "Keine aktuelle Mail ausgewählt."
-            );
-          }
-
-
-          const draft =
-            await createGmailReplyDraft(
-              args.message_id,
-              args.instruction
-            );
-
-
-          return res.json({
-            ok:
-              true,
-            draft,
-            gmail_draft_id:
-              draft.gmail_draft_id,
-            result: {
-              created:
-                true,
-              saved_in_gmail:
-                true,
-              to:
-                draft.to,
-              subject:
-                draft.subject,
-              instruction:
-                "Der Antwortentwurf ist in Gmail gespeichert und im HUD sichtbar. Noch NICHT gesendet. Frage Mattl kurz, ob er ihn senden möchte."
-            }
-          });
-        }
-
-
-        case "send_email_draft": {
-
-          const sent =
-            await sendGmailDraft(
-              args.draft_id ||
-                lastCreatedGmailDraftId,
-              args.confirmation_text
-            );
-
-
-          return res.json({
-            ok:
-              true,
-            sent,
-            result: {
-              sent:
-                true,
-              instruction:
-                "Die E-Mail wurde gesendet. Bestätige das Mattl kurz."
-            }
-          });
-        }
-
-
-        case "move_email_to_bearbeitet": {
-
-          if (!args.message_id) {
-            throw new Error(
-              "Keine aktuelle Mail ausgewählt."
-            );
-          }
-
-
-          const moved =
-            await moveGmailMessageToBearbeitet(
-              args.message_id
-            );
-
-
-          return res.json({
-            ok:
-              true,
-            moved,
-            result: {
-              moved:
-                true,
-              label:
-                "Bearbeitet",
-              instruction:
-                "Die ausgewählte Mail wurde nach Bearbeitet verschoben. Bestätige das Mattl kurz."
-            }
-          });
-        }
-
-
-        case "get_daily_briefing": {
-
-          const briefing =
-            await getJarvisDailyBriefing();
-
-
-          return res.json({
-            ok:
-              true,
-            briefing,
-            result: {
-              ...briefing,
-              instruction:
-                "Gib Mattl jetzt ein ausführliches, gut gegliedertes deutsches Business-Briefing. Beginne direkt mit dem Überblick. Nenne ungelesene Mails, Shopify heute, Shopify gestern/Vortag und Wetter. Offene Bestellungen nicht erwähnen. Formuliere Zahlen natürlich auf Deutsch, z. B. bei 1: 'eine ungelesene Mail' und 'eine Bestellung', niemals 'eins ungelesene Mail'. Hebe wichtige Kunden-/Angebotsmails hervor. Schließe mit 2 bis 4 konkreten Prioritäten für heute."
-            }
-          });
-        }
-
-
-        case "get_whatsapp_conversations":
-
-          data = {
-            conversations:
-              await getSuperchatConversations(
-                20
-              )
-          };
-
-          break;
-
-
-        case "get_whatsapp_conversation": {
-
-          const conversation =
-            await getSuperchatConversation(
-              args.conversation_id
-            );
-
-          return res.json({
-            ok:
-              true,
-            conversation,
-            result: {
-              found:
-                true,
-              name:
-                conversation.name,
-              preview:
-                conversation.preview,
-              messages:
-                conversation.messages || [],
-              instruction:
-                "Der ausgewählte WhatsApp-Chat ist geladen. Nutze den über Webhooks gespeicherten Verlauf. Beantworte Mattls Frage anhand dieser Daten und erfinde nichts."
-            }
-          });
-        }
-
-
-        case "create_whatsapp_reply_draft": {
-
-          const draft =
-            await createSuperchatReplyDraft(
-              args.conversation_id,
-              args.instruction
-            );
-
-          return res.json({
-            ok:
-              true,
-            whatsapp_draft:
-              draft,
-            result: {
-              created:
-                true,
-              sent:
-                false,
-              contact_name:
-                draft.contact_name,
-              text:
-                draft.text,
-              instruction:
-                "WhatsApp-Entwurf ist fertig, aber noch NICHT gesendet. Frage Mattl kurz, ob er ihn senden möchte."
-            }
-          });
-        }
-
-
-        case "send_whatsapp_draft": {
-
-          const sent =
-            await sendSuperchatDraft(
-              args.confirmation_text
-            );
-
-          return res.json({
-            ok:
-              true,
-            whatsapp_sent:
-              sent,
-            result:
-              sent
-          });
-        }
-
-
-        case "get_weather":
-
-          data =
-            await getWeatherData(
-
-              args.location ||
-                "Ludwigshafen am Rhein",
-
-              args.day ===
-                "tomorrow"
-                ? "tomorrow"
-                : "today"
-            );
-
-          break;
-
-
-        case "save_note":
-
-          data =
-            await saveNote(
-              args.text
-            );
-
-          break;
-
-
-        case "list_notes":
-
-          data = {
-
-            notes:
-              await readJarvisField(
-                "notes"
-              )
-          };
-
-          break;
-
-
-        case "set_reminder":
-
-          data =
-            await setReminder(
-
-              args.minutes_from_now,
-
-              args.reminder_text
-            );
-
-          break;
-
-
-        case "list_reminders":
-
-          data = {
-
-            reminders:
-              await getActiveReminders()
-          };
-
-          break;
-
-
-        case "create_email_draft": {
-
-          const draft =
-            await createEmailDraft(
-              args.instruction,
-              args.to
-            );
-
-
-          return res.json({
-
-            ok:
-              true,
-
-            draft,
-
-            gmail_draft_id:
-              draft.gmail_draft_id,
-
-            result: {
-
-              created:
-                true,
-
-              saved_in_gmail:
-                true,
-
-              to:
-                draft.to,
-
-              subject:
-                draft.subject,
-
-              instruction:
-                "Der vollständige Entwurf wird im HUD angezeigt und ist als echter Gmail-Entwurf gespeichert. Noch NICHT gesendet. Frage Mattl kurz, ob er ihn senden möchte."
-            }
-          });
-        }
-
-
-        default:
-
-          return res
-            .status(400)
-            .json({
-
-              ok:
-                false,
-
-              error:
-                `Unbekanntes Tool: ${name}`
-            });
-      }
-
-
-      return res.json({
-
-        ok:
-          true,
-
-        result:
-          data
-      });
-
-
-    } catch (
-      error
-    ) {
-
-      console.error(
-        "[TOOL ERROR]",
-        name,
-        error
-      );
-
-
-      return res
-        .status(500)
-        .json({
-
-          ok:
-            false,
-
-          error:
-            error.message ||
-            "Tool fehlgeschlagen."
-        });
-    }
-  }
-);
-
-
-/* =========================================================
-   REMINDER BACKGROUND CHECK
-   ========================================================= */
-
-app.post(
-  "/api/jarvis-reminder-check",
-
-  async (
-    req,
-    res
-  ) => {
-
-    try {
-
-      const due =
-        await checkAndFireDueReminders();
-
-
-      if (
-        !due.length
-      ) {
-
-        return res.json({
-
-          ok:
-            true,
-
-          hasNotice:
-            false
-        });
-      }
-
-
-      return res.json({
-
-        ok:
-          true,
-
-        hasNotice:
-          true,
-
-        text:
-          `Mattl, Erinnerung: ${due
-            .map(
-              reminder =>
-                reminder.text
-            )
-            .join("; ")}.`
-      });
-
-
-    } catch (
-      error
-    ) {
-
-      console.error(
-        "[REMINDER CHECK ERROR]",
-        error
-      );
-
-
-      return res.json({
-
-        ok:
-          true,
-
-        hasNotice:
-          false
-      });
-    }
-  }
-);/* =========================================================
-   PROACTIVE CHECK
-   ========================================================= */
-
-let lastOpenOrdersNotice = {
-
-  count:
-    null,
-
-  at:
-    0
-};
-
-
-const notifiedEmailIds =
-  new Set();
-
-let proactiveBaselineInitialized =
-  false;
-
-
-app.get(
-  "/api/gmail-message/:id",
-  async (
-    req,
-    res
-  ) => {
-
-    try {
-
-      const email =
-        await getGmailMessageById(
-          req.params.id
-        );
-
-
-      return res.json({
-        ok:
-          true,
-        email
-      });
-
-    } catch (error) {
-
-      return res
-        .status(500)
-        .json({
-          ok:
-            false,
-          error:
-            error.message ||
-            "E-Mail konnte nicht geöffnet werden."
-        });
-    }
-  }
-);
-
-
-app.get(
-  "/api/gmail-inbox",
-  async (
-    req,
-    res
-  ) => {
-
-    try {
-
-      if (
-        !isGmailConfigured()
-      ) {
-        return res
-          .status(503)
-          .json({
-            ok: false,
-            error:
-              "Gmail ist nicht konfiguriert."
-          });
-      }
-
-
-      const emails =
-        await getLatestInboxEmails();
-
-
-      return res.json({
-        ok: true,
-        emails:
-          emails.slice(0, 5)
-      });
-
-    } catch (error) {
-
-      console.warn(
-        "[GMAIL INBOX API ERROR]",
-        error
-      );
-
-
-      return res
-        .status(500)
-        .json({
-          ok: false,
-          error:
-            error.message ||
-            "Posteingang konnte nicht geladen werden."
-        });
-    }
-  }
-);
-
-
-app.post(
-  "/api/jarvis-checkin",
-
-  async (
-    req,
-    res
-  ) => {
-
-    try {
-
-
-      /* Beim ersten Hintergrund-Check nur aktuellen Stand merken.
-         Keine bestehenden Mails/Bestellungen beim Start vorlesen. */
-      if (
-        !proactiveBaselineInitialized
-      ) {
-
-        try {
-
-          if (
-            isGmailConfigured()
-          ) {
-
-            const baselineEmails =
-              await getUnreadEmails();
-
-
-            for (
-              const email of
-              baselineEmails
-            ) {
-              notifiedEmailIds.add(
-                email.id
-              );
-            }
-          }
-
-
-          const baselineOpenOrders =
-            await getShopifyOpenOrders();
-
-
-          lastOpenOrdersNotice = {
-            count:
-              baselineOpenOrders.count || 0,
-            at:
-              Date.now()
-          };
-
-        } catch (error) {
-
-          console.warn(
-            "[PROACTIVE BASELINE ERROR]",
-            error
-          );
-        }
-
-
-        proactiveBaselineInitialized =
-          true;
-
-
-        return res.json({
-          ok:
-            true,
-          hasNotice:
-            false
-        });
-      }
-
-
-      /* Gmail */
-
-      if (
-        isGmailConfigured()
-      ) {
-
-        try {
-
-          const autoMovedAdvertising =
-            await autoMoveObviousAdvertising();
-
-
-          const emails =
-            await getUnreadEmails();
-
-
-          const fresh =
-            emails.filter(
-              email =>
-                !notifiedEmailIds.has(
-                  email.id
-                )
-            );
-
-
-          if (
-            fresh.length
-          ) {
-
-            for (
-              const email of
-              fresh
-            ) {
-
-              notifiedEmailIds.add(
-                email.id
-              );
-            }
-
-
-            const offerCount =
-              fresh.filter(
-                email =>
-                  email.possible_offer_inquiry
-              ).length;
-
-
-            return res.json({
-
-              ok:
-                true,
-
-              hasNotice:
-                true,
-
-              text:
-                `${
-                  fresh.length === 1
-                    ? "Mattl, du hast eine neue ungelesene Mail."
-                    : `Mattl, du hast ${fresh.length} neue ungelesene Mails.`
-                }${
-                  offerCount === 1
-                    ? " Eine davon sieht nach einer Angebots- oder Preisanfrage aus."
-                    : offerCount > 1
-                      ? ` ${offerCount} davon sehen nach Angebots- oder Preisanfragen aus.`
-                      : ""
-                }${
-                  autoMovedAdvertising.length === 1
-                    ? " Zusätzlich habe ich eine eindeutige Werbemail nach Bearbeitet verschoben."
-                    : autoMovedAdvertising.length > 1
-                      ? ` Zusätzlich habe ich ${autoMovedAdvertising.length} eindeutige Werbemails nach Bearbeitet verschoben.`
-                      : ""
-                }`
-            });
-          }
-
-
-          if (
-            autoMovedAdvertising.length
-          ) {
-
-            return res.json({
-              ok:
-                true,
-              hasNotice:
-                true,
-              text:
-                autoMovedAdvertising.length === 1
-                  ? "Mattl, ich habe eine eindeutige Werbemail automatisch nach Bearbeitet verschoben."
-                  : `Mattl, ich habe ${autoMovedAdvertising.length} eindeutige Werbemails automatisch nach Bearbeitet verschoben.`
-            });
-          }
-
-
-        } catch (
-          error
-        ) {
-
-          console.warn(
-            "[GMAIL BACKGROUND ERROR]",
-            error
-          );
-        }
-      }
-
-
-      /* Offene Shopify-Bestellungen werden bewusst nicht proaktiv vorgelesen. */
-
-
-      return res.json({
-
-        ok:
-          true,
-
-        hasNotice:
-          false
-      });
-
-
-    } catch (
-      error
-    ) {
-
-      console.error(
-        "[CHECKIN ERROR]",
-        error
-      );
-
-
-      return res.json({
-
-        ok:
-          true,
-
-        hasNotice:
-          false
-      });
-    }
-  }
-);
-
-
-/* =========================================================
-   DEBUG ENDPOINTS
-   ========================================================= */
-
-app.post(
-  "/api/shopify-summary",
-
-  async (
-    req,
-    res
-  ) => {
-
-    try {
-
-      return res.json(
-        await getShopifySummary(
-
-          req.body?.period ===
-            "yesterday"
-            ? "yesterday"
-            : "today"
-        )
-      );
-
-
-    } catch (
-      error
-    ) {
-
-      return res
-        .status(500)
-        .json({
-
-          error:
-            error.message
-        });
-    }
-  }
-);
-
-
-app.post(
-  "/api/weather",
-
-  async (
-    req,
-    res
-  ) => {
-
-    try {
-
-      return res.json(
-        await getWeatherData(
-
-          req.body?.location ||
-            "Ludwigshafen am Rhein",
-
-          req.body?.day ===
-            "tomorrow"
-            ? "tomorrow"
-            : "today"
-        )
-      );
-
-
-    } catch (
-      error
-    ) {
-
-      return res
-        .status(500)
-        .json({
-
-          error:
-            error.message
-        });
-    }
-  }
-);
-
-
-app.post(
-  "/api/web-search",
-
-  async (
-    req,
-    res
-  ) => {
-
-    try {
-
-      return res.json(
-        await searchInternet(
-          req.body?.query
-        )
-      );
-
-
-    } catch (
-      error
-    ) {
-
-      return res
-        .status(500)
-        .json({
-
-          error:
-            error.message
-        });
-    }
-  }
-);
-
-
-/* =========================================================
-   HEALTH
-   ========================================================= */
-
-app.get(
-  "/health",
-
-  (
-    req,
-    res
-  ) => {
-
-    return res.json({
-
-      ok:
-        true,
-
-      version:
-        `JARVIS ${JARVIS_VERSION}`,
-
-      realtime:
-        true,
-
-      realtime_output:
-        "text",
-
-      vad:
-        "semantic_vad",
-
-      vad_eagerness:
-        "low",
-
-      noise_reduction:
-        process.env
-          .OPENAI_NOISE_REDUCTION ||
-        "far_field",
-
-      realtime_model:
-        process.env
-          .OPENAI_REALTIME_MODEL ||
-        "gpt-realtime-2.1",
-
-      voice_engine:
-        "ElevenLabs",
-
-      elevenlabs:
-        Boolean(
-          process.env
-            .ELEVENLABS_API_KEY
-        ),
-
-      elevenlabs_voice_id:
-        process.env
-          .ELEVENLABS_VOICE_ID ||
-        "Vje4UYe2YPbNqyQwJGra",
-
-      elevenlabs_model:
-        process.env
-          .ELEVENLABS_MODEL ||
-        "eleven_flash_v2_5",
-
-      elevenlabs_websocket_auth:
-        "single_use_token",
-
-      elevenlabs_inactivity_timeout:
-        180,
-
-      web_model:
-        process.env
-          .OPENAI_WEB_MODEL ||
-        "gpt-5.6",
-
-      realtime_tools:
-        REALTIME_TOOLS.map(
-          tool =>
-            tool.name
-        ),
-
-      shopify:
-        Boolean(
-
-          process.env
-            .SHOPIFY_STORE_DOMAIN &&
-
-          process.env
-            .SHOPIFY_CLIENT_ID &&
-
-          process.env
-            .SHOPIFY_CLIENT_SECRET
-        ),
-
-      gmail:
-        isGmailConfigured(),
-
-      web_search:
-        true,
-
-      notes:
-        true,
-
-      reminders:
-        true,
-
-      weather:
-        true,
-
-      email_drafts:
-        true
-    });
-  }
-);
-
-
-/* =========================================================
-   ROOT
-   ========================================================= */
-
-app.get(
-  "/",
-
-  (
-    req,
-    res
-  ) => {
-
-    return res.sendFile(
-      "index.html",
-      {
-
-        root:
-          "."
-      }
+    debugSet(
+      "dbgEvent",
+      "JARVIS Offline"
     );
   }
-);
+
+
+  stopping =
+    false;
+}
 
 
 /* =========================================================
-   START
-
-   NICHT LÖSCHEN.
-   RENDER BRAUCHT DIESEN BLOCK.
+   TOGGLE BUTTON
    ========================================================= */
 
+if (button) {
+
+  button.addEventListener(
+    "click",
+    async () => {
+
+      if (
+        starting ||
+        stopping
+      ) {
+        return;
+      }
 
 
-app.listen(
-  PORT,
-  "0.0.0.0",
+      if (active) {
 
+        await stopJarvis();
+
+      } else {
+
+        await startJarvis();
+      }
+    }
+  );
+}
+
+
+/* =========================================================
+   PAGE CLEANUP
+   ========================================================= */
+
+window.addEventListener(
+  "beforeunload",
   () => {
 
-    console.log(
-      "=============================================="
-    );
+    stopBackgroundChecks();
 
 
-    console.log(
-      `JARVIS ${JARVIS_VERSION} läuft`
-    );
+    if (inboxRefreshTimer) {
+      clearInterval(inboxRefreshTimer);
+      inboxRefreshTimer = null;
+    }
 
 
-    console.log(
-      `Port: ${PORT}`
-    );
+    stopElevenKeepAlive();
 
 
-    console.log(
-      `Realtime Modell: ${
-        process.env
-          .OPENAI_REALTIME_MODEL ||
-        "gpt-realtime-2.1"
-      }`
-    );
+    clearElevenAudio();
 
 
-    console.log(
-      "Realtime Output: TEXT"
-    );
+    disconnectElevenLabs();
 
 
-    console.log(
-      "Voice Engine: ElevenLabs"
-    );
+    disconnectRealtime();
 
 
-    console.log(
-      `ElevenLabs Voice ID: ${
-        process.env
-          .ELEVENLABS_VOICE_ID ||
-        "Vje4UYe2YPbNqyQwJGra"
-      }`
-    );
+    stopMicrophone();
 
 
-    console.log(
-      `ElevenLabs Modell: ${
-        process.env
-          .ELEVENLABS_MODEL ||
-        "eleven_flash_v2_5"
-      }`
-    );
+    stopIntro();
 
 
-    console.log(
-      `ElevenLabs: ${
-        process.env
-          .ELEVENLABS_API_KEY
-          ? "verbunden"
-          : "nicht verbunden"
-      }`
-    );
+    if (audioContext) {
 
-
-    console.log(
-      "ElevenLabs WebSocket Auth: single_use_token"
-    );
-
-
-    console.log(
-      "ElevenLabs Inactivity Timeout: 180 Sekunden"
-    );
-
-
-    console.log(
-      "VAD: semantic_vad / low"
-    );
-
-
-    console.log(
-      `Noise Reduction: ${
-        process.env
-          .OPENAI_NOISE_REDUCTION ||
-        "far_field"
-      }`
-    );
-
-
-    console.log(
-      `Web Modell: ${
-        process.env
-          .OPENAI_WEB_MODEL ||
-        "gpt-5.6"
-      }`
-    );
-
-
-    console.log(
-      `Tools: ${REALTIME_TOOLS
-        .map(
-          tool =>
-            tool.name
-        )
-        .join(", ")}`
-    );
-
-
-    console.log(
-      `Shopify: ${
-        process.env
-            .SHOPIFY_STORE_DOMAIN &&
-        process.env
-            .SHOPIFY_CLIENT_ID &&
-        process.env
-            .SHOPIFY_CLIENT_SECRET
-          ? "verbunden"
-          : "nicht verbunden"
-      }`
-    );
-
-
-    console.log(
-      `Gmail: ${
-        isGmailConfigured()
-          ? "verbunden"
-          : "nicht verbunden"
-      }`
-    );
-
-
-    console.log(
-      "Internet Search: aktiv"
-    );
-
-
-    console.log(
-      "=============================================="
-    );
+      try {
+        audioContext.close();
+      } catch {}
+    }
   }
 );
+
+
+/* =========================================================
+   INITIAL UI
+   ========================================================= */
+
+setStatus(
+  "Offline"
+);
+
+
+setJarvisState(
+  "offline"
+);
+
+
+setButtonActive(
+  false
+);
+
+
+setLog(
+  "JARVIS ist bereit."
+);
+
+
+debugSet(
+  "dbgEvent",
+  "Bereit"
+);
+
+
+startInboxDashboardRefresh();
+
+
+/* =========================================================
+   VERSION
+   ========================================================= */
+
+console.log(
+  "=============================================="
+);
+
+
+console.log(
+  "JARVIS APP V10.4 · SOFT INTRO MIX"
+);
+
+
+console.log(
+  "OpenAI Realtime: TEXT"
+);
+
+
+console.log(
+  "Voice Engine: ElevenLabs"
+);
+
+
+console.log(
+  "ElevenLabs Audio: PCM 24000 Hz"
+);
+
+
+console.log(
+  "Playback: Web Audio API"
+);
+
+
+console.log(
+  "WebSocket Auth: single_use_token"
+);
+
+
+console.log(
+  "Flush: true"
+);
+
+
+console.log(
+  "Inactivity Timeout: 180 Sekunden"
+);
+
+
+console.log(
+  "=============================================="
+);
+
+
+/* Superchat Dashboard Refresh */
+loadWhatsAppDashboard();
+setInterval(
+  loadWhatsAppDashboard,
+  30 * 1000
+);
+
+/* =========================================================
+   GMAIL CLICK SAFETY
+   Delegation hält Mail-Klicks auch nach Live-Refresh stabil.
+   ========================================================= */
+
+document.addEventListener(
+  "click",
+  event => {
+
+    const row =
+      event.target?.closest?.(
+        "#inboxList [data-mail-id]"
+      );
+
+    if (
+      !row
+    ) {
+      return;
+    }
+
+    const id =
+      row.dataset.mailId;
+
+    if (
+      id
+    ) {
+      openGmailMessage(
+        id
+      );
+    }
+  }
+);
+
+
+document.addEventListener(
+  "keydown",
+  event => {
+
+    if (
+      event.key !==
+        "Enter" &&
+      event.key !==
+        " "
+    ) {
+      return;
+    }
+
+    const row =
+      event.target?.closest?.(
+        "#inboxList [data-mail-id]"
+      );
+
+    if (
+      !row
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const id =
+      row.dataset.mailId;
+
+    if (
+      id
+    ) {
+      openGmailMessage(
+        id
+      );
+    }
+  }
+);
+
+
+
+/* =========================================================
+   GMAIL POINTER CAPTURE
+   Fängt Mail-Klicks bereits in der Capture-Phase ab.
+   ========================================================= */
+
+document.addEventListener(
+  "pointerup",
+  event => {
+
+    const target =
+      event.target;
+
+    if (
+      !target ||
+      typeof target.closest !==
+        "function"
+    ) {
+      return;
+    }
+
+    const row =
+      target.closest(
+        "#inboxList [data-mail-id]"
+      );
+
+    if (
+      !row
+    ) {
+      return;
+    }
+
+    const id =
+      row.getAttribute(
+        "data-mail-id"
+      );
+
+    if (
+      !id
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    openGmailMessage(
+      id
+    );
+  },
+  true
+);
+
+
+
+
+
+
