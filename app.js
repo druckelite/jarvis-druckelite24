@@ -6815,35 +6815,31 @@ async function runSuperchatDiagnostic() {
       );
     }
 
-    const conv =
-      data.conversations_shape || {};
-
-    const contacts =
-      data.contacts_shape || {};
-
     const convKeys =
-      conv?.first &&
-      typeof conv.first === "object"
-        ? Object.keys(
-            conv.first
-          ).slice(0, 8)
-        : Object.keys(
-            conv
-          ).slice(0, 8);
+      Array.isArray(
+        data.conversation_keys
+      )
+        ? data.conversation_keys
+        : [];
 
     const contactKeys =
-      contacts?.first &&
-      typeof contacts.first === "object"
-        ? Object.keys(
-            contacts.first
-          ).slice(0, 8)
-        : Object.keys(
-            contacts
-          ).slice(0, 8);
+      Array.isArray(
+        data.contact_keys
+      )
+        ? data.contact_keys
+        : [];
+
+    const convNested =
+      data.conversation_nested_keys ||
+      {};
+
+    const contactNested =
+      data.contact_nested_keys ||
+      {};
 
     setDiagLine(
       "diagSuperchat",
-      `Superchat: Conv[${convKeys.join(", ")}] · Contact[${contactKeys.join(", ")}]`
+      `SC Conv: ${convKeys.join(", ")} | nested: ${JSON.stringify(convNested)} | Contact: ${contactKeys.join(", ")} | nested: ${JSON.stringify(contactNested)}`
     );
 
     console.log(
@@ -6922,5 +6918,133 @@ document.addEventListener(
 setTimeout(
   runSuperchatDiagnostic,
   1200
+);
+
+
+
+/* =========================================================
+   GMAIL OPEN DIAGNOSTIC
+   Prüft nach erkanntem Klick: Endpoint + Modalzustand.
+   ========================================================= */
+
+document.addEventListener(
+  "pointerdown",
+  async event => {
+
+    const target =
+      event.target;
+
+    if (
+      !target ||
+      typeof target.closest !==
+        "function"
+    ) {
+      return;
+    }
+
+    const row =
+      target.closest(
+        "#inboxList [data-mail-id]"
+      );
+
+    if (
+      !row
+    ) {
+      return;
+    }
+
+    const id =
+      row.getAttribute(
+        "data-mail-id"
+      );
+
+    if (
+      !id
+    ) {
+      setDiagLine(
+        "diagGmail",
+        "Gmail: Klick erkannt, aber keine Mail-ID"
+      );
+      return;
+    }
+
+    setDiagLine(
+      "diagGmail",
+      "Gmail: Klick erkannt · API wird geprüft …"
+    );
+
+    try {
+
+      const response =
+        await fetch(
+          `/api/gmail-message/${encodeURIComponent(id)}`,
+          {
+            cache:
+              "no-store"
+          }
+        );
+
+      let data = null;
+
+      try {
+        data =
+          await response.json();
+      } catch {}
+
+      if (
+        !response.ok ||
+        !data?.ok ||
+        !data?.email
+      ) {
+        setDiagLine(
+          "diagGmail",
+          `Gmail API: FEHLER ${response.status} · ${data?.error || "keine gültige Mail"}`
+        );
+        return;
+      }
+
+      setTimeout(
+        () => {
+
+          const modal =
+            document.getElementById(
+              "gmailMailModal"
+            );
+
+          if (
+            !modal
+          ) {
+            setDiagLine(
+              "diagGmail",
+              "Gmail API: OK · Modal fehlt"
+            );
+            return;
+          }
+
+          const style =
+            getComputedStyle(
+              modal
+            );
+
+          setDiagLine(
+            "diagGmail",
+            `Gmail API: OK · Modal=${modal.classList.contains("open") ? "OPEN" : "NICHT OPEN"} · display=${style.display} · visibility=${style.visibility} · opacity=${style.opacity} · z=${style.zIndex}`
+          );
+
+        },
+        350
+      );
+
+    } catch (
+      error
+    ) {
+
+      setDiagLine(
+        "diagGmail",
+        `Gmail API: REQUEST-FEHLER · ${error.message}`
+      );
+    }
+  },
+  true
 );
 
