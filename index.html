@@ -2,287 +2,415 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#050509" />
-  <meta name="description" content="Druckelite24 JARVIS Business Voice Assistant" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+  <meta name="theme-color" content="#060608" />
+  <meta
+    name="description"
+    content="Druckelite24 JARVIS Business Voice Assistant"
+  />
   <title>Druckelite24 · JARVIS</title>
-  <link rel="stylesheet" href="styles.css?v=13" />
+  <link rel="stylesheet" href="styles.css?v=5.3.4-shopifylogo" />
 </head>
+<body>
 
-<body data-jarvis-state="offline">
-  <div class="fx-grid"></div>
-  <div class="fx-vignette"></div>
-
+  <!-- ===================================================
+       BOOT-OVERLAY
+       =================================================== -->
   <div class="boot-overlay" id="bootOverlay">
-    <img class="boot-logo" src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252" alt="Druckelite24" />
+    <img
+      class="boot-logo"
+      src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252"
+      alt="Druckelite24"
+    />
     <div class="boot-lines" id="bootLines"></div>
-    <div class="boot-bar"><div class="boot-bar-fill" id="bootBarFill"></div></div>
+    <div class="boot-bar">
+      <div class="boot-bar-fill" id="bootBarFill"></div>
+    </div>
   </div>
 
-  <div class="app-shell">
 
+  <div class="hud">
+
+    <!-- =================================================
+         TOPBAR
+         ================================================= -->
     <header class="topbar">
-      <div class="brand">
-        <img class="brand-logo" src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252" alt="Druckelite24" />
+      <div class="brand-block">
+        <img
+          class="brand-logo"
+          src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252"
+          alt="Druckelite24"
+        />
       </div>
-
-      <div class="jarvis-title">
-        <div class="jarvis-word">JARVIS</div>
-        <div class="jarvis-sub">BUSINESS INTELLIGENCE · DRUCKELITE24.DE</div>
+      <div class="top-center">
+        <div class="top-title">JARVIS OS</div>
+        <div class="top-sub">V5 · BUSINESS VOICE ASSISTANT</div>
       </div>
-
-      <div class="top-status">
-        <div class="top-time" id="hudBigTime">--:--:--</div>
-        <div class="top-date"><span id="hudDay">--</span>. <span id="hudMonth">—</span></div>
+      <div class="top-right">
+        <div class="top-datetime">
+          <div class="top-date"><span id="hudDay">--</span>. <span id="hudMonth">—</span></div>
+          <div class="top-clock" id="hudBigTime">--:--:--</div>
+        </div>
         <div class="status-pill" id="status">Offline</div>
       </div>
     </header>
 
+
+    <!-- Lauf-Ticker mit Live-Werten -->
     <div class="ticker" aria-hidden="true">
       <div class="ticker-track">
-        <span class="tick-group" id="tickA">DRUCKELITE24 · JARVIS · SYSTEM ONLINE</span>
-        <span class="tick-group" id="tickB">DRUCKELITE24 · JARVIS · SYSTEM ONLINE</span>
+        <span class="tick-group" id="tickA">DRUCKELITE24 · JARVIS V5 · SYSTEM ONLINE</span>
+        <span class="tick-group" id="tickB">DRUCKELITE24 · JARVIS V5 · SYSTEM ONLINE</span>
       </div>
     </div>
 
-    <!-- Mobile: Voice control stays immediately visible -->
-    <section class="mobile-voice">
-      <div class="mobile-voice-copy">
-        <div class="eyebrow">VOICE CORE</div>
-        <div class="mobile-voice-title">JARVIS STARTEN</div>
-        <div class="mobile-voice-state" id="mobileVoiceState">STANDBY</div>
+
+    <!-- =================================================
+         3-SPALTEN-COCKPIT
+         ================================================= -->
+    
+    <section class="mobile-core-launch">
+      <div>
+        <span>JARVIS CORE</span>
+        <b id="mobileCoreTitle">JARVIS STARTEN</b>
+        <small id="mobileCoreState">STANDBY</small>
       </div>
-      <button id="toggleMobile" class="mobile-mic" type="button" aria-label="JARVIS starten oder stoppen"></button>
-      <div class="mobile-energy"></div>
+      <button id="toggleMobile" class="mobile-core-button" type="button" aria-label="JARVIS starten oder stoppen"></button>
     </section>
 
-    <main class="dashboard">
+<main class="cockpit cockpit-clean">
 
-      <!-- LEFT -->
-      <div class="left-stack">
-        <section class="glass-panel shop-panel">
-          <div class="panel-head">
-            <div><span class="panel-icon">▣</span> SHOPIFY LIVE</div>
-            <span class="live-tag">● LIVE</span>
+      <!-- LINKS: SHOPIFY + MAIL -->
+      <section class="zone zone-left">
+
+        <section class="panel shop-panel-clean modern-shopify">
+          <div class="panel-head modern-head">
+            <div class="head-brand">
+              <div class="brand-icon shopify-icon brand-logo-icon"><img src="https://upload.wikimedia.org/wikipedia/commons/0/0e/Shopify_logo_2018.svg" alt="Shopify" /></div>
+              <div>
+                <span>SHOPIFY LIVE</span>
+                <small>STORE PERFORMANCE</small>
+              </div>
+            </div>
+            <span class="live-chip"><i></i> LIVE</span>
           </div>
 
-          <div class="shop-grid">
-            <article class="shop-card">
-              <div class="kpi-label">UMSATZ HEUTE</div>
-              <div class="stat-value" id="statRevenue">—</div>
-              <div class="kpi-meta">↗ LIVE · HEUTE</div>
-              <svg class="shop-spark" viewBox="0 0 240 62" preserveAspectRatio="none">
-                <defs><linearGradient id="a1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e70779" stop-opacity=".25"/><stop offset="100%" stop-color="#e70779" stop-opacity="0"/></linearGradient></defs>
-                <path class="spark-area" fill="url(#a1)" d="M0,52 L15,48 L30,44 L45,48 L60,38 L75,42 L90,32 L105,36 L120,27 L135,33 L150,22 L165,29 L180,18 L195,25 L210,15 L225,21 L240,7 L240,62 L0,62 Z"/>
-                <path class="spark-line" d="M0,52 L15,48 L30,44 L45,48 L60,38 L75,42 L90,32 L105,36 L120,27 L135,33 L150,22 L165,29 L180,18 L195,25 L210,15 L225,21 L240,7"/>
+          <div class="modern-shop-grid">
+            <article class="shop-main-card">
+              <div class="shop-main-copy">
+                <span>UMSATZ HEUTE</span>
+                <b id="statRevenue">—</b>
+                <em>↗ Live Entwicklung</em>
+              </div>
+              <svg class="shop-main-chart" viewBox="0 0 460 145" preserveAspectRatio="none" aria-hidden="true">
+                <defs>
+                  <linearGradient id="shopModernFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#ff2f9c" stop-opacity=".40"/>
+                    <stop offset="100%" stop-color="#e70779" stop-opacity="0"/>
+                  </linearGradient>
+                  <filter id="shopModernGlow">
+                    <feGaussianBlur stdDeviation="2.1" result="blur"/>
+                    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                  </filter>
+                </defs>
+                <path fill="url(#shopModernFill)" class="modern-area" d="M0,116 L28,110 L56,114 L84,97 L112,102 L140,88 L168,92 L196,73 L224,79 L252,60 L280,67 L308,48 L336,57 L364,38 L392,46 L420,28 L446,34 L460,15 L460,145 L0,145 Z"/>
+                <path class="modern-line" filter="url(#shopModernGlow)" d="M0,116 L28,110 L56,114 L84,97 L112,102 L140,88 L168,92 L196,73 L224,79 L252,60 L280,67 L308,48 L336,57 L364,38 L392,46 L420,28 L446,34 L460,15"/>
+                <circle cx="196" cy="73" r="3" class="modern-point"/>
+                <circle cx="336" cy="57" r="3" class="modern-point"/>
+                <circle cx="460" cy="15" r="4" class="modern-point"/>
               </svg>
+              <div class="shop-chart-scan"></div>
+              <canvas class="week-chart live-week-chart" id="weekChart" width="460" height="145"></canvas>
             </article>
 
-            <article class="shop-card">
-              <div class="kpi-label">BESTELLUNGEN HEUTE</div>
-              <div class="stat-value" id="statOrders">—</div>
-              <div class="kpi-meta">↗ LIVE · HEUTE</div>
-              <svg class="shop-spark" viewBox="0 0 240 62" preserveAspectRatio="none">
-                <g class="spark-bars">
-                  <rect x="3" y="49" width="10" height="10"/><rect x="20" y="43" width="10" height="16"/><rect x="37" y="46" width="10" height="13"/>
-                  <rect x="54" y="38" width="10" height="21"/><rect x="71" y="44" width="10" height="15"/><rect x="88" y="35" width="10" height="24"/>
-                  <rect x="105" y="40" width="10" height="19"/><rect x="122" y="30" width="10" height="29"/><rect x="139" y="35" width="10" height="24"/>
-                  <rect x="156" y="25" width="10" height="34"/><rect x="173" y="31" width="10" height="28"/><rect x="190" y="20" width="10" height="39"/>
-                  <rect x="207" y="27" width="10" height="32"/><rect x="224" y="12" width="10" height="47"/>
-                </g>
-                <path class="spark-line secondary" d="M0,54 L18,50 L36,47 L54,49 L72,42 L90,45 L108,38 L126,40 L144,33 L162,35 L180,28 L198,31 L218,23 L240,18"/>
-              </svg>
-            </article>
+            <div class="shop-kpi-column">
+              <article class="modern-kpi kpi-orders">
+                <div class="kpi-icon">▥</div>
+                <div class="kpi-copy">
+                  <span>BESTELLUNGEN</span>
+                  <b id="statOrders">—</b>
+                  <em>↗ Live</em>
+                </div>
+                <div class="mini-bars">
+                  <i style="--h:28%"></i><i style="--h:42%"></i><i style="--h:36%"></i><i style="--h:54%"></i>
+                  <i style="--h:48%"></i><i style="--h:68%"></i><i style="--h:62%"></i><i style="--h:80%"></i>
+                  <i style="--h:72%"></i><i style="--h:92%"></i>
+                </div>
+              </article>
 
-            <article class="shop-card">
-              <div class="kpi-label">Ø BESTELLWERT</div>
-              <div class="stat-value stat-small" id="statAov">—</div>
-              <div class="kpi-meta">↗ AKTUELL</div>
-              <svg class="shop-spark" viewBox="0 0 240 62" preserveAspectRatio="none">
-                <defs><linearGradient id="a3" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e70779" stop-opacity=".22"/><stop offset="100%" stop-color="#e70779" stop-opacity="0"/></linearGradient></defs>
-                <path class="spark-area" fill="url(#a3)" d="M0,51 L17,49 L34,45 L51,47 L68,41 L85,44 L102,38 L119,40 L136,33 L153,36 L170,29 L187,33 L204,24 L221,29 L240,11 L240,62 L0,62 Z"/>
-                <path class="spark-line" d="M0,51 L17,49 L34,45 L51,47 L68,41 L85,44 L102,38 L119,40 L136,33 L153,36 L170,29 L187,33 L204,24 L221,29 L240,11"/>
-              </svg>
-            </article>
+              <article class="modern-kpi kpi-aov">
+                <div class="kpi-icon">€</div>
+                <div class="kpi-copy">
+                  <span>Ø BESTELLWERT</span>
+                  <b id="statAov">—</b>
+                  <em>Aktuell</em>
+                </div>
+                <svg class="mini-spark" viewBox="0 0 170 45" preserveAspectRatio="none" aria-hidden="true">
+                  <path d="M0,35 L20,31 L40,33 L60,25 L80,28 L100,20 L120,23 L140,15 L160,20 L170,8"/>
+                </svg>
+              </article>
 
-            <article class="shop-card">
-              <div class="kpi-label">GESTERN</div>
-              <div class="stat-value stat-small" id="statYesterday">—</div>
-              <div class="kpi-meta">VERGLEICH</div>
-              <svg class="shop-spark" viewBox="0 0 240 62" preserveAspectRatio="none">
-                <defs><linearGradient id="a4" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#e70779" stop-opacity=".23"/><stop offset="100%" stop-color="#e70779" stop-opacity="0"/></linearGradient></defs>
-                <path class="spark-area" fill="url(#a4)" d="M0,53 L14,49 L28,51 L42,45 L56,48 L70,41 L84,44 L98,35 L112,39 L126,31 L140,36 L154,25 L168,33 L182,22 L196,29 L210,18 L225,25 L240,8 L240,62 L0,62 Z"/>
-                <path class="spark-line" d="M0,53 L14,49 L28,51 L42,45 L56,48 L70,41 L84,44 L98,35 L112,39 L126,31 L140,36 L154,25 L168,33 L182,22 L196,29 L210,18 L225,25 L240,8"/>
-              </svg>
-            </article>
+              <article class="modern-kpi kpi-yesterday">
+                <div class="kpi-icon">↔</div>
+                <div class="kpi-copy">
+                  <span>GESTERN</span>
+                  <b id="statYesterday">—</b>
+                  <em>Vergleich</em>
+                </div>
+              </article>
+            </div>
           </div>
 
-          <canvas id="weekChart" class="compat" width="360" height="48"></canvas>
-          <span id="shopUpdated" class="compat">…</span>
-          <span id="shopDot" class="compat"></span>
-          <span id="sysShop" class="compat">…</span>
+          <div class="modern-shop-footer">
+            <span id="shopUpdated">WARTE AUF DATEN …</span>
+            <span class="api-status"><i id="shopDot" class="panel-dot"></i> SHOPIFY API</span>
+          </div>
         </section>
 
-        <section class="glass-panel mail-panel">
-          <div class="panel-head">
-            <div><span class="panel-icon">✉</span> MAIL EINGANG</div>
-            <span class="mail-count">5</span>
+        <section class="panel mail-panel-clean modern-mail">
+          <div class="panel-head modern-head">
+            <div class="head-brand">
+              <div class="brand-icon gmail-icon brand-logo-icon"><img src="https://upload.wikimedia.org/wikipedia/commons/7/7e/Gmail_icon_%282020%29.svg" alt="Gmail" /></div>
+              <div>
+                <span>GMAIL · LETZTE 5</span>
+                <small>POSTEINGANG</small>
+              </div>
+            </div>
+            <span class="mail-chip">5</span>
           </div>
 
-          <div class="email-list" id="inboxList">
-            <div class="email-row"><div class="avatar">TS</div><div class="email-sender">Posteingang</div><div class="email-copy"><b>Mail-System vorbereitet</b><span>Die letzten fünf echten Posteingangs-Mails werden hier angeschlossen.</span></div><time>—</time></div>
-            <div class="email-row"><div class="avatar">MK</div><div class="email-sender">Posteingang</div><div class="email-copy"><b>Gelesen + ungelesen</b><span>Alles, was im Posteingang bleibt, wird berücksichtigt.</span></div><time>—</time></div>
-            <div class="email-row"><div class="avatar">JP</div><div class="email-sender">Posteingang</div><div class="email-copy"><b>Mail-Kontext</b><span>„Lies die letzte Mail“ und „Antworte darauf“ sind vorgesehen.</span></div><time>—</time></div>
-            <div class="email-row"><div class="avatar">AC</div><div class="email-sender">Posteingang</div><div class="email-copy"><b>Kundenanfragen</b><span>Wichtige Kundenmails können automatisch gemeldet werden.</span></div><time>—</time></div>
-            <div class="email-row"><div class="avatar">LH</div><div class="email-sender">Posteingang</div><div class="email-copy"><b>5-Minuten-Prüfung</b><span>Automatisches Prüfen kommt mit dem Mail-Backend.</span></div><time>—</time></div>
+          <div class="message-list modern-message-list" id="inboxList">
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar">TS</div>
+              <div class="msg-copy"><b>Mail-System vorbereitet</b><span>Die letzte echte Mail erscheint hier.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar">MK</div>
+              <div class="msg-copy"><b>Gelesen + ungelesen</b><span>Alles im Posteingang wird berücksichtigt.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar">JP</div>
+              <div class="msg-copy"><b>Mail-Kontext</b><span>Antworten und Entwürfe direkt über JARVIS.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row modern-message-row important-mail">
+              <div class="sender-avatar">AC</div>
+              <div class="msg-copy"><b>Kundenanfrage</b><span>Wichtige Kundenmails werden hervorgehoben.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar">LH</div>
+              <div class="msg-copy"><b>5-Minuten-Prüfung</b><span>Automatische Prüfung wird angeschlossen.</span></div>
+              <time>—</time>
+            </div>
           </div>
-
-          <div class="panel-action">ZUM POSTEINGANG →</div>
         </section>
-      </div>
 
-      <!-- CENTER -->
-      <section class="core-zone" id="voicePanel">
-        <div class="core-halo halo-a"></div>
-        <div class="core-halo halo-b"></div>
-        <div class="core-halo halo-c"></div>
+      </section>
 
-        <div class="core-side left">
-          <div class="telemetry"><span>SYSTEM</span><b>ONLINE</b></div>
-          <div class="telemetry"><span>VERBINDUNG</span><b>STABIL</b></div>
-          <div class="telemetry"><span>DATENFLUSS</span><b>AKTIV</b></div>
-          <div class="telemetry"><span>UPDATE</span><b id="hudClock">LIVE</b></div>
+
+      <!-- ORIGINALER KERN – FUNKTION UND KLICK BLEIBEN EXAKT -->
+      <section class="stage">
+        <div class="stage-title">
+          <div class="eyebrow">DEIN PERSÖNLICHER ASSISTENT</div>
+          <h1>JARVIS</h1>
         </div>
 
-        <div class="holo-shirt-wrap">
-          <svg class="holo-shirt" viewBox="0 0 420 500" aria-hidden="true">
-            <defs>
-              <filter id="glow">
-                <feGaussianBlur stdDeviation="3.2" result="coloredBlur"/>
-                <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
-              </filter>
-            </defs>
-            <path class="shirt-outline" filter="url(#glow)" d="M128 58 L73 82 L22 132 L67 182 L91 163 L91 449 L329 449 L329 163 L353 182 L398 132 L347 82 L292 58 C270 92 246 108 210 108 C174 108 150 92 128 58 Z"/>
-            <path class="shirt-grid" d="M128 58 L210 108 L292 58 M73 82 L91 163 L210 108 L329 163 L347 82 M22 132 L91 163 L67 182 M398 132 L329 163 L353 182 M91 163 L329 163 M91 220 L329 220 M91 280 L329 280 M91 340 L329 340 M91 400 L329 400"/>
-            <path class="shirt-grid faint" d="M91 163 L210 449 M329 163 L210 449 M128 58 L91 449 M292 58 L329 449 M73 82 L329 340 M347 82 L91 340 M22 132 L329 280 M398 132 L91 280"/>
-          </svg>
-          <img class="shirt-brand" src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252" alt="" />
-          <div class="shirt-particles"></div>
+        <div class="voice-panel" id="voicePanel">
+          <button
+            id="toggle"
+            class="voice-button"
+            type="button"
+            aria-label="JARVIS starten oder stoppen"
+          >
+            <span class="reactor-arc arc-one"></span>
+            <span class="reactor-arc arc-two"></span>
+            <span class="reactor-arc arc-three"></span>
+            <span class="reactor-ticks ticks-outer"></span>
+            <span class="reactor-ticks ticks-inner"></span>
+            <span class="voice-ring ring-one"></span>
+            <span class="voice-ring ring-two"></span>
+            <span class="voice-core">
+              <canvas id="coreCanvas" aria-hidden="true"></canvas>
+            </span>
+          </button>
+          <div class="voice-log" id="log">Bereit.</div>
         </div>
 
-        <div class="core-side right">
-          <div class="telemetry gauge"><span>PERFORMANCE</span><b>98%</b></div>
-          <div class="telemetry gauge"><span>AUSLASTUNG</span><b>63%</b></div>
-          <div class="telemetry"><span>SICHERHEIT</span><b>HOCH</b></div>
-          <div class="telemetry"><span>BACKUP</span><b>AKTIV</b></div>
-        </div>
-
-        <div class="holo-platform">
-          <div class="platform-ring r1"></div>
-          <div class="platform-ring r2"></div>
-          <div class="platform-ring r3"></div>
-        </div>
-
-        <div class="core-caption">
-          <span>HERZSTÜCK DES SYSTEMS</span>
-          <b>ALLE SYSTEME LAUFEN OPTIMAL</b>
+        <div class="stage-foot">
+          <div class="core-state">CORE: <span id="hudState">STANDBY</span></div>
+          <div class="core-loc">LUDWIGSHAFEN AM RHEIN · DE</div>
         </div>
       </section>
 
-      <!-- RIGHT -->
-      <div class="right-stack">
-        <section class="glass-panel whatsapp-panel">
-          <div class="panel-head green-head">
-            <div><span class="wa-mark">●</span> WHATSAPP</div>
-            <span class="wa-live">● BEREIT</span>
+
+      <!-- RECHTS: WHATSAPP + WETTER/NEWS -->
+      <section class="zone zone-right">
+
+        <section class="panel whatsapp-panel-clean modern-whatsapp">
+          <div class="panel-head modern-head wa-modern-head">
+            <div class="head-brand">
+              <div class="brand-icon whatsapp-icon brand-logo-icon"><img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" alt="WhatsApp" /></div>
+              <div>
+                <span>WHATSAPP BUSINESS</span>
+                <small>LETZTE 5 CHATS</small>
+              </div>
+            </div>
+            <span class="wa-state">● BEREIT</span>
           </div>
 
-          <div class="wa-hero">
-            <div class="wa-orb">◉</div>
-            <div><b>WhatsApp Business</b><span>LETZTE 5 NACHRICHTEN</span></div>
-            <em>5</em>
-          </div>
-
-          <div class="wa-list">
-            <div class="wa-row"><i>01</i><div><b>Neue Kundenanfrage</b><span>Platzhalter bis zur Live-Verknüpfung.</span></div><time>—</time></div>
-            <div class="wa-row"><i>02</i><div><b>Angebot & Rückfrage</b><span>Letzte Nachricht erscheint hier.</span></div><time>—</time></div>
-            <div class="wa-row"><i>03</i><div><b>Offene Unterhaltung</b><span>Wichtige Chats werden priorisiert.</span></div><time>—</time></div>
-            <div class="wa-row"><i>04</i><div><b>Produktfrage</b><span>Textilien, Druck und Veredelung.</span></div><time>—</time></div>
-            <div class="wa-row"><i>05</i><div><b>Bestellstatus</b><span>Statusfragen direkt im Dashboard.</span></div><time>—</time></div>
+          <div class="message-list modern-message-list wa-modern-list">
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar wa-avatar">01</div>
+              <div class="msg-copy"><b>Neue Kundenanfrage</b><span>Platzhalter bis zur Live-Verknüpfung.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar wa-avatar">02</div>
+              <div class="msg-copy"><b>Angebot & Rückfrage</b><span>Letzte Nachricht erscheint hier.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar wa-avatar">03</div>
+              <div class="msg-copy"><b>Produktfrage</b><span>Textilien, Druck und Veredelung.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar wa-avatar">04</div>
+              <div class="msg-copy"><b>Bestellstatus</b><span>Statusfragen direkt im Cockpit.</span></div>
+              <time>—</time>
+            </div>
+            <div class="message-row modern-message-row">
+              <div class="sender-avatar wa-avatar">05</div>
+              <div class="msg-copy"><b>Offener Chat</b><span>Wichtige Unterhaltung.</span></div>
+              <time>—</time>
+            </div>
           </div>
         </section>
 
-        <div class="right-lower">
-          <section class="glass-panel news-panel">
-            <div class="panel-head"><div>◉ NACHRICHTEN · LUDWIGSHAFEN</div><span>AKTUELL</span></div>
-            <div class="news-list">
-              <div class="news-row"><div class="news-thumb"></div><div><b>Ludwigshafen aktuell</b><span>Lokale Meldungen und Entwicklungen aus der Region.</span><time>HEUTE</time></div><i></i></div>
-              <div class="news-row"><div class="news-thumb n2"></div><div><b>Wirtschaft & Unternehmen</b><span>Relevante Meldungen für Firmen und Selbstständige.</span><time>AKTUELL</time></div><i></i></div>
-              <div class="news-row"><div class="news-thumb n3"></div><div><b>Verkehr & Region</b><span>Wichtige Hinweise aus Ludwigshafen und Umgebung.</span><time>REGION</time></div><i></i></div>
+        <div class="right-bottom-grid">
+
+          <section class="panel weather-panel-clean modern-weather">
+            <div class="panel-head modern-head">
+              <div class="head-brand">
+                <div class="brand-icon weather-icon">☁</div>
+                <div>
+                  <span>WETTER</span>
+                  <small>LUDWIGSHAFEN</small>
+                </div>
+              </div>
+              <span class="panel-dot" id="wxDot"></span>
+            </div>
+            <div class="weather-modern-main">
+              <div class="weather-emoji">🌤️</div>
+              <div>
+                <div class="wx-temp" id="wxTemp">—°</div>
+                <div class="wx-desc" id="wxDesc">…</div>
+              </div>
+            </div>
+            <div class="wx-grid modern-wx-grid">
+              <div class="wx-cell"><span id="wxMax">—°</span><label>MAX</label></div>
+              <div class="wx-cell"><span id="wxMin">—°</span><label>MIN</label></div>
+              <div class="wx-cell"><span id="wxRain">—%</span><label>REGEN</label></div>
+              <div class="wx-cell"><span id="wxWind">—</span><label>WIND</label></div>
             </div>
           </section>
 
-          <section class="glass-panel weather-panel">
-            <div class="panel-head"><div>☁ WETTER</div><span class="panel-dot" id="wxDot"></span></div>
-            <div class="weather-body">
-              <div class="wx-location">Ludwigshafen am Rhein</div>
-              <div class="wx-main"><div class="wx-icon">🌤️</div><div><div class="wx-temp" id="wxTemp">—°</div><div class="wx-desc" id="wxDesc">…</div></div></div>
-              <div class="wx-grid">
-                <div><b id="wxMax">—°</b><span>MAX</span></div>
-                <div><b id="wxMin">—°</b><span>MIN</span></div>
-                <div><b id="wxRain">—%</b><span>REGEN</span></div>
-                <div><b id="wxWind">—</b><span>WIND</span></div>
+          <section class="panel news-panel-clean modern-news">
+            <div class="panel-head modern-head">
+              <div class="head-brand">
+                <div class="brand-icon news-icon">N</div>
+                <div>
+                  <span>NACHRICHTEN</span>
+                  <small>LUDWIGSHAFEN & REGION</small>
+                </div>
               </div>
-              <div class="wx-days">
-                <span>MO <i>☁️</i></span><span>DI <i>🌤️</i></span><span>MI <i>☀️</i></span><span>DO <i>🌤️</i></span><span>FR <i>☀️</i></span>
+              <span class="panel-dot ok"></span>
+            </div>
+            <div class="news-modern-list">
+              <div class="news-modern-item">
+                <div class="news-thumb thumb-city"></div>
+                <div><b>Ludwigshafen aktuell</b><span>Lokale Meldungen und Entwicklungen.</span><small>HEUTE</small></div>
+              </div>
+              <div class="news-modern-item">
+                <div class="news-thumb thumb-business"></div>
+                <div><b>Wirtschaft & Unternehmen</b><span>Relevantes für Firmen und Selbstständige.</span><small>AKTUELL</small></div>
+              </div>
+              <div class="news-modern-item">
+                <div class="news-thumb thumb-traffic"></div>
+                <div><b>Verkehr & Region</b><span>Hinweise aus Ludwigshafen und Umgebung.</span><small>REGION</small></div>
               </div>
             </div>
-            <span id="sysWx" class="compat">…</span>
           </section>
-        </div>
-      </div>
 
-      <!-- DESKTOP VOICE DOCK -->
-      <section class="voice-dock">
-        <button class="quick-chip">✉ <span>Neue Mails</span></button>
-        <button class="quick-chip">▥ <span>Umsatz heute</span></button>
-
-        <div class="voice-core">
-          <div class="voice-wave left-wave"></div>
-          <div class="mic-orbit">
-            <button id="toggle" class="voice-button" type="button" aria-label="JARVIS starten oder stoppen"></button>
-          </div>
-          <div class="voice-copy">
-            <div class="voice-log" id="log">JARVIS ist bereit.</div>
-            <div class="core-state">VOICE CORE · <span id="hudState">STANDBY</span></div>
-          </div>
-          <div class="voice-wave right-wave"></div>
         </div>
 
-        <button class="quick-chip">▤ <span>Mein Briefing</span></button>
-        <button class="quick-chip">➤ <span>Antwort erstellen</span></button>
+        <section class="panel system-strip">
+          <div class="sys-lines compact-sys">
+            <div class="sys-line"><span>SHOPIFY</span><b id="sysShop">…</b></div>
+            <div class="sys-line"><span>WETTER</span><b id="sysWx">…</b></div>
+            <div class="sys-line"><span>MAIL</span><b class="pending">READY</b></div>
+            <div class="sys-line"><span>WHATSAPP</span><b class="pending">READY</b></div>
+          </div>
+          <div class="hidden-gauge-wrap">
+            <div class="gauge" id="gaugeTrend" style="--val:0"><span id="gaugeTrendLabel">TREND</span></div>
+          </div>
+        </section>
+
       </section>
+
+      <section class="panel" id="draftPanel" style="display: none;">
+          <div class="panel-head">
+            <span>ENTWURF</span>
+            <span class="panel-dot ok"></span>
+          </div>
+          <div
+            id="draftSubject"
+            style="color: var(--text); font-family: var(--font-body); font-size: 0.85rem; font-weight: 600; letter-spacing: normal; text-transform: none;"
+          ></div>
+          <div
+            id="draftBody"
+            style="white-space: pre-wrap; font-size: 0.8rem; line-height: 1.5; max-height: 220px; overflow-y: auto; color: var(--text-dim); font-family: var(--font-body); letter-spacing: normal; text-transform: none;"
+          ></div>
+          <button
+            id="draftCopyBtn"
+            class="command-chip"
+            type="button"
+            style="cursor: pointer; align-self: flex-start; border: 1px solid var(--panel-border); background: var(--panel);"
+          >
+            Text kopieren
+          </button>
+        </section>
 
     </main>
 
-    <section class="glass-panel" id="draftPanel">
-      <div class="panel-head draft-panel-head"><div>ENTWURF</div><div class="draft-head-actions"><span class="live-tag">READY</span><button id="draftCloseBtn" class="draft-close-btn" type="button" aria-label="Entwurf ausblenden" title="Entwurf ausblenden">×</button></div></div>
-      <div class="draft-inner">
-        <div id="draftSubject"></div>
-        <div id="draftBody"></div>
-        <button id="draftCopyBtn" type="button">Text kopieren</button>
-      </div>
-    </section>
 
-    <canvas id="waveCanvas" class="compat" width="260" height="56"></canvas>
-    <canvas id="coreCanvas" class="compat" width="100" height="100"></canvas>
-    <div id="gaugeTrend" class="compat"><span id="gaugeTrendLabel"></span></div>
+    <!-- =================================================
+         COMMAND-LEISTE
+         ================================================= -->
+    <footer class="command-bar">
+      <div class="command-chip">„Wie viele Bestellungen habe ich heute?"</div>
+      <div class="command-chip">„Wie hoch ist mein Umsatz?"</div>
+      <div class="command-chip">„Wie wird das Wetter morgen?"</div>
+      <div class="command-chip">„Was hältst du von meiner Idee?"</div>
+    </footer>
+
   </div>
 
   <audio id="remoteAudio" autoplay playsinline></audio>
 
+
+  <!-- ===================================================
+       HUD-SCRIPT: Boot, Uhr, Live-Daten, Welle, Datenstrom
+       Voice-Logik bleibt komplett in app.js.
+       =================================================== -->
   <script>
-(function () {
+    (function () {
 
       /* ---------- Boot-Sequenz ---------- */
       var overlay = document.getElementById("bootOverlay");
@@ -747,39 +875,42 @@
     })();
   </script>
 
+  
   <script>
     (function(){
-      const desktopToggle = document.getElementById("toggle");
-      const mobileToggle = document.getElementById("toggleMobile");
-      const mobileState = document.getElementById("mobileVoiceState");
-      const mobileTitle = document.querySelector(".mobile-voice-title");
+      const originalCore = document.getElementById("toggle");
+      const mobileCore = document.getElementById("toggleMobile");
+      const mobileTitle = document.getElementById("mobileCoreTitle");
+      const mobileState = document.getElementById("mobileCoreState");
 
-      if (mobileToggle && desktopToggle) {
-        mobileToggle.addEventListener("click", function(){ desktopToggle.click(); });
+      if (originalCore && mobileCore) {
+        mobileCore.addEventListener("click", function(){ originalCore.click(); });
       }
 
-      const map = {
-        offline:["STANDBY","JARVIS STARTEN"],
-        connecting:["BOOT","VERBINDUNG"],
-        listening:["ZUHÖREN","JARVIS HÖRT ZU"],
-        hearing:["INPUT","SPRACHE ERKANNT"],
-        thinking:["DENKEN","JARVIS ANALYSIERT"],
-        speaking:["SPRECHEN","JARVIS ANTWORTET"]
+      const labels = {
+        offline:["JARVIS STARTEN","STANDBY"],
+        connecting:["VERBINDUNG","BOOT"],
+        listening:["JARVIS HÖRT ZU","ZUHÖREN"],
+        hearing:["SPRACHE ERKANNT","INPUT"],
+        thinking:["JARVIS ANALYSIERT","DENKEN"],
+        speaking:["JARVIS ANTWORTET","SPRECHEN"]
       };
 
-      function sync(){
+      function syncMobile(){
         const s = document.body.dataset.jarvisState || "offline";
-        const v = map[s] || map.offline;
-        if (mobileState) mobileState.textContent = v[0];
-        if (mobileTitle) mobileTitle.textContent = v[1];
-        document.body.dataset.mobileVoiceState = s;
+        const p = labels[s] || labels.offline;
+        if (mobileTitle) mobileTitle.textContent = p[0];
+        if (mobileState) mobileState.textContent = p[1];
       }
 
-      sync();
-      new MutationObserver(sync).observe(document.body,{attributes:true,attributeFilter:["data-jarvis-state"]});
+      syncMobile();
+      new MutationObserver(syncMobile).observe(document.body, {
+        attributes:true,
+        attributeFilter:["data-jarvis-state"]
+      });
     })();
   </script>
 
-  <script src="app.js?v=22"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>
