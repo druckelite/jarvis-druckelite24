@@ -1,5865 +1,719 @@
-/* =========================================================
-   DRUCKELITE24 · JARVIS
-   APP.JS
-
-   V10.4 · ZAHLEN & TTS BUFFER FIX
-   OPENAI REALTIME TEXT
-   + ELEVENLABS WEBSOCKET
-   + PCM 24 KHZ
-   + WEB AUDIO
-   + OHNE DEBUG HUD
-   ========================================================= */
-
-
-/* =========================================================
-   DOM
-   ========================================================= */
-
-const button =
-  document.querySelector("#toggle");
-
-const statusEl =
-  document.querySelector("#status");
-
-const logEl =
-  document.querySelector("#log");
-
-const remoteAudio =
-  document.querySelector("#remoteAudio");
-
-
-/* =========================================================
-   DEBUG HUD
-   ========================================================= */
-
-// DEBUG HUD entfernt – debugSet() bleibt absichtlich als sichere No-op-Hilfe erhalten.
-
-
-
-function debugSet(
-  id,
-  value
-) {
-
-  const el =
-    document.getElementById(id);
-
-  if (el) {
-    el.textContent =
-      String(value);
-  }
-}
-
-
-/* =========================================================
-   STATE
-   ========================================================= */
-
-let active =
-  false;
-
-let starting =
-  false;
-
-let stopping =
-  false;
-
-let peerConnection =
-  null;
-
-let dataChannel =
-  null;
-
-let micStream =
-  null;
-
-let realtimeConnected =
-  false;
-
-let assistantSpeaking =
-  false;
-
-let greetingInProgress =
-  false;
-
-let responseInProgress =
-  false;
-
-let currentResponseText =
-  "";
-
-/* =========================================================
-   TTS TEXT BUFFER
-   Sammelt OpenAI-Text kurz, damit ElevenLabs keine Zahlen,
-   Abkürzungen oder Wörter in Einzelteilen bekommt.
-   ========================================================= */
-
-let ttsTextBuffer =
-  "";
-
-let ttsBufferTimer =
-  null;
-
-const TTS_BUFFER_DELAY_MS =
-  140;
-
-const TTS_BUFFER_MAX_CHARS =
-  140;
-
-const runningToolCalls =
-  new Set();
-
-
-/* =========================================================
-   ELEVENLABS STATE
-   ========================================================= */
-
-let elevenSocket =
-  null;
-
-let elevenConnected =
-  false;
-
-let elevenReady =
-  false;
-
-let elevenClosing =
-  false;
-
-let elevenTokenData =
-  null;
-
-let elevenSessionId =
-  0;
-
-let elevenKeepAliveTimer =
-  null;
-
-
-/* =========================================================
-   WEB AUDIO / PCM STATE
-   ========================================================= */
-
-let audioContext =
-  null;
-
-let nextPlaybackTime =
-  0;
-
-let audioScheduleChain =
-  Promise.resolve();
-
-const scheduledAudioSources =
-  new Set();
-
-const ELEVEN_PCM_SAMPLE_RATE =
-  24000;
-
-
-/* =========================================================
-   BACKGROUND CHECKS
-   ========================================================= */
-
-let proactiveCheckTimer =
-  null;
-
-let proactiveFirstCheckTimer =
-  null;
-
-let reminderCheckTimer =
-  null;
-
-
-let screenWakeLock =
-  null;
-
-
-let currentSelectedEmailId =
-  null;
-
-let currentSelectedEmail =
-  null;
-
-let currentGmailDraftId =
-  (() => {
-    try {
-      return sessionStorage.getItem(
-        "jarvisGmailDraftId"
-      );
-    } catch {
-      return null;
-    }
-  })();
-
-
-const PROACTIVE_CHECK_INTERVAL_MS =
-  5 * 1000;
-
-const PROACTIVE_FIRST_CHECK_DELAY_MS =
-  5 * 1000;
-
-const REMINDER_CHECK_INTERVAL_MS =
-  60 * 1000;
-
-
-/* =========================================================
-   INTRO
-   ========================================================= */
-
-let introAudio =
-  null;
-
-let introFadeTimer =
-  null;
-
-const INTRO_START =
-  4;
-
-const INTRO_START_VOLUME =
-  0.26;
-
-const INTRO_VOICE_DELAY_MS =
-  900;
-
-const INTRO_BACKGROUND_VOLUME =
-  0.018;
-
-const INTRO_DUCK_DURATION_MS =
-  650;
-
-const INTRO_FADE_DURATION_MS =
-  15000;
-
-
-/* =========================================================
-   HELPERS
-   ========================================================= */
-
-function sleep(ms) {
-
-  return new Promise(
-    resolve =>
-      setTimeout(resolve, ms)
-  );
-}
-
-
-function safeJsonParse(value) {
-
-  try {
-
-    return JSON.parse(value);
-
-  } catch {
-
-    return null;
-  }
-}
-
-
-/* =========================================================
-   UI
-   ========================================================= */
-
-function setStatus(text) {
-
-  if (!statusEl) {
-    return;
-  }
-
-  statusEl.textContent =
-    text;
-
-  statusEl.classList.toggle(
-    "online",
-    text === "Online"
-  );
-}
-
-
-function setLog(text) {
-
-  if (!logEl) {
-    return;
-  }
-
-  logEl.textContent =
-    text;
-}
-
-
-function setButtonActive(value) {
-
-  if (!button) {
-    return;
-  }
-
-  button.classList.toggle(
-    "active",
-    Boolean(value)
-  );
-}
-
-
-function setJarvisState(state) {
-
-  document.body.dataset.jarvisState =
-    state;
-}
-
-
-/* =========================================================
-   DRAFT PANEL
-   ========================================================= */
-
-function showDraft(draft) {
-
-  const panel =
-    document.getElementById(
-      "draftPanel"
-    );
-
-  const subjectEl =
-    document.getElementById(
-      "draftSubject"
-    );
-
-  const bodyEl =
-    document.getElementById(
-      "draftBody"
-    );
-
-  if (
-    !panel ||
-    !subjectEl ||
-    !bodyEl
-  ) {
-    return;
-  }
-
-  subjectEl.textContent =
-    draft?.subject
-      ? `Betreff: ${draft.subject}`
-      : "";
-
-  bodyEl.textContent =
-    draft?.body || "";
-
-  panel.style.display =
-    "flex";
-}
-
-
-const draftCopyBtn =
-  document.getElementById(
-    "draftCopyBtn"
-  );
-
-if (draftCopyBtn) {
-
-  draftCopyBtn.addEventListener(
-    "click",
-    async () => {
-
-      const subjectEl =
-        document.getElementById(
-          "draftSubject"
-        );
-
-      const bodyEl =
-        document.getElementById(
-          "draftBody"
-        );
-
-      const fullText =
-        `${
-          subjectEl?.textContent || ""
-        }\n\n${
-          bodyEl?.textContent || ""
-        }`.trim();
-
-      try {
-
-        await navigator.clipboard
-          .writeText(fullText);
-
-        const original =
-          draftCopyBtn.textContent;
-
-        draftCopyBtn.textContent =
-          "Kopiert!";
-
-        setTimeout(
-          () => {
-
-            draftCopyBtn.textContent =
-              original;
-
-          },
-          1500
-        );
-
-      } catch (error) {
-
-        console.warn(
-          "Kopieren fehlgeschlagen:",
-          error
-        );
-      }
-    }
-  );
-}
-
-
-/* =========================================================
-   BERLIN TIME
-   ========================================================= */
-
-function getBerlinHour() {
-
-  try {
-
-    const formatter =
-      new Intl.DateTimeFormat(
-        "de-DE",
-        {
-          timeZone:
-            "Europe/Berlin",
-
-          hour:
-            "numeric",
-
-          hourCycle:
-            "h23"
-        }
-      );
-
-    const parts =
-      formatter.formatToParts(
-        new Date()
-      );
-
-    const hourPart =
-      parts.find(
-        part =>
-          part.type === "hour"
-      );
-
-    const hour =
-      Number(
-        hourPart?.value
-      );
-
-    if (!Number.isNaN(hour)) {
-      return hour;
-    }
-
-  } catch (error) {
-
-    console.warn(
-      "Berlin-Zeit Fehler:",
-      error
-    );
-  }
-
-  return new Date()
-    .getHours();
-}
-
-
-
-/* =========================================================
-   MOBILE SCREEN WAKE LOCK
-   Verhindert automatisches Display-Standby, solange JARVIS läuft.
-   Wenn das iPhone manuell gesperrt wird, darf iOS Browser/WebRTC
-   trotzdem pausieren.
-   ========================================================= */
-
-async function requestScreenWakeLock() {
-
-  try {
-
-    if (
-      !("wakeLock" in navigator) ||
-      document.visibilityState !==
-        "visible"
-    ) {
-      return false;
-    }
-
-
-    if (
-      screenWakeLock
-    ) {
-      return true;
-    }
-
-
-    screenWakeLock =
-      await navigator.wakeLock
-        .request(
-          "screen"
-        );
-
-
-    screenWakeLock.addEventListener(
-      "release",
-      () => {
-
-        screenWakeLock =
-          null;
-      }
-    );
-
-
-    return true;
-
-
-  } catch (
-    error
-  ) {
-
-    console.warn(
-      "Wake Lock nicht verfügbar:",
-      error
-    );
-
-
-    screenWakeLock =
-      null;
-
-
-    return false;
-  }
-}
-
-
-async function releaseScreenWakeLock() {
-
-  if (
-    !screenWakeLock
-  ) {
-    return;
-  }
-
-
-  try {
-
-    await screenWakeLock
-      .release();
-
-  } catch {}
-
-
-  screenWakeLock =
-    null;
-}
-
-
-document.addEventListener(
-  "visibilitychange",
-  () => {
-
-    if (
-      document.visibilityState !==
-      "visible"
-    ) {
-      return;
-    }
-
-
-    if (
-      active
-    ) {
-
-      requestScreenWakeLock();
-
-
-      /*
-        Wenn iOS die Seite im Hintergrund pausiert hat,
-        beim Zurückkehren sofort den Server prüfen.
-      */
-
-      setTimeout(
-        () => {
-
-          runProactiveCheck();
-          runReminderCheck();
-
-        },
-        700
-      );
-    }
-  }
-);
-
-
-/* =========================================================
-   GREETING
-   ========================================================= */
-
-function pickRandom(items) {
-
-  return items[
-    Math.floor(
-      Math.random() *
-      items.length
-    )
-  ];
-}
-
-
-function getGreetingAddress() {
-
-  const roll =
-    Math.random();
-
-  if (roll < 0.40) {
-    return "Mattl";
-  }
-
-  if (roll < 0.70) {
-    return "Chef";
-  }
-
-  if (roll < 0.94) {
-    return "Meister";
-  }
-
-  return "Daddy";
-}
-
-
-function getGreeting() {
-
-  const hour =
-    getBerlinHour();
-
-  const roll =
-    Math.random();
-
-  let name;
-
-  if (roll < 0.36) {
-    name = "Mattl";
-  }
-
-  else if (roll < 0.66) {
-    name = "Chef";
-  }
-
-  else if (roll < 0.92) {
-    name = "Meister";
-  }
-
-  else {
-    name = "Daddy";
-  }
-
-
-  if (
-    hour >= 5 &&
-    hour < 11
-  ) {
-
-    return pickRandom([
-
-      `Systemcheck abgeschlossen. Kommandozentrale online. Guten Morgen, ${name}. JARVIS ist vollständig einsatzbereit. Heute machen wir keine halben Sachen.`,
-
-      `Energieversorgung stabil. Systeme synchronisiert. Guten Morgen, ${name}. Die Welt schläft langsam aus. Wir sind ihr bereits einen Schritt voraus.`,
-
-      `JARVIS online. Alle Systeme auf Grün. Guten Morgen, ${name}. Kaffee besorgst du. Den Rest erledigen wir gemeinsam.`,
-
-      `Kommandozentrale aktiviert. Datenverbindungen stehen. Guten Morgen, ${name}. Heute wird nicht verwaltet. Heute wird angegriffen.`,
-
-      `Systeme hochgefahren. Aufmerksamkeit bei einhundert Prozent. Guten Morgen, ${name}. Zeit, aus Ideen Ergebnisse zu machen.`,
-
-      `Guten Morgen, ${name}. JARVIS meldet volle Einsatzbereitschaft. Systeme stabil. Ziele noch nicht definiert. Das ändern wir jetzt.`,
-
-      `Verbindung hergestellt. Kommandozentrale bereit. Guten Morgen, ${name}. Mal sehen, wer heute versucht, uns aufzuhalten.`
-
-    ]);
-  }
-
-
-  if (
-    hour >= 11 &&
-    hour < 18
-  ) {
-
-    return pickRandom([
-
-      `Kommandozentrale online. Systeme synchronisiert. Willkommen zurück, ${name}. Sag mir, welches Problem heute zuerst kapitulieren soll.`,
-
-      `JARVIS ist online. Datenströme aktiv. Systeme stabil. ${name}, du hast meine volle Aufmerksamkeit.`,
-
-      `Verbindung steht. Systeme auf Grün. Willkommen zurück, ${name}. Geschäft, Werbung, Zahlen oder Chaos. Ich bin bereit.`,
-
-      `Kommandozentrale aktiviert. ${name}, JARVIS meldet vollständige Einsatzbereitschaft. Gib mir ein Ziel.`,
-
-      `Alle Systeme online. Analyse bereit. ${name}, wenn heute irgendwo Umsatz liegen bleibt, finden wir ihn.`,
-
-      `Systemcheck abgeschlossen. Keine kritischen Fehler. Noch nicht. Willkommen zurück, ${name}. Was steht an?`,
-
-      `JARVIS online. Kommandozentrale bereit. ${name}, heute machen wir entweder Fortschritt oder wenigstens einen beeindruckenden Versuch.`,
-
-      `Verbindung hergestellt. Daten bereit. Geduld geladen. Willkommen zurück, ${name}. Nutzen wir sie, solange sie noch da ist.`,
-
-      `${name}. JARVIS ist online. Systeme synchronisiert. Der Laden läuft. Jetzt sorgen wir dafür, dass er noch besser läuft.`
-
-    ]);
-  }
-
-
-  if (
-    hour >= 18 &&
-    hour < 23
-  ) {
-
-    return pickRandom([
-
-      `Nachtbetrieb wird vorbereitet. Kommandozentrale online. Guten Abend, ${name}. Andere machen Feierabend. Wir offenbar nicht.`,
-
-      `Systeme synchronisiert. Abendmodus aktiv. Willkommen zurück, ${name}. Die zweite Halbzeit kann beginnen.`,
-
-      `JARVIS online. Beleuchtung gedimmt. Rechenleistung unverändert. Guten Abend, ${name}. Was reißen wir heute noch ab?`,
-
-      `Kommandozentrale aktiviert. Guten Abend, ${name}. Die meisten fahren jetzt runter. Wir gehen offensichtlich den anderen Weg.`,
-
-      `Systemcheck abgeschlossen. Alles bereit. Guten Abend, ${name}. Wenn wir schon um diese Uhrzeit arbeiten, sollte es wenigstens spektakulär werden.`,
-
-      `JARVIS meldet sich. Systeme auf Grün. Guten Abend, ${name}. Feierabend wurde für heute offenbar nicht genehmigt.`,
-
-      `Verbindung hergestellt. Nachtbetrieb bereit. Guten Abend, ${name}. Zeit, noch etwas zu erledigen, das morgen niemand kommen sieht.`
-
-    ]);
-  }
-
-
-  return pickRandom([
-
-    `Nachtmodus aktiviert. Systeme online. ${name}, vernünftige Menschen schlafen jetzt. Das erklärt vermutlich, warum wir beide hier sind.`,
-
-    `Kommandozentrale online. Uhrzeit kritisch. Einsatzbereitschaft trotzdem einhundert Prozent. Willkommen zurück, ${name}.`,
-
-    `Systemcheck abgeschlossen. Die Stadt schläft. JARVIS nicht. ${name}, was bauen wir jetzt noch?`,
-
-    `Nachtbetrieb aktiv. Systeme stabil. Vernunft auf Stand-by. ${name}, JARVIS ist bereit.`,
-
-    `Verbindung hergestellt. Alles ruhig. Verdächtig ruhig. Willkommen zurück, ${name}. Was haben wir vor?`,
-
-    `${name}. Es ist mitten in der Nacht. JARVIS ist online. Wenn das irgendwann groß wird, behaupten wir einfach, das sei alles Teil des Plans gewesen.`
-
-  ]);
-}
-
-
-/* =========================================================
-   INTRO
-   ========================================================= */
-
-function stopIntro() {
-
-  if (introFadeTimer) {
-
-    clearInterval(
-      introFadeTimer
-    );
-
-    introFadeTimer =
-      null;
-  }
-
-
-  if (introAudio) {
-
-    try {
-      introAudio.pause();
-    } catch {}
-
-
-    try {
-      introAudio.currentTime =
-        0;
-    } catch {}
-
-
-    introAudio =
-      null;
-  }
-}
-
-
-async function startIntro() {
-
-  stopIntro();
-
-
-  introAudio =
-    new Audio(
-      "/Intro.mp3?v=103"
-    );
-
-
-  introAudio.preload =
-    "auto";
-
-
-  introAudio.volume =
-    INTRO_START_VOLUME;
-
-
-  return new Promise(
-    resolve => {
-
-      let resolved =
-        false;
-
-
-      const done =
-        () => {
-
-          if (resolved) {
-            return;
-          }
-
-          resolved =
-            true;
-
-          resolve();
-        };
-
-
-      const play =
-        async () => {
-
-          try {
-
-            if (!introAudio) {
-
-              done();
-              return;
-            }
-
-
-            introAudio.currentTime =
-              INTRO_START;
-
-
-            await introAudio.play();
-
-
-            done();
-
-          } catch (error) {
-
-            console.warn(
-              "Intro Fehler:",
-              error
-            );
-
-
-            done();
-          }
-        };
-
-
-      introAudio.addEventListener(
-        "loadedmetadata",
-        play,
-        {
-          once: true
-        }
-      );
-
-
-      introAudio.addEventListener(
-        "error",
-        done,
-        {
-          once: true
-        }
-      );
-
-
-      if (
-        introAudio.readyState >= 1
-      ) {
-
-        play();
-      }
-
-
-      introAudio.load();
-    }
-  );
-}
-
-
-function duckIntro() {
-
-  if (
-    !introAudio ||
-    introAudio.paused
-  ) {
-    return;
-  }
-
-
-  if (introFadeTimer) {
-
-    clearInterval(
-      introFadeTimer
-    );
-
-    introFadeTimer =
-      null;
-  }
-
-
-  const original =
-    introAudio.volume;
-
-
-  const start =
-    performance.now();
-
-
-  introFadeTimer =
-    setInterval(
-      () => {
-
-        if (!introAudio) {
-
-          clearInterval(
-            introFadeTimer
-          );
-
-          introFadeTimer =
-            null;
-
-          return;
-        }
-
-
-        const progress =
-          Math.min(
-            (
-              performance.now() -
-              start
-            ) /
-            INTRO_DUCK_DURATION_MS,
-            1
-          );
-
-
-        const smooth =
-          progress *
-          progress *
-          (
-            3 -
-            2 * progress
-          );
-
-
-        introAudio.volume =
-          original -
-          (
-            original -
-            INTRO_BACKGROUND_VOLUME
-          ) *
-          smooth;
-
-
-        if (progress >= 1) {
-
-          clearInterval(
-            introFadeTimer
-          );
-
-          introFadeTimer =
-            null;
-
-
-          fadeIntroOut();
-        }
-
-      },
-      40
-    );
-}
-
-
-function fadeIntroOut() {
-
-  if (
-    !introAudio ||
-    introAudio.paused
-  ) {
-    return;
-  }
-
-
-  const start =
-    performance.now();
-
-
-  const volume =
-    introAudio.volume;
-
-
-  introFadeTimer =
-    setInterval(
-      () => {
-
-        if (!introAudio) {
-
-          clearInterval(
-            introFadeTimer
-          );
-
-          introFadeTimer =
-            null;
-
-          return;
-        }
-
-
-        const progress =
-          Math.min(
-            (
-              performance.now() -
-              start
-            ) /
-            INTRO_FADE_DURATION_MS,
-            1
-          );
-
-
-        introAudio.volume =
-          Math.max(
-            0,
-            volume *
-            Math.pow(
-              1 - progress,
-              1.7
-            )
-          );
-
-
-        if (progress >= 1) {
-
-          clearInterval(
-            introFadeTimer
-          );
-
-          introFadeTimer =
-            null;
-
-
-          try {
-            introAudio.pause();
-          } catch {}
-
-
-          introAudio =
-            null;
-        }
-
-      },
-      60
-    );
-}
-
-
-/* =========================================================
-   WEB AUDIO
-   ========================================================= */
-
-async function ensureAudioContext() {
-
-  if (!audioContext) {
-
-    const AudioContextClass =
-      window.AudioContext ||
-      window.webkitAudioContext;
-
-
-    if (!AudioContextClass) {
-
-      throw new Error(
-        "Web Audio wird von diesem Browser nicht unterstützt."
-      );
-    }
-
-
-    audioContext =
-      new AudioContextClass();
-
-
-    nextPlaybackTime =
-      audioContext.currentTime;
-  }
-
-
-  if (
-    audioContext.state ===
-    "suspended"
-  ) {
-
-    await audioContext.resume();
-  }
-
-
-  return audioContext;
-}
-
-
-function base64ToUint8Array(base64) {
-
-  const binary =
-    atob(base64);
-
-
-  const bytes =
-    new Uint8Array(
-      binary.length
-    );
-
-
-  for (
-    let i = 0;
-    i < binary.length;
-    i++
-  ) {
-
-    bytes[i] =
-      binary.charCodeAt(i);
-  }
-
-
-  return bytes;
-}
-
-
-function pcm16ToFloat32(bytes) {
-
-  const sampleCount =
-    Math.floor(
-      bytes.byteLength / 2
-    );
-
-
-  const floats =
-    new Float32Array(
-      sampleCount
-    );
-
-
-  const view =
-    new DataView(
-      bytes.buffer,
-      bytes.byteOffset,
-      bytes.byteLength
-    );
-
-
-  for (
-    let i = 0;
-    i < sampleCount;
-    i++
-  ) {
-
-    const sample =
-      view.getInt16(
-        i * 2,
-        true
-      );
-
-
-    floats[i] =
-      sample < 0
-        ? sample / 32768
-        : sample / 32767;
-  }
-
-
-  return floats;
-}
-
-
-function hasPendingElevenAudio() {
-
-  if (
-    scheduledAudioSources.size > 0
-  ) {
-    return true;
-  }
-
-
-  if (
-    audioContext &&
-    nextPlaybackTime >
-      audioContext.currentTime +
-      0.03
-  ) {
-    return true;
-  }
-
-
-  return false;
-}
-
-
-async function scheduleElevenPcm(
-  base64
-) {
-
-  const ctx =
-    await ensureAudioContext();
-
-
-  const bytes =
-    base64ToUint8Array(
-      base64
-    );
-
-
-  if (
-    bytes.byteLength < 2
-  ) {
-    return;
-  }
-
-
-  const samples =
-    pcm16ToFloat32(
-      bytes
-    );
-
-
-  if (
-    samples.length === 0
-  ) {
-    return;
-  }
-
-
-  const buffer =
-    ctx.createBuffer(
-      1,
-      samples.length,
-      ELEVEN_PCM_SAMPLE_RATE
-    );
-
-
-  buffer
-    .getChannelData(0)
-    .set(samples);
-
-
-  const source =
-    ctx.createBufferSource();
-
-
-  source.buffer =
-    buffer;
-
-
-  source.connect(
-    ctx.destination
-  );
-
-
-  const startAt =
-    Math.max(
-      ctx.currentTime + 0.025,
-      nextPlaybackTime
-    );
-
-
-  nextPlaybackTime =
-    startAt +
-    buffer.duration;
-
-
-  scheduledAudioSources.add(
-    source
-  );
-
-
-  assistantSpeaking =
-    true;
-
-
-  setJarvisState(
-    "speaking"
-  );
-
-
-  setLog(
-    "JARVIS spricht."
-  );
-
-
-  setMicrophoneEnabled(
-    false
-  );
-
-
-  debugSet(
-    "dbgPlayback",
-    "✅"
-  );
-
-
-  debugSet(
-    "dbgEvent",
-    "PCM Audio spielt"
-  );
-
-
-  source.onended =
-    () => {
-
-      scheduledAudioSources.delete(
-        source
-      );
-
-
-      if (
-        scheduledAudioSources.size === 0
-      ) {
-
-        const delayMs =
-          Math.max(
-            0,
-            (
-              nextPlaybackTime -
-              ctx.currentTime
-            ) * 1000
-          );
-
-
-        setTimeout(
-          () => {
-
-            if (
-              scheduledAudioSources.size ===
-                0 &&
-              !responseInProgress
-            ) {
-
-              assistantSpeaking =
-                false;
-
-
-              if (
-                greetingInProgress
-              ) {
-
-                greetingInProgress =
-                  false;
-              }
-
-
-              if (
-                active &&
-                runningToolCalls.size ===
-                  0
-              ) {
-
-                setJarvisState(
-                  "listening"
-                );
-
-
-                setLog(
-                  "JARVIS hört zu."
-                );
-
-
-                setMicrophoneEnabled(
-                  true
-                );
-              }
-            }
-
-          },
-          delayMs + 80
-        );
-      }
-    };
-
-
-  source.start(
-    startAt
-  );
-}
-
-
-function enqueueElevenAudio(
-  base64
-) {
-
-  audioScheduleChain =
-    audioScheduleChain
-      .then(
-        () =>
-          scheduleElevenPcm(
-            base64
-          )
-      )
-      .catch(
-        error => {
-
-          console.error(
-            "PCM Playback Fehler:",
-            error
-          );
-
-
-          debugSet(
-            "dbgPlayback",
-            "❌"
-          );
-
-
-          debugSet(
-            "dbgEvent",
-            `PCM Fehler: ${
-              error.message ||
-              "unbekannt"
-            }`
-          );
-        }
-      );
-}
-
-
-function clearElevenAudio() {
-
-  for (
-    const source of
-    scheduledAudioSources
-  ) {
-
-    try {
-      source.stop();
-    } catch {}
-  }
-
-
-  scheduledAudioSources.clear();
-
-
-  if (audioContext) {
-
-    nextPlaybackTime =
-      audioContext.currentTime;
-  } else {
-
-    nextPlaybackTime =
-      0;
-  }
-
-
-  audioScheduleChain =
-    Promise.resolve();
-
-
-  assistantSpeaking =
-    false;
-}
-
-
-/* =========================================================
-   MICROPHONE
-   ========================================================= */
-
-async function createMicrophoneStream() {
-
-  if (
-    !navigator.mediaDevices ||
-    !navigator.mediaDevices
-      .getUserMedia
-  ) {
-
-    throw new Error(
-      "Mikrofon wird von diesem Browser nicht unterstützt."
-    );
-  }
-
-
-  micStream =
-    await navigator.mediaDevices
-      .getUserMedia({
-        audio: {
-
-          echoCancellation:
-            true,
-
-          noiseSuppression:
-            true,
-
-          autoGainControl:
-            true,
-
-          channelCount:
-            1
-        }
-      });
-
-
-  setMicrophoneEnabled(
-    false
-  );
-
-
-  return micStream;
-}
-
-
-function setMicrophoneEnabled(
-  enabled
-) {
-
-  if (!micStream) {
-    return;
-  }
-
-
-  for (
-    const track of
-    micStream.getAudioTracks()
-  ) {
-
-    track.enabled =
-      Boolean(enabled);
-  }
-
-
-  console.log(
-    "Mikrofon:",
-    enabled
-      ? "AN"
-      : "AUS"
-  );
-}
-
-
-function stopMicrophone() {
-
-  if (!micStream) {
-    return;
-  }
-
-
-  try {
-
-    for (
-      const track of
-      micStream.getTracks()
-    ) {
-
-      track.stop();
-    }
-
-  } catch {}
-
-
-  micStream =
-    null;
-}
-
-
-/* =========================================================
-   OPENAI REALTIME SEND
-   ========================================================= */
-
-function sendRealtimeEvent(
-  event
-) {
-
-  if (
-    !dataChannel ||
-    dataChannel.readyState !==
-      "open"
-  ) {
-
-    console.warn(
-      "DataChannel nicht offen:",
-      event?.type
-    );
-
-
-    return false;
-  }
-
-
-  try {
-
-    dataChannel.send(
-      JSON.stringify(
-        event
-      )
-    );
-
-
-    return true;
-
-  } catch (error) {
-
-    console.error(
-      "Realtime Sendefehler:",
-      error
-    );
-
-
-    return false;
-  }
-}
-
-
-/* =========================================================
-   ELEVENLABS TOKEN
-   ========================================================= */
-
-async function fetchElevenLabsToken() {
-
-  debugSet(
-    "dbgToken",
-    "⏳"
-  );
-
-
-  const response =
-    await fetch(
-      "/api/elevenlabs-token",
-      {
-        method:
-          "GET",
-
-        cache:
-          "no-store"
-      }
-    );
-
-
-  let data;
-
-
-  try {
-
-    data =
-      await response.json();
-
-  } catch {
-
-    throw new Error(
-      "ElevenLabs Token-Antwort ist kein JSON."
-    );
-  }
-
-
-  if (
-    !response.ok ||
-    !data?.ok ||
-    !data?.token
-  ) {
-
-    debugSet(
-      "dbgToken",
-      "❌"
-    );
-
-
-    throw new Error(
-      data?.error ||
-      "ElevenLabs-Token fehlt."
-    );
-  }
-
-
-  elevenTokenData =
-    data;
-
-
-  debugSet(
-    "dbgToken",
-    "✅"
-  );
-
-
-  debugSet(
-    "dbgVoice",
-    data.voice_id ||
-    "FEHLT"
-  );
-
-
-  return data;
-}
-
-
-/* =========================================================
-   ELEVENLABS KEEP ALIVE
-   ========================================================= */
-
-function stopElevenKeepAlive() {
-
-  if (
-    elevenKeepAliveTimer
-  ) {
-
-    clearInterval(
-      elevenKeepAliveTimer
-    );
-
-
-    elevenKeepAliveTimer =
-      null;
-  }
-}
-
-
-function startElevenKeepAlive() {
-
-  stopElevenKeepAlive();
-
-
-  elevenKeepAliveTimer =
-    setInterval(
-      () => {
-
-        if (
-          elevenSocket &&
-          elevenSocket.readyState ===
-            WebSocket.OPEN &&
-          elevenReady &&
-          !responseInProgress
-        ) {
-
-          try {
-
-            elevenSocket.send(
-              JSON.stringify({
-                text: " "
-              })
-            );
-
-          } catch (error) {
-
-            console.warn(
-              "ElevenLabs Keepalive Fehler:",
-              error
-            );
-          }
-        }
-
-      },
-      120000
-    );
-}
-
-
-/* =========================================================
-   ELEVENLABS DISCONNECT
-   ========================================================= */
-
-function disconnectElevenLabs() {
-
-  stopElevenKeepAlive();
-
-
-  elevenConnected =
-    false;
-
-
-  elevenReady =
-    false;
-
-
-  elevenClosing =
-    true;
-
-
-  if (elevenSocket) {
-
-    try {
-
-      elevenSocket.close(
-        1000,
-        "JARVIS stop"
-      );
-
-    } catch {}
-
-
-    elevenSocket =
-      null;
-  }
-
-
-  elevenTokenData =
-    null;
-
-
-  setTimeout(
-    () => {
-
-      elevenClosing =
-        false;
-
-    },
-    100
-  );
-}
-
-
-/* =========================================================
-   ELEVENLABS CONNECT
-   ========================================================= */
-
-async function connectElevenLabs() {
-
-  disconnectElevenLabs();
-
-
-  debugSet(
-    "dbgEleven",
-    "❌"
-  );
-
-
-  debugSet(
-    "dbgSocket",
-    "verbinde..."
-  );
-
-
-  debugSet(
-    "dbgClose",
-    "-"
-  );
-
-
-  debugSet(
-    "dbgEvent",
-    "ElevenLabs Token wird geladen"
-  );
-
-
-  const config =
-    await fetchElevenLabsToken();
-
-
-  const token =
-    config.token;
-
-
-  const voiceId =
-    config.voice_id;
-
-
-  const modelId =
-    config.model_id ||
-    "eleven_flash_v2_5";
-
-
-  const languageCode =
-    config.language_code ||
-    "de";
-
-
-  if (!voiceId) {
-
-    throw new Error(
-      "ELEVENLABS_VOICE_ID fehlt."
-    );
-  }
-
-
-  const url =
-    new URL(
-      `wss://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream-input`
-    );
-
-
-  url.searchParams.set(
-    "model_id",
-    modelId
-  );
-
-
-  url.searchParams.set(
-    "output_format",
-    "pcm_24000"
-  );
-
-
-  url.searchParams.set(
-    "single_use_token",
-    token
-  );
-
-
-  url.searchParams.set(
-    "language_code",
-    languageCode
-  );
-
-
-  url.searchParams.set(
-    "inactivity_timeout",
-    "180"
-  );
-
-
-  elevenSessionId +=
-    1;
-
-
-  const sessionId =
-    elevenSessionId;
-
-
-  return new Promise(
-    (
-      resolve,
-      reject
-    ) => {
-
-
-      const socket =
-        new WebSocket(
-          url.toString()
-        );
-
-
-      elevenSocket =
-        socket;
-
-
-      let settled =
-        false;
-
-
-      const timeout =
-        setTimeout(
-          () => {
-
-            if (settled) {
-              return;
-            }
-
-
-            settled =
-              true;
-
-
-            debugSet(
-              "dbgSocket",
-              "TIMEOUT"
-            );
-
-
-            debugSet(
-              "dbgEvent",
-              "ElevenLabs WebSocket Timeout"
-            );
-
-
-            try {
-              socket.close();
-            } catch {}
-
-
-            reject(
-              new Error(
-                "ElevenLabs WebSocket Timeout."
-              )
-            );
-
-          },
-          12000
-        );
-
-
-      socket.onopen =
-        () => {
-
-          if (
-            sessionId !==
-            elevenSessionId
-          ) {
-            return;
-          }
-
-
-          clearTimeout(
-            timeout
-          );
-
-
-          elevenConnected =
-            true;
-
-
-          elevenReady =
-            true;
-
-
-          debugSet(
-            "dbgEleven",
-            "✅"
-          );
-
-
-          debugSet(
-            "dbgSocket",
-            "OPEN"
-          );
-
-
-          debugSet(
-            "dbgEvent",
-            "ElevenLabs verbunden"
-          );
-
-
-          try {
-
-            socket.send(
-              JSON.stringify({
-
-                text:
-                  " ",
-
-                voice_settings: {
-
-                  stability:
-                    0.52,
-
-                  similarity_boost:
-                    0.82,
-
-                  style:
-                    0.18,
-
-                  use_speaker_boost:
-                    true
-                },
-
-                generation_config: {
-
-                  chunk_length_schedule: [
-                  50,
-  70,
-  100,
-  140
-                  ]
-                }
-              })
-            );
-
-          } catch (error) {
-
-            console.error(
-              "ElevenLabs Init Fehler:",
-              error
-            );
-
-
-            debugSet(
-              "dbgEvent",
-              "ElevenLabs Init Sendefehler"
-            );
-          }
-
-
-          startElevenKeepAlive();
-
-
-          console.log(
-            "ElevenLabs WebSocket verbunden."
-          );
-
-
-          if (!settled) {
-
-            settled =
-              true;
-
-            resolve();
-          }
-        };
-
-
-      socket.onmessage =
-        event => {
-
-
-          if (
-            sessionId !==
-            elevenSessionId
-          ) {
-            return;
-          }
-
-
-          const data =
-            safeJsonParse(
-              event.data
-            );
-
-
-          if (!data) {
-
-            debugSet(
-              "dbgEvent",
-              "ElevenLabs Nachricht kein JSON"
-            );
-
-            return;
-          }
-
-
-          if (data.audio) {
-
-            debugSet(
-              "dbgAudio",
-              "✅"
-            );
-
-
-            debugSet(
-              "dbgEvent",
-              "ElevenLabs PCM Audio kommt"
-            );
-
-
-            enqueueElevenAudio(
-              data.audio
-            );
-          }
-
-
-          if (
-            data.isFinal ||
-            data.is_final
-          ) {
-
-            debugSet(
-              "dbgEvent",
-              "ElevenLabs Generation fertig"
-            );
-
-
-            console.log(
-              "ElevenLabs Generation fertig."
-            );
-          }
-
-
-          if (data.error) {
-
-            const errorText =
-              typeof data.error ===
-                "string"
-                ? data.error
-                : JSON.stringify(
-                    data.error
-                  );
-
-
-            console.error(
-              "ElevenLabs Serverfehler:",
-              data.error
-            );
-
-
-            debugSet(
-              "dbgEvent",
-              `ELEVEN FEHLER: ${errorText}`
-            );
-          }
-        };
-
-
-      socket.onerror =
-        error => {
-
-          console.error(
-            "ElevenLabs WebSocket Fehler:",
-            error
-          );
-
-
-          debugSet(
-            "dbgEleven",
-            "❌"
-          );
-
-
-          debugSet(
-            "dbgSocket",
-            "ERROR"
-          );
-
-
-          debugSet(
-            "dbgEvent",
-            "ElevenLabs WebSocket Fehler"
-          );
-
-
-          if (!settled) {
-
-            settled =
-              true;
-
-
-            clearTimeout(
-              timeout
-            );
-
-
-            reject(
-              new Error(
-                "ElevenLabs-Verbindung fehlgeschlagen."
-              )
-            );
-          }
-        };
-
-
-      socket.onclose =
-        event => {
-
-          elevenConnected =
-            false;
-
-
-          elevenReady =
-            false;
-
-
-          stopElevenKeepAlive();
-
-
-          debugSet(
-            "dbgEleven",
-            "❌"
-          );
-
-
-          debugSet(
-            "dbgSocket",
-            "CLOSED"
-          );
-
-
-          debugSet(
-            "dbgClose",
-            `${event.code}${
-              event.reason
-                ? ` · ${event.reason}`
-                : ""
-            }`
-          );
-
-
-          console.log(
-            "ElevenLabs WebSocket geschlossen.",
-            event.code,
-            event.reason
-          );
-
-
-          if (!elevenClosing) {
-
-            debugSet(
-              "dbgEvent",
-              `ElevenLabs geschlossen: ${
-                event.code
-              } ${
-                event.reason || ""
-              }`
-            );
-          }
-
-
-          if (!settled) {
-
-            settled =
-              true;
-
-
-            clearTimeout(
-              timeout
-            );
-
-
-            reject(
-              new Error(
-                `ElevenLabs geschlossen: ${
-                  event.code
-                } ${
-                  event.reason ||
-                  ""
-                }`
-              )
-            );
-          }
-        };
-    }
-  );
-}
-
-
-/* =========================================================
-   DEUTSCHE ZAHLEN FÜR SPRACHAUSGABE
-   ========================================================= */
-
-function germanNumberUnder100(
-  number
-) {
-
-  const n =
-    Math.max(
-      0,
-      Math.floor(
-        Number(number) || 0
-      )
-    );
-
-  const ones = [
-    "null",
-    "eins",
-    "zwei",
-    "drei",
-    "vier",
-    "fünf",
-    "sechs",
-    "sieben",
-    "acht",
-    "neun"
-  ];
-
-  const special = {
-    10: "zehn",
-    11: "elf",
-    12: "zwölf",
-    13: "dreizehn",
-    14: "vierzehn",
-    15: "fünfzehn",
-    16: "sechzehn",
-    17: "siebzehn",
-    18: "achtzehn",
-    19: "neunzehn"
-  };
-
-  const tens = {
-    20: "zwanzig",
-    30: "dreißig",
-    40: "vierzig",
-    50: "fünfzig",
-    60: "sechzig",
-    70: "siebzig",
-    80: "achtzig",
-    90: "neunzig"
-  };
-
-  if (n < 10) {
-    return ones[n];
-  }
-
-  if (special[n]) {
-    return special[n];
-  }
-
-  const ten =
-    Math.floor(
-      n / 10
-    ) * 10;
-
-  const one =
-    n % 10;
-
-  if (one === 0) {
-    return tens[ten];
-  }
-
-  const oneWord =
-    one === 1
-      ? "ein"
-      : ones[one];
-
-  return `${oneWord}und${tens[ten]}`;
-}
-
-
-function germanIntegerToWords(
-  number
-) {
-
-  let n =
-    Math.floor(
-      Math.abs(
-        Number(number) || 0
-      )
-    );
-
-  if (n === 0) {
-    return "null";
-  }
-
-  const parts =
-    [];
-
-  const appendUnder1000 =
-    value => {
-
-      let x =
-        value;
-
-      let result =
-        "";
-
-      if (x >= 100) {
-
-        const hundreds =
-          Math.floor(
-            x / 100
-          );
-
-        result +=
-          hundreds === 1
-            ? "einhundert"
-            : `${germanNumberUnder100(hundreds)}hundert`;
-
-        x %=
-          100;
-      }
-
-      if (x > 0) {
-        result +=
-          germanNumberUnder100(
-            x
-          );
-      }
-
-      return result;
-    };
-
-
-  const billions =
-    Math.floor(
-      n / 1000000000
-    );
-
-  if (billions > 0) {
-
-    parts.push(
-      billions === 1
-        ? "eine Milliarde"
-        : `${germanIntegerToWords(billions)} Milliarden`
-    );
-
-    n %=
-      1000000000;
-  }
-
-
-  const millions =
-    Math.floor(
-      n / 1000000
-    );
-
-  if (millions > 0) {
-
-    parts.push(
-      millions === 1
-        ? "eine Million"
-        : `${germanIntegerToWords(millions)} Millionen`
-    );
-
-    n %=
-      1000000;
-  }
-
-
-  const thousands =
-    Math.floor(
-      n / 1000
-    );
-
-  if (thousands > 0) {
-
-    parts.push(
-      thousands === 1
-        ? "eintausend"
-        : `${appendUnder1000(thousands)}tausend`
-    );
-
-    n %=
-      1000;
-  }
-
-
-  if (n > 0) {
-    parts.push(
-      appendUnder1000(
-        n
-      )
-    );
-  }
-
-
-  return parts
-    .join(" ")
-    .trim();
-}
-
-
-function parseGermanInteger(
-  value
-) {
-
-  const cleaned =
-    String(
-      value || ""
-    )
-      .replace(
-        /\./g,
-        ""
-      )
-      .replace(
-        /\s/g,
-        ""
-      );
-
-  const number =
-    Number(cleaned);
-
-  return Number.isFinite(number)
-    ? Math.floor(number)
-    : 0;
-}
-
-
-function digitStringToGerman(
-  value
-) {
-
-  const digitWords = {
-    "0": "null",
-    "1": "eins",
-    "2": "zwei",
-    "3": "drei",
-    "4": "vier",
-    "5": "fünf",
-    "6": "sechs",
-    "7": "sieben",
-    "8": "acht",
-    "9": "neun"
-  };
-
-  return String(value)
-    .split("")
-    .map(
-      char =>
-        digitWords[char] ||
-        char
-    )
-    .join(" ");
-}
-
-
-function normalizeTextForSpeech(
-  text
-) {
-
-  let value =
-    String(
-      text || ""
-    );
-
-
-  /*
-    EUROBETRÄGE
-    7,69 €   -> sieben Euro neunundsechzig Cent
-    12,50 €  -> zwölf Euro fünfzig Cent
-    1.249,05 € -> eintausendzweihundertneunundvierzig Euro fünf Cent
-  */
-
-  value =
-    value.replace(
-      /(\d{1,3}(?:\.\d{3})*|\d+),(\d{2})\s*(?:€|EUR)(?!\w)/gi,
-      (
-        match,
-        euroValue,
-        centValue
-      ) => {
-
-        const euro =
-          parseGermanInteger(
-            euroValue
-          );
-
-        const cent =
-          Number(
-            centValue
-          );
-
-        const euroWord =
-          euro === 1
-            ? "ein Euro"
-            : `${germanIntegerToWords(euro)} Euro`;
-
-        const centWord =
-          cent === 0
-            ? ""
-            : cent === 1
-              ? " ein Cent"
-              : ` ${germanIntegerToWords(cent)} Cent`;
-
-        return `${euroWord}${centWord}`;
-      }
-    );
-
-
-  /*
-    Ganze Eurobeträge
-  */
-
-  value =
-    value.replace(
-      /(\d{1,3}(?:\.\d{3})*|\d+)\s*(?:€|EUR)(?!\w)/gi,
-      (
-        match,
-        euroValue
-      ) => {
-
-        const euro =
-          parseGermanInteger(
-            euroValue
-          );
-
-        return euro === 1
-          ? "ein Euro"
-          : `${germanIntegerToWords(euro)} Euro`;
-      }
-    );
-
-
-  /*
-    DATUM
-    17.08.2026 -> siebzehnter August zweitausendsechsundzwanzig
-    am 17.08.2026 -> am siebzehnten August zweitausendsechsundzwanzig
-  */
-
-  const germanMonths = {
-
-    1: "Januar",
-    2: "Februar",
-    3: "März",
-    4: "April",
-    5: "Mai",
-    6: "Juni",
-    7: "Juli",
-    8: "August",
-    9: "September",
-    10: "Oktober",
-    11: "November",
-    12: "Dezember"
-  };
-
-
-  const germanOrdinalNominative = {
-
-    1:"erster",2:"zweiter",3:"dritter",4:"vierter",5:"fünfter",
-    6:"sechster",7:"siebter",8:"achter",9:"neunter",10:"zehnter",
-    11:"elfter",12:"zwölfter",13:"dreizehnter",14:"vierzehnter",
-    15:"fünfzehnter",16:"sechzehnter",17:"siebzehnter",
-    18:"achtzehnter",19:"neunzehnter",20:"zwanzigster",
-    21:"einundzwanzigster",22:"zweiundzwanzigster",
-    23:"dreiundzwanzigster",24:"vierundzwanzigster",
-    25:"fünfundzwanzigster",26:"sechsundzwanzigster",
-    27:"siebenundzwanzigster",28:"achtundzwanzigster",
-    29:"neunundzwanzigster",30:"dreißigster",
-    31:"einunddreißigster"
-  };
-
-
-  const germanOrdinalDative = {
-
-    1:"ersten",2:"zweiten",3:"dritten",4:"vierten",5:"fünften",
-    6:"sechsten",7:"siebten",8:"achten",9:"neunten",10:"zehnten",
-    11:"elften",12:"zwölften",13:"dreizehnten",14:"vierzehnten",
-    15:"fünfzehnten",16:"sechzehnten",17:"siebzehnten",
-    18:"achtzehnten",19:"neunzehnten",20:"zwanzigsten",
-    21:"einundzwanzigsten",22:"zweiundzwanzigsten",
-    23:"dreiundzwanzigsten",24:"vierundzwanzigsten",
-    25:"fünfundzwanzigsten",26:"sechsundzwanzigsten",
-    27:"siebenundzwanzigsten",28:"achtundzwanzigsten",
-    29:"neunundzwanzigsten",30:"dreißigsten",
-    31:"einunddreißigsten"
-  };
-
-
-  value =
-    value.replace(
-      /\bam\s+(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/gi,
-      (
-        match,
-        day,
-        month,
-        year
-      ) => {
-
-        const d =
-          Number(day);
-
-        const m =
-          Number(month);
-
-
-        return `am ${germanOrdinalDative[d] || germanIntegerToWords(d)} ${germanMonths[m] || germanIntegerToWords(m)} ${germanIntegerToWords(year)}`;
-      }
-    );
-
-
-  value =
-    value.replace(
-      /\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/g,
-      (
-        match,
-        day,
-        month,
-        year
-      ) => {
-
-        const d =
-          Number(day);
-
-        const m =
-          Number(month);
-
-
-        return `${germanOrdinalNominative[d] || germanIntegerToWords(d)} ${germanMonths[m] || germanIntegerToWords(m)} ${germanIntegerToWords(year)}`;
-      }
-    );
-
-
-  /*
-    UHRZEIT
-    Muss vor Sportergebnissen laufen, sonst wird 23:10 als 23 zu 10 gelesen.
-  */
-
-  value =
-    value.replace(
-      /\b(\d{1,2}):(\d{2})\s*Uhr\b/gi,
-      (
-        match,
-        hour,
-        minute
-      ) => {
-
-        return `${germanIntegerToWords(hour)} Uhr${Number(minute) === 0 ? "" : ` ${germanIntegerToWords(minute)}`}`;
-      }
-    );
-
-
-  value =
-    value.replace(
-      /\bum\s+(\d{1,2}):(\d{2})\b/gi,
-      (
-        match,
-        hour,
-        minute
-      ) => {
-
-        return `um ${germanIntegerToWords(hour)} Uhr${Number(minute) === 0 ? "" : ` ${germanIntegerToWords(minute)}`}`;
-      }
-    );
-
-
-  /*
-    SPORTERGEBNISSE
-    0:0 -> null zu null
-    2:1 -> zwei zu eins
-  */
-
-  value =
-    value.replace(
-      /\b(\d{1,3})\s*:\s*(\d{1,3})\b/g,
-      (
-        match,
-        left,
-        right
-      ) =>
-        `${germanIntegerToWords(left)} zu ${germanIntegerToWords(right)}`
-    );
-
-
-  /*
-    PROZENT
-    12,5 % -> zwölf Komma fünf Prozent
-    45 %   -> fünfundvierzig Prozent
-  */
-
-  value =
-    value.replace(
-      /\b(\d+),(\d+)\s*%/g,
-      (
-        match,
-        whole,
-        decimal
-      ) =>
-        `${germanIntegerToWords(whole)} Komma ${digitStringToGerman(decimal)} Prozent`
-    );
-
-
-  value =
-    value.replace(
-      /\b(\d+)\s*%/g,
-      (
-        match,
-        whole
-      ) =>
-        `${germanIntegerToWords(whole)} Prozent`
-    );
-
-
-  return value;
-}
-
-
-/* =========================================================
-   TTS TEXT BUFFER
-   ========================================================= */
-
-function clearTtsTextBuffer() {
-
-  if (
-    ttsBufferTimer
-  ) {
-
-    clearTimeout(
-      ttsBufferTimer
-    );
-
-    ttsBufferTimer =
-      null;
-  }
-
-  ttsTextBuffer =
-    "";
-}
-
-
-function flushTtsTextBuffer() {
-
-  if (
-    ttsBufferTimer
-  ) {
-
-    clearTimeout(
-      ttsBufferTimer
-    );
-
-    ttsBufferTimer =
-      null;
-  }
-
-
-  const buffered =
-    ttsTextBuffer;
-
-  ttsTextBuffer =
-    "";
-
-
-  const clean =
-    normalizeTextForSpeech(
-      buffered
-    ).trim();
-
-
-  if (!clean) {
-    return;
-  }
-
-
-  sendTextToElevenLabs(
-    `${clean} `
-  );
-}
-
-
-function bufferTextForElevenLabs(
-  delta
-) {
-
-  const text =
-    String(
-      delta || ""
-    );
-
-
-  if (!text) {
-    return;
-  }
-
-
-  ttsTextBuffer +=
-    text;
-
-
-  if (
-    ttsBufferTimer
-  ) {
-
-    clearTimeout(
-      ttsBufferTimer
-    );
-  }
-
-
-  /*
-    Erst an sinnvollen Grenzen senden.
-    Dadurch bekommt ElevenLabs z.B. "12,50 €"
-    als Einheit und nicht "12" / "," / "50" / "€".
-  */
-
-  const hasNaturalBreak =
-    /(?:[.!?;]\s*|\n+)$/.test(
-      ttsTextBuffer
-    );
-
-  const isLongEnough =
-    ttsTextBuffer.length >=
-      TTS_BUFFER_MAX_CHARS;
-
-
-  if (
-    hasNaturalBreak ||
-    isLongEnough
-  ) {
-
-    flushTtsTextBuffer();
-    return;
-  }
-
-
-  ttsBufferTimer =
-    setTimeout(
-      () => {
-
-        flushTtsTextBuffer();
-
-      },
-      TTS_BUFFER_DELAY_MS
-    );
-}
-
-
-/* =========================================================
-   ELEVENLABS TEXT SEND
-   ========================================================= */
-
-function sendTextToElevenLabs(
-  text
-) {
-
-  const clean =
-    String(
-      text || ""
-    );
-
-
-  if (!clean) {
-    return;
-  }
-
-
-  if (
-    !elevenSocket ||
-    elevenSocket.readyState !==
-      WebSocket.OPEN ||
-    !elevenReady
-  ) {
-
-    console.warn(
-      "ElevenLabs nicht bereit."
-    );
-
-
-    debugSet(
-      "dbgEvent",
-      "ElevenLabs nicht bereit für Text"
-    );
-
-
-    return;
-  }
-
-
-  try {
-
-    elevenSocket.send(
-      JSON.stringify({
-
-        text:
-          clean,
-
-        try_trigger_generation:
-          true
-      })
-    );
-
-  } catch (error) {
-
-    console.error(
-      "ElevenLabs Text Sendefehler:",
-      error
-    );
-
-
-    debugSet(
-      "dbgEvent",
-      "ElevenLabs Text Sendefehler"
-    );
-  }
-}
-
-
-/* =========================================================
-   ELEVENLABS FLUSH
-   ========================================================= */
-
-function flushElevenLabs() {
-
-  if (
-    !elevenSocket ||
-    elevenSocket.readyState !==
-      WebSocket.OPEN ||
-    !elevenReady
-  ) {
-
-    return;
-  }
-
-
-  try {
-
-    /*
-      WICHTIG:
-      KEIN text:"" mehr.
-      Leerer Text würde den Socket beenden.
-
-      Leerzeichen + flush:true erzeugt den Rest
-      der Sprache, ohne die Verbindung zu schließen.
-    */
-
-    elevenSocket.send(
-      JSON.stringify({
-
-        text:
-          " ",
-
-        flush:
-          true
-      })
-    );
-
-
-    debugSet(
-      "dbgEvent",
-      "ElevenLabs Flush gesendet"
-    );
-
-  } catch (error) {
-
-    console.warn(
-      "ElevenLabs Flush Fehler:",
-      error
-    );
-
-
-    debugSet(
-      "dbgEvent",
-      "ElevenLabs Flush Fehler"
-    );
-  }
-}
-
-
-/* =========================================================
-   DIRECT ELEVENLABS SPEECH
-   ========================================================= */
-
-function speakTextWithElevenLabs(
-  text
-) {
-
-  const clean =
-    String(
-      text || ""
-    ).trim();
-
-
-  if (!clean) {
-    return false;
-  }
-
-
-  if (
-    !elevenReady ||
-    !elevenSocket ||
-    elevenSocket.readyState !==
-      WebSocket.OPEN
-  ) {
-
-    debugSet(
-      "dbgEvent",
-      "Direkte Sprache: ElevenLabs nicht verbunden"
-    );
-
-    return false;
-  }
-
-
-  responseInProgress =
-    true;
-
-
-  setMicrophoneEnabled(
-    false
-  );
-
-
-  sendTextToElevenLabs(
-    `${normalizeTextForSpeech(clean)} `
-  );
-
-
-  flushElevenLabs();
-
-
-  responseInProgress =
-    false;
-
-
-  return true;
-}
-
-
-/* =========================================================
-   TOOL CALL
-   ========================================================= */
-
-async function executeRealtimeTool(
-  event
-) {
-
-  const callId =
-    String(
-      event.call_id || ""
-    );
-
-
-  const toolName =
-    String(
-      event.name || ""
-    );
-
-
-  if (
-    !callId ||
-    !toolName
-  ) {
-
-    console.error(
-      "Ungültiger Tool Call:",
-      event
-    );
-
-    return;
-  }
-
-
-  if (
-    runningToolCalls.has(
-      callId
-    )
-  ) {
-
-    return;
-  }
-
-
-  runningToolCalls.add(
-    callId
-  );
-
-
-  setJarvisState(
-    "thinking"
-  );
-
-
-  setLog(
-    `${toolName} wird ausgeführt …`
-  );
-
-
-  setMicrophoneEnabled(
-    false
-  );
-
-
-  debugSet(
-    "dbgEvent",
-    `Tool: ${toolName}`
-  );
-
-
-  let args =
-    {};
-
-
-  try {
-
-    args =
-      event.arguments
-        ? JSON.parse(
-            event.arguments
-          )
-        : {};
-
-  } catch {
-
-    args =
-      {};
-  }
-
-
-  if (
-    (
-      toolName ===
-        "get_email_message" ||
-      toolName ===
-        "create_email_reply_draft" ||
-      toolName ===
-        "move_email_to_bearbeitet"
-    ) &&
-    !args.message_id &&
-    currentSelectedEmailId
-  ) {
-    args.message_id =
-      currentSelectedEmailId;
-  }
-
-
-  if (
-    toolName ===
-      "send_email_draft" &&
-    !args.draft_id &&
-    currentGmailDraftId
-  ) {
-    args.draft_id =
-      currentGmailDraftId;
-  }
-
-
-  let effectiveToolName =
-    toolName;
-
-
-  if (
-    toolName ===
-      "create_email_draft" &&
-    currentSelectedEmailId &&
-    /\b(antwort|darauf|zurueck|zurück|reply|kundenmail|diese mail|die mail|schreib.*zurück)\b/i.test(
-      String(args.instruction || "")
-    )
-  ) {
-    effectiveToolName =
-      "create_email_reply_draft";
-
-    args.message_id =
-      currentSelectedEmailId;
-  }
-
-
-  console.log(
-    "[TOOL]",
-    effectiveToolName,
-    args
-  );
-
-
-  let toolResult;
-
-
-  try {
-
-    const response =
-      await fetch(
-        "/api/realtime-tool",
-        {
-
-          method:
-            "POST",
-
-          headers: {
-
-            "Content-Type":
-              "application/json"
-          },
-
-          body:
-            JSON.stringify({
-
-              name:
-                effectiveToolName,
-
-              arguments:
-                args
-            })
-        }
-      );
-
-
-    const raw =
-      await response.text();
-
-
-    try {
-
-      toolResult =
-        JSON.parse(raw);
-
-    } catch {
-
-      toolResult = {
-
-        ok:
-          false,
-
-        error:
-          raw ||
-          "Ungültige Tool-Antwort."
-      };
-    }
-
-
-    if (!response.ok) {
-
-      toolResult = {
-
-        ...toolResult,
-
-        ok:
-          false
-      };
-    }
-
-
-    if (
-      toolResult?.draft
-    ) {
-
-      showDraft(
-        toolResult.draft
-      );
-    }
-
-
-    if (
-      toolResult?.email
-    ) {
-      showGmailMail(
-        toolResult.email
-      );
-    }
-
-
-    if (
-      toolResult?.gmail_draft_id ||
-      toolResult?.draft?.gmail_draft_id
-    ) {
-      currentGmailDraftId =
-        toolResult.gmail_draft_id ||
-        toolResult.draft.gmail_draft_id;
-
-      try {
-        sessionStorage.setItem(
-          "jarvisGmailDraftId",
-          currentGmailDraftId
-        );
-      } catch {}
-    }
-
-
-    if (
-      toolResult?.sent?.sent ===
-        true
-    ) {
-      currentGmailDraftId =
-        null;
-
-      try {
-        sessionStorage.removeItem(
-          "jarvisGmailDraftId"
-        );
-      } catch {}
-
-      loadInboxDashboard();
-    }
-
-
-    if (
-      toolResult?.moved?.moved ===
-        true ||
-      toolResult?.result?.moved ===
-        true
-    ) {
-      currentSelectedEmailId =
-        null;
-
-      currentSelectedEmail =
-        null;
-
-      document.getElementById(
-        "gmailMailModal"
-      )?.classList.remove(
-        "open"
-      );
-
-      loadInboxDashboard();
-    }
-
-  } catch (error) {
-
-    console.error(
-      "Tool Request Fehler:",
-      error
-    );
-
-
-    toolResult = {
-
-      ok:
-        false,
-
-      error:
-        error.message ||
-        "Tool konnte nicht ausgeführt werden."
-    };
-  }
-
-
-  sendRealtimeEvent({
-
-    type:
-      "conversation.item.create",
-
-    item: {
-
-      type:
-        "function_call_output",
-
-      call_id:
-        callId,
-
-      output:
-        JSON.stringify(
-          toolResult
-        )
-    }
-  });
-
-
-  responseInProgress =
-    true;
-
-
-  sendRealtimeEvent({
-
-    type:
-      "response.create",
-
-    response: {
-
-      output_modalities: [
-        "text"
-      ]
-    }
-  });
-
-
-  runningToolCalls.delete(
-    callId
-  );
-}
-
-
-/* =========================================================
-   REALTIME EVENT HANDLER
-   ========================================================= */
-
-function handleRealtimeEvent(
-  event
-) {
-
-  if (!event?.type) {
-    return;
-  }
-
-
-  console.log(
-    "[REALTIME]",
-    event.type
-  );
-
-
-  switch (event.type) {
-
-
-    case "session.created":
-
-      debugSet(
-        "dbgOpenAI",
-        "✅"
-      );
-
-
-      debugSet(
-        "dbgEvent",
-        "OpenAI Session erstellt"
-      );
-
-
-      console.log(
-        "Realtime Session erstellt."
-      );
-
-      break;
-
-
-    case "session.updated":
-
-      console.log(
-        "Realtime Session aktualisiert."
-      );
-
-      break;
-
-
-    case "input_audio_buffer.speech_started":
-
-      if (
-        assistantSpeaking ||
-        responseInProgress
-      ) {
-
-        handleUserInterruption();
-      }
-
-
-      if (
-        !active ||
-        greetingInProgress ||
-        assistantSpeaking
-      ) {
-        return;
-      }
-
-
-      setJarvisState(
-        "hearing"
-      );
-
-
-      setLog(
-        "Ich höre zu …"
-      );
-
-
-      debugSet(
-        "dbgEvent",
-        "Sprache erkannt"
-      );
-
-      break;
-
-
-    case "input_audio_buffer.speech_stopped":
-
-      if (
-        !active ||
-        greetingInProgress
-      ) {
-        return;
-      }
-
-
-      setJarvisState(
-        "thinking"
-      );
-
-
-      setLog(
-        "Denke nach …"
-      );
-
-
-      setMicrophoneEnabled(
-        false
-      );
-
-
-      debugSet(
-        "dbgEvent",
-        "Sprache beendet"
-      );
-
-      break;
-
-
-    case "response.function_call_arguments.done":
-
-      executeRealtimeTool(
-        event
-      );
-
-      break;
-
-
-    case "response.created":
-
-      responseInProgress =
-        true;
-
-
-      clearTtsTextBuffer();
-
-
-      currentResponseText =
-        "";
-
-
-      setJarvisState(
-        "thinking"
-      );
-
-
-      setLog(
-        "JARVIS denkt …"
-      );
-
-
-      debugSet(
-        "dbgEvent",
-        "OpenAI erzeugt Antwort"
-      );
-
-      break;
-
-
-    case "response.output_text.delta":
-
-      if (event.delta) {
-
-        const delta =
-          String(
-            event.delta
-          );
-
-
-        currentResponseText +=
-          delta;
-
-
-        debugSet(
-          "dbgText",
-          "✅"
-        );
-
-
-        debugSet(
-          "dbgEvent",
-          "OpenAI Text → ElevenLabs"
-        );
-
-
-        bufferTextForElevenLabs(
-          delta
-        );
-      }
-
-      break;
-
-
-    case "response.output_text.done":
-
-      if (event.text) {
-
-        console.log(
-          "JARVIS:",
-          event.text
-        );
-      }
-
-
-      flushTtsTextBuffer();
-
-
-      setTimeout(
-        () => {
-
-          flushElevenLabs();
-
-        },
-        60
-      );
-
-
-      debugSet(
-        "dbgEvent",
-        "OpenAI Text fertig · TTS-Puffer geleert"
-      );
-
-      break;
-
-
-    case "response.done": {
-
-      responseInProgress =
-        false;
-
-
-      const hasFunctionCall =
-        Array.isArray(
-          event.response?.output
-        ) &&
-        event.response.output.some(
-          item =>
-            item?.type ===
-            "function_call"
-        );
-
-
-      if (hasFunctionCall) {
-
-        setJarvisState(
-          "thinking"
-        );
-
-
-        setLog(
-          "Live-Daten werden geladen …"
-        );
-
-
-        debugSet(
-          "dbgEvent",
-          "Tool wird verarbeitet"
-        );
-
-
-        break;
-      }
-
-
-      if (
-        !hasPendingElevenAudio()
-      ) {
-
-        if (
-          greetingInProgress
-        ) {
-
-          greetingInProgress =
-            false;
-        }
-
-
-        if (active) {
-
-          setTimeout(
-            () => {
-
-              if (
-                active &&
-                !assistantSpeaking &&
-                !responseInProgress &&
-                !hasPendingElevenAudio()
-              ) {
-
-                setJarvisState(
-                  "listening"
-                );
-
-
-                setLog(
-                  "JARVIS hört zu."
-                );
-
-
-                setMicrophoneEnabled(
-                  true
-                );
-              }
-
-            },
-            350
-          );
-        }
-      }
-
-      break;
-    }
-
-
-    case "error":
-
-      console.error(
-        "Realtime Fehler:",
-        event
-      );
-
-
-      responseInProgress =
-        false;
-
-
-      assistantSpeaking =
-        false;
-
-
-      debugSet(
-        "dbgEvent",
-        `OpenAI Fehler: ${
-          event.error?.message ||
-          "unbekannt"
-        }`
-      );
-
-
-      setLog(
-        event.error?.message ||
-        "Realtime Fehler."
-      );
-
-
-      if (active) {
-
-        setTimeout(
-          () => {
-
-            if (
-              active &&
-              !assistantSpeaking
-            ) {
-
-              setMicrophoneEnabled(
-                true
-              );
-
-
-              setJarvisState(
-                "listening"
-              );
-            }
-
-          },
-          500
-        );
-      }
-
-      break;
-
-
-    default:
-
-      break;
-  }
-}
-
-
-/* =========================================================
-   OPENAI REALTIME WEBRTC
-   ========================================================= */
-
-async function connectRealtime() {
-
-  if (
-    realtimeConnected
-  ) {
-    return;
-  }
-
-
-  const pc =
-    new RTCPeerConnection();
-
-
-  peerConnection =
-    pc;
-
-
-  if (!micStream) {
-
-    await createMicrophoneStream();
-  }
-
-
-  const micTrack =
-    micStream
-      .getAudioTracks()[0];
-
-
-  if (!micTrack) {
-
-    throw new Error(
-      "Kein Mikrofon-Audiotrack gefunden."
-    );
-  }
-
-
-  pc.addTrack(
-    micTrack,
-    micStream
-  );
-
-
-  const dc =
-    pc.createDataChannel(
-      "oai-events"
-    );
-
-
-  dataChannel =
-    dc;
-
-
-  dc.addEventListener(
-    "open",
-    () => {
-
-      realtimeConnected =
-        true;
-
-
-      debugSet(
-        "dbgOpenAI",
-        "✅"
-      );
-
-
-      debugSet(
-        "dbgEvent",
-        "OpenAI DataChannel offen"
-      );
-
-
-      console.log(
-        "OpenAI DataChannel offen."
-      );
-    }
-  );
-
-
-  dc.addEventListener(
-    "close",
-    () => {
-
-      realtimeConnected =
-        false;
-
-
-      debugSet(
-        "dbgOpenAI",
-        "❌"
-      );
-
-
-      console.log(
-        "OpenAI DataChannel geschlossen."
-      );
-    }
-  );
-
-
-  dc.addEventListener(
-    "error",
-    error => {
-
-      console.error(
-        "OpenAI DataChannel Fehler:",
-        error
-      );
-
-
-      debugSet(
-        "dbgOpenAI",
-        "❌"
-      );
-
-
-      debugSet(
-        "dbgEvent",
-        "OpenAI DataChannel Fehler"
-      );
-    }
-  );
-
-
-  dc.addEventListener(
-    "message",
-    event => {
-
-      const message =
-        safeJsonParse(
-          event.data
-        );
-
-
-      if (!message) {
-        return;
-      }
-
-
-      handleRealtimeEvent(
-        message
-      );
-    }
-  );
-
-
-  const offer =
-    await pc.createOffer();
-
-
-  await pc.setLocalDescription(
-    offer
-  );
-
-
-  const response =
-    await fetch(
-      "/api/realtime-session",
-      {
-
-        method:
-          "POST",
-
-        headers: {
-
-          "Content-Type":
-            "application/sdp"
-        },
-
-        body:
-          offer.sdp
-      }
-    );
-
-
-  const answerSdp =
-    await response.text();
-
-
-  if (!response.ok) {
-
-    debugSet(
-      "dbgEvent",
-      "OpenAI Session Fehler"
-    );
-
-
-    throw new Error(
-      answerSdp ||
-      "OpenAI Realtime Verbindung fehlgeschlagen."
-    );
-  }
-
-
-  await pc.setRemoteDescription({
-
-    type:
-      "answer",
-
-    sdp:
-      answerSdp
-  });
-
-
-  const start =
-    Date.now();
-
-
-  while (
-    !dataChannel ||
-    dataChannel.readyState !==
-      "open"
-  ) {
-
-    if (
-      Date.now() -
-      start >
-      10000
-    ) {
-
-      throw new Error(
-        "OpenAI DataChannel Timeout."
-      );
-    }
-
-
-    await sleep(
-      50
-    );
-  }
-
-
-  realtimeConnected =
-    true;
-
-
-  debugSet(
-    "dbgOpenAI",
-    "✅"
-  );
-
-
-  debugSet(
-    "dbgEvent",
-    "OpenAI Realtime verbunden"
-  );
-
-
-  console.log(
-    "OpenAI Realtime verbunden."
-  );
-}
-
-
-/* =========================================================
-   DISCONNECT REALTIME
-   ========================================================= */
-
-function disconnectRealtime() {
-
-  realtimeConnected =
-    false;
-
-
-  debugSet(
-    "dbgOpenAI",
-    "❌"
-  );
-
-
-  if (dataChannel) {
-
-    try {
-      dataChannel.close();
-    } catch {}
-
-
-    dataChannel =
-      null;
-  }
-
-
-  if (peerConnection) {
-
-    try {
-      peerConnection.close();
-    } catch {}
-
-
-    peerConnection =
-      null;
-  }
-}
-
-
-/* =========================================================
-   RESPONSE CANCEL
-   ========================================================= */
-
-function cancelCurrentResponse() {
-
-  if (
-    responseInProgress
-  ) {
-
-    sendRealtimeEvent({
-      type:
-        "response.cancel"
-    });
-  }
-
-
-  responseInProgress =
-    false;
-
-
-  currentResponseText =
-    "";
-
-
-  clearTtsTextBuffer();
-
-
-  clearElevenAudio();
-
-
-  assistantSpeaking =
-    false;
-
-
-  if (active) {
-
-    setJarvisState(
-      "listening"
-    );
-
-
-    setLog(
-      "JARVIS hört zu."
-    );
-
-
-    setMicrophoneEnabled(
-      true
-    );
-  }
-}
-
-
-/* =========================================================
-   EXACT SPEECH
-   ========================================================= */
-
-function requestExactSpeech(
-  text
-) {
-
-  const clean =
-    String(
-      text || ""
-    ).trim();
-
-
-  if (!clean) {
-    return;
-  }
-
-
-  if (
-    !dataChannel ||
-    dataChannel.readyState !==
-      "open"
-  ) {
-
-    speakTextWithElevenLabs(
-      clean
-    );
-
-    return;
-  }
-
-
-  currentResponseText =
-    "";
-
-
-  responseInProgress =
-    true;
-
-
-  sendRealtimeEvent({
-
-    type:
-      "response.create",
-
-    response: {
-
-      output_modalities: [
-        "text"
-      ],
-
-      instructions:
-        `Antworte exakt mit folgendem deutschen Text und mit nichts anderem:
-
-${clean}`
-    }
-  });
-}
-
-
-/* =========================================================
-   GREETING
-   ========================================================= */
-
-async function speakGreeting() {
-
-  if (!active) {
-    return;
-  }
-
-
-  greetingInProgress =
-    true;
-
-
-  setMicrophoneEnabled(
-    false
-  );
-
-
-  setJarvisState(
-    "speaking"
-  );
-
-
-  setLog(
-    "JARVIS startet …"
-  );
-
-
-  debugSet(
-    "dbgEvent",
-    "Begrüßung wird vorbereitet"
-  );
-
-
-  await sleep(
-    INTRO_VOICE_DELAY_MS
-  );
-
-
-  if (!active) {
-    return;
-  }
-
-
-  const greeting =
-    getGreeting();
-
-
-  requestExactSpeech(
-    greeting
-  );
-
-
-  duckIntro();
-}
-
-
-/* =========================================================
-   PROACTIVE MESSAGE
-   ========================================================= */
-
-function speakProactiveMessage(
-  text
-) {
-
-  if (
-    !active ||
-    greetingInProgress ||
-    assistantSpeaking ||
-    responseInProgress ||
-    runningToolCalls.size > 0
-  ) {
-
-    return false;
-  }
-
-
-  const clean =
-    String(
-      text || ""
-    ).trim();
-
-
-  if (!clean) {
-    return false;
-  }
-
-
-  setMicrophoneEnabled(
-    false
-  );
-
-
-  requestExactSpeech(
-    clean
-  );
-
-
-  return true;
-}
-
-
-/* =========================================================
-   GMAIL · MAIL-VOLLANSICHT / AKTUELLER KONTEXT
-   ========================================================= */
-
-function ensureGmailMailModal() {
-
-  let modal =
-    document.getElementById(
-      "gmailMailModal"
-    );
-
-
-  if (modal) {
-    return modal;
-  }
-
-
-  modal =
-    document.createElement(
-      "div"
-    );
-
-
-  modal.id =
-    "gmailMailModal";
-
-
-  modal.className =
-    "gmail-mail-modal";
-
-
-  modal.innerHTML = `
-    <div class="gmail-mail-card" role="dialog" aria-modal="true" aria-label="E-Mail">
-      <div class="gmail-mail-top">
-        <div>
-          <span class="gmail-mail-kicker">GMAIL · AKTUELLE MAIL</span>
-          <strong id="gmailMailSubject">E-Mail</strong>
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#030406" />
+  <meta name="description" content="Druckelite24 JARVIS Business Voice Assistant" />
+  <title>Druckelite24 · JARVIS</title>
+  <link rel="stylesheet" href="styles.css?v=7" />
+</head>
+<body data-jarvis-state="offline">
+
+  <div class="boot-overlay" id="bootOverlay">
+    <img class="boot-logo" src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252" alt="Druckelite24" />
+    <div class="boot-lines" id="bootLines"></div>
+    <div class="boot-bar"><div class="boot-bar-fill" id="bootBarFill"></div></div>
+  </div>
+
+  <div class="hud">
+
+    <header class="topbar">
+      <div><img class="brand-logo" src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252" alt="Druckelite24" /></div>
+      <div class="top-center">
+        <div class="top-title">JARVIS</div>
+        <div class="top-sub">BUSINESS ASSISTANT · <b>DRUCKELITE24.DE</b></div>
+      </div>
+      <div class="top-right">
+        <div class="top-datetime">
+          <div class="top-clock" id="hudBigTime">--:--:--</div>
+          <div class="top-date"><span id="hudDay">--</span>. <span id="hudMonth">—</span></div>
         </div>
-        <button type="button" id="gmailMailClose" class="gmail-mail-close">×</button>
+        <div class="status-pill" id="status">Offline</div>
       </div>
-      <div class="gmail-mail-meta">
-        <div><span>VON</span><b id="gmailMailFrom">—</b></div>
-        <div><span>DATUM</span><b id="gmailMailDate">—</b></div>
+    </header>
+
+    <div class="ticker" aria-hidden="true">
+      <div class="ticker-track">
+        <span class="tick-group" id="tickA">DRUCKELITE24 · JARVIS · SYSTEM ONLINE</span>
+        <span class="tick-group" id="tickB">DRUCKELITE24 · JARVIS · SYSTEM ONLINE</span>
       </div>
-      <div id="gmailMailBody" class="gmail-mail-body"></div>
-      <div class="gmail-mail-actions">
-        <button type="button" id="gmailMailReadBtn">VORLESEN</button>
-        <button type="button" id="gmailMailCloseBtn">SCHLIESSEN</button>
-      </div>
-      <div class="gmail-mail-hint">Sag z. B. „Antworte darauf, dass …“ · Gesendet wird erst nach deinem ausdrücklichen „Senden“.</div>
-    </div>`;
-
-
-  document.body.appendChild(
-    modal
-  );
-
-
-  const close =
-    () => {
-      modal.classList.remove(
-        "open"
-      );
-    };
-
-
-  modal.querySelector(
-    "#gmailMailClose"
-  )?.addEventListener(
-    "click",
-    close
-  );
-
-
-  modal.querySelector(
-    "#gmailMailCloseBtn"
-  )?.addEventListener(
-    "click",
-    close
-  );
-
-
-  modal.addEventListener(
-    "click",
-    event => {
-      if (
-        event.target === modal
-      ) {
-        close();
-      }
-    }
-  );
-
-
-  modal.querySelector(
-    "#gmailMailReadBtn"
-  )?.addEventListener(
-    "click",
-    () => {
-
-      if (
-        !currentSelectedEmail?.body
-      ) {
-        return;
-      }
-
-
-      if (
-        active &&
-        elevenReady
-      ) {
-        speakTextWithElevenLabs(
-          `E-Mail von ${getSenderDisplayName(currentSelectedEmail.from)}. Betreff: ${currentSelectedEmail.subject}. ${currentSelectedEmail.body}`
-        );
-      }
-    }
-  );
-
-
-  return modal;
-}
-
-
-function showGmailMail(email) {
-
-  if (!email?.id) {
-    return;
-  }
-
-
-  currentSelectedEmailId =
-    email.id;
-
-
-  currentSelectedEmail =
-    email;
-
-
-  const modal =
-    ensureGmailMailModal();
-
-
-  const subject =
-    modal.querySelector(
-      "#gmailMailSubject"
-    );
-
-
-  const from =
-    modal.querySelector(
-      "#gmailMailFrom"
-    );
-
-
-  const date =
-    modal.querySelector(
-      "#gmailMailDate"
-    );
-
-
-  const body =
-    modal.querySelector(
-      "#gmailMailBody"
-    );
-
-
-  if (subject) {
-    subject.textContent =
-      email.subject ||
-      "(kein Betreff)";
-  }
-
-
-  if (from) {
-    from.textContent =
-      email.from ||
-      "unbekannt";
-  }
-
-
-  if (date) {
-    const parsed =
-      email.date
-        ? new Date(email.date)
-        : null;
-
-
-    date.textContent =
-      parsed &&
-      !Number.isNaN(parsed.getTime())
-        ? new Intl.DateTimeFormat(
-            "de-DE",
-            {
-              timeZone:
-                "Europe/Berlin",
-              dateStyle:
-                "medium",
-              timeStyle:
-                "short"
-            }
-          ).format(parsed)
-        : "—";
-  }
-
-
-  if (body) {
-    body.textContent =
-      email.body ||
-      email.snippet ||
-      "Kein Textinhalt verfügbar.";
-  }
-
-
-  modal.classList.add(
-    "open"
-  );
-}
-
-
-async function openGmailMessage(messageId) {
-
-  const id =
-    String(messageId || "")
-      .trim();
-
-
-  if (!id) {
-    return;
-  }
-
-
-  try {
-
-    const response =
-      await fetch(
-        `/api/gmail-message/${encodeURIComponent(id)}`,
-        {
-          method:
-            "GET",
-          cache:
-            "no-store"
-        }
-      );
-
-
-    const data =
-      await response.json();
-
-
-    if (
-      !response.ok ||
-      !data?.ok ||
-      !data?.email
-    ) {
-      throw new Error(
-        data?.error ||
-        "E-Mail konnte nicht geöffnet werden."
-      );
-    }
-
-
-    showGmailMail(
-      data.email
-    );
-
-  } catch (error) {
-
-    console.warn(
-      "Gmail Mail öffnen Fehler:",
-      error
-    );
-
-
-    setLog(
-      error.message ||
-      "E-Mail konnte nicht geöffnet werden."
-    );
-  }
-}
-
-
-/* =========================================================
-   GMAIL DASHBOARD · LETZTE 5 POSTEINGANG
-   Läuft unabhängig davon, ob JARVIS gerade zuhört.
-   ========================================================= */
-
-let inboxRefreshTimer =
-  null;
-
-
-function escapeHtml(value) {
-
-  return String(
-    value ?? ""
-  )
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-
-function getSenderDisplayName(from) {
-
-  const value =
-    String(from || "")
-      .trim();
-
-
-  if (!value) {
-    return "Unbekannt";
-  }
-
-
-  const quoted =
-    value.match(/^\s*\"([^\"]+)\"\s*</);
-
-
-  if (quoted?.[1]) {
-    return quoted[1].trim();
-  }
-
-
-  const beforeAddress =
-    value.split("<")[0]
-      .trim()
-      .replace(/^\"|\"$/g, "");
-
-
-  if (beforeAddress) {
-    return beforeAddress;
-  }
-
-
-  const address =
-    value.match(/<([^>]+)>/)?.[1] ||
-    value;
-
-
-  return String(address)
-    .split("@")[0]
-    .trim() ||
-    "Unbekannt";
-}
-
-
-function getSenderInitials(name) {
-
-  const parts =
-    String(name || "")
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-
-
-  if (!parts.length) {
-    return "ML";
-  }
-
-
-  if (parts.length === 1) {
-    return parts[0]
-      .slice(0, 2)
-      .toUpperCase();
-  }
-
-
-  return `${parts[0][0]}${parts[1][0]}`
-    .toUpperCase();
-}
-
-
-function formatInboxTime(email) {
-
-  const raw =
-    email?.internalDate
-      ? Number(email.internalDate)
-      : email?.date
-        ? Date.parse(email.date)
-        : NaN;
-
-
-  if (!Number.isFinite(raw)) {
-    return "—";
-  }
-
-
-  const date =
-    new Date(raw);
-
-
-  const now =
-    new Date();
-
-
-  const sameBerlinDay =
-    new Intl.DateTimeFormat(
-      "en-CA",
-      {
-        timeZone:
-          "Europe/Berlin",
-        year:
-          "numeric",
-        month:
-          "2-digit",
-        day:
-          "2-digit"
-      }
-    ).format(date) ===
-    new Intl.DateTimeFormat(
-      "en-CA",
-      {
-        timeZone:
-          "Europe/Berlin",
-        year:
-          "numeric",
-        month:
-          "2-digit",
-        day:
-          "2-digit"
-      }
-    ).format(now);
-
-
-  if (sameBerlinDay) {
-    return new Intl.DateTimeFormat(
-      "de-DE",
-      {
-        timeZone:
-          "Europe/Berlin",
-        hour:
-          "2-digit",
-        minute:
-          "2-digit"
-      }
-    ).format(date);
-  }
-
-
-  return new Intl.DateTimeFormat(
-    "de-DE",
-    {
-      timeZone:
-        "Europe/Berlin",
-      day:
-        "2-digit",
-      month:
-        "2-digit"
-    }
-  ).format(date);
-}
-
-
-function renderInboxEmails(emails) {
-
-  const list =
-    document.getElementById(
-      "inboxList"
-    );
-
-
-  if (!list) {
-    return;
-  }
-
-
-  const items =
-    Array.isArray(emails)
-      ? emails.slice(0, 5)
-      : [];
-
-
-  if (!items.length) {
-    list.innerHTML =
-      `<div class="email-row">
-        <div class="avatar">✓</div>
-        <div class="email-sender">Gmail</div>
-        <div class="email-copy">
-          <div class="email-subject">Posteingang leer</div>
-          <div class="email-snippet">Aktuell liegen keine Nachrichten im Posteingang.</div>
+    </div>
+
+    <main class="command-center">
+
+      <section class="panel shop-panel">
+        <div class="panel-head"><span>🛍 SHOPIFY LIVE</span><span class="live">● LIVE</span></div>
+        <div class="kpi-grid">
+          <div class="kpi">
+            <div class="kpi-label">UMSATZ HEUTE</div>
+            <div class="stat-value" id="statRevenue">—</div>
+            <div class="kpi-trend">↗ LIVE · HEUTE</div><div class="mini-line"></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">BESTELLUNGEN HEUTE</div>
+            <div class="stat-value" id="statOrders">—</div>
+            <div class="kpi-trend">↗ LIVE · HEUTE</div><div class="mini-line"></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">DURCHSCHN. BESTELLWERT</div>
+            <div class="stat-value stat-small" id="statAov">—</div>
+            <div class="kpi-trend">↗ AKTUELL</div><div class="mini-line"></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">GESTERN</div>
+            <div class="stat-value stat-small" id="statYesterday">—</div>
+            <div class="kpi-trend">VERGLEICH</div><div class="mini-line"></div>
+          </div>
         </div>
-        <div class="email-time">—</div>
-      </div>`;
-    return;
-  }
+        <div class="chart-wrap">
+          <div class="chart-label">UMSATZ · LETZTE 7 TAGE</div>
+          <canvas class="week-chart" id="weekChart" width="360" height="48"></canvas>
+        </div>
+        <div class="shop-foot"><span class="panel-foot" id="shopUpdated">WARTE AUF DATEN …</span><span class="panel-dot" id="shopDot"></span></div>
+        <span id="sysShop" class="compat">…</span>
+      </section>
 
+      <section class="panel mail-panel">
+        <div class="panel-head"><span>✉ NEUESTE E-MAILS</span><span style="color:var(--pink)">5</span></div>
+        <div class="email-list" id="inboxList">
+          <div class="email-row"><div class="avatar">TS</div><div class="email-sender">Posteingang</div><div class="email-copy"><div class="email-subject">Mail-System vorbereitet</div><div class="email-snippet">Die letzten fünf echten Posteingangs-Mails werden hier angeschlossen.</div></div><div class="email-time">—</div></div>
+          <div class="email-row"><div class="avatar">MK</div><div class="email-sender">Posteingang</div><div class="email-copy"><div class="email-subject">Gelesen + ungelesen</div><div class="email-snippet">Alles, was im Posteingang bleibt, wird später berücksichtigt.</div></div><div class="email-time">—</div></div>
+          <div class="email-row"><div class="avatar">JP</div><div class="email-sender">Posteingang</div><div class="email-copy"><div class="email-subject">Mail-Kontext</div><div class="email-snippet">„Lies die letzte Mail“ und „Antworte darauf“ sind vorgesehen.</div></div><div class="email-time">—</div></div>
+          <div class="email-row"><div class="avatar">AC</div><div class="email-sender">Posteingang</div><div class="email-copy"><div class="email-subject">Kundenanfragen</div><div class="email-snippet">Wichtige Kundenmails können automatisch gemeldet werden.</div></div><div class="email-time">—</div></div>
+          <div class="email-row"><div class="avatar">LH</div><div class="email-sender">Posteingang</div><div class="email-copy"><div class="email-subject">5-Minuten-Prüfung</div><div class="email-snippet">Automatisches Prüfen kommt mit dem Mail-Backend.</div></div><div class="email-time">—</div></div>
+        </div>
+        <div class="mail-footer">ZUM POSTEINGANG →</div>
+      </section>
 
-  list.innerHTML =
-    items.map(
-      email => {
+      <section class="panel core-panel">
+        <div class="core-stage" id="voicePanel">
+          <div class="system-stack">
+            <div class="system-mini"><label>SYSTEM STATUS</label><b>ONLINE</b><div class="meter-line"></div></div>
+            <div class="system-mini"><label>VERBINDUNG</label><b>STABIL</b><div class="meter-line"></div></div>
+            <div class="system-mini"><label>DATENFLUSS</label><b>AKTIV</b><div class="meter-line"></div></div>
+            <div class="system-mini"><label>LETZTES UPDATE</label><b id="hudClock">LIVE</b></div>
+          </div>
 
-        const sender =
-          getSenderDisplayName(
-            email.from
-          );
+          <div class="system-stack right">
+            <div class="system-mini"><label>PERFORMANCE</label><b>OPTIMAL</b></div>
+            <div class="system-mini"><label>AUSLASTUNG</label><b>MODERAT</b></div>
+            <div class="system-mini"><label>SICHERHEIT</label><b>HOCH</b></div>
+            <div class="system-mini"><label>BACKUP</label><b>AKTIV</b></div>
+          </div>
 
+          <div class="shirt-wrap" aria-hidden="true">
+            <svg class="shirt-svg" viewBox="0 0 420 500">
+              <path class="shirt-shape" d="M128 58 L73 82 L22 132 L67 182 L91 163 L91 449 L329 449 L329 163 L353 182 L398 132 L347 82 L292 58 C270 92 246 108 210 108 C174 108 150 92 128 58 Z"/>
+              <path class="shirt-net" d="M128 58 L210 108 L292 58 M73 82 L91 163 L210 108 L329 163 L347 82 M22 132 L91 163 L67 182 M398 132 L329 163 L353 182 M91 163 L329 163 M91 220 L329 220 M91 280 L329 280 M91 340 L329 340 M91 400 L329 400"/>
+              <path class="shirt-net soft" d="M91 163 L210 449 M329 163 L210 449 M128 58 L91 449 M292 58 L329 449 M73 82 L329 340 M347 82 L91 340 M22 132 L329 280 M398 132 L91 280"/>
+              <path class="shirt-net soft" d="M103 145 L314 432 M116 103 L318 380 M80 119 L300 260 M340 116 L115 275 M103 432 L315 190 M91 250 L329 360"/>
+            </svg>
+            <img class="shirt-logo" src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252" alt="" />
+          </div>
 
-        const subject =
-          String(
-            email.subject ||
-            "(kein Betreff)"
-          );
+          <div class="holo-floor"></div>
+          <div class="core-caption">HERZSTÜCK DES SYSTEMS<strong>ALLE SYSTEME LAUFEN OPTIMAL</strong></div>
+        </div>
+      </section>
 
+      <section class="side-stack">
+        <section class="panel news-panel">
+          <div class="panel-head"><span>◉ NEWS & UPDATES</span></div>
+          <div class="news-list">
+            <div class="news-row"><div class="news-thumb"></div><div><div class="news-title">Textildruck im Wandel</div><div class="news-sub">Nachhaltigkeit und Innovation im Fokus</div><div class="news-time">Heute</div></div></div>
+            <div class="news-row"><div class="news-thumb"></div><div><div class="news-title">Neuer Trend: Oversized Streetwear</div><div class="news-sub">Nachfrage steigt weiter an</div><div class="news-time">Heute</div></div></div>
+            <div class="news-row"><div class="news-thumb"></div><div><div class="news-title">DTG vs. Siebdruck</div><div class="news-sub">Was ist die beste Wahl fürs Business?</div><div class="news-time">Gestern</div></div></div>
+            <div class="news-row"><div class="news-thumb"></div><div><div class="news-title">Nachhaltige Textilien</div><div class="news-sub">Umweltbewusstsein beim Kunden wächst</div><div class="news-time">Gestern</div></div></div>
+          </div>
+          <div class="news-footer">ALLE NEWS ANZEIGEN →</div>
+        </section>
 
-        const snippet =
-          String(
-            email.snippet ||
-            ""
-          );
-
-
-        const unreadMark =
-          email.unread
-            ? "● "
-            : "";
-
-
-        return `
-          <div class="email-row" data-mail-id="${escapeHtml(email.id || "")}">
-            <div class="avatar">${escapeHtml(getSenderInitials(sender))}</div>
-            <div class="email-sender">${escapeHtml(sender)}</div>
-            <div class="email-copy">
-              <div class="email-subject">${unreadMark}${escapeHtml(subject)}</div>
-              <div class="email-snippet">${escapeHtml(snippet)}</div>
+        <section class="panel weather-panel">
+          <div class="panel-head"><span>☁ WETTER</span><span class="panel-dot" id="wxDot"></span></div>
+          <div class="weather-body">
+            <div class="wx-location">Ludwigshafen am Rhein</div>
+            <div class="wx-main"><div class="wx-icon">🌤️</div><div><div class="wx-temp" id="wxTemp">—°</div><div class="wx-desc" id="wxDesc">…</div></div></div>
+            <div class="wx-grid">
+              <div class="wx-cell"><span id="wxMax">—°</span><label>MAX</label></div>
+              <div class="wx-cell"><span id="wxMin">—°</span><label>MIN</label></div>
+              <div class="wx-cell"><span id="wxRain">—%</span><label>REGEN</label></div>
+              <div class="wx-cell"><span id="wxWind">—</span><label>WIND</label></div>
             </div>
-            <div class="email-time">${escapeHtml(formatInboxTime(email))}</div>
-          </div>`;
+            <div class="wx-forecast">
+              <div class="wx-day">MO<i>☁️</i><b>—</b><small>—</small></div>
+              <div class="wx-day">DI<i>🌤️</i><b>—</b><small>—</small></div>
+              <div class="wx-day">MI<i>☀️</i><b>—</b><small>—</small></div>
+              <div class="wx-day">DO<i>🌤️</i><b>—</b><small>—</small></div>
+              <div class="wx-day">FR<i>☀️</i><b>—</b><small>—</small></div>
+            </div>
+          </div>
+          <span id="sysWx" class="compat">…</span>
+        </section>
+
+        <section class="panel calendar-panel">
+          <div class="panel-head"><span>▣ KALENDER & AUFGABEN</span></div>
+          <div class="calendar-body">
+            <div class="cal-date"><small>HEUTE</small><b id="calDay">16</b><span>Sonntag</span></div>
+            <div class="cal-list">
+              <div class="cal-item"><time>—</time><span>Kalender-Anbindung vorbereitet</span></div>
+              <div class="cal-item"><time>—</time><span>Termine erscheinen hier</span></div>
+              <div class="cal-item"><time>—</time><span>Aufgaben & Erinnerungen</span></div>
+              <div class="cal-item"><time>—</time><span>JARVIS Business Planung</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel ads-panel">
+          <div class="panel-head"><span>∞ META ADS PERFORMANCE</span></div>
+          <div class="ad-grid">
+            <div class="ad-kpi"><label>KLICKS</label><b>—</b><small>LIVE MODUL</small></div>
+            <div class="ad-kpi"><label>CONVERSIONS</label><b>—</b><small>LIVE MODUL</small></div>
+            <div class="ad-kpi"><label>KOSTEN</label><b>—</b><small>LIVE MODUL</small></div>
+            <div class="ad-kpi"><label>ROAS</label><b>—</b><small>LIVE MODUL</small></div>
+          </div>
+        </section>
+      </section>
+
+      <section class="panel alerts-panel">
+        <div class="panel-head"><span>⚒ KUNDENANFRAGEN & ALARME</span><span style="color:var(--pink);font-size:8px">ALLE ANZEIGEN →</span></div>
+        <div class="alert-strip">
+          <div class="alert-item"><div class="alert-icon">✉</div><div class="alert-copy"><b>Neue Anfrage</b><span>Kundenmail erkannt</span></div></div>
+          <div class="alert-item"><div class="alert-icon">◎</div><div class="alert-copy"><b>Druckdaten prüfen</b><span>Produktionshinweis</span></div></div>
+          <div class="alert-item"><div class="alert-icon">◉</div><div class="alert-copy"><b>Hohe Nachfrage</b><span>Shop-Trend</span></div></div>
+          <div class="alert-item"><div class="alert-icon">⌛</div><div class="alert-copy"><b>Nachlieferung offen</b><span>Bestellstatus</span></div></div>
+          <div class="alert-item"><div class="alert-icon">♟</div><div class="alert-copy"><b>Kunde wartet</b><span>Antwort erforderlich</span></div></div>
+        </div>
+      </section>
+
+      <section class="panel quick-panel">
+        <div class="panel-head"><span>♙ SCHNELLZUGRIFF</span></div>
+        <div class="quick-grid">
+          <div class="quick-btn"><i>🛒</i><span>BESTELLUNGEN</span></div>
+          <div class="quick-btn"><i>✉</i><span>MAILS</span></div>
+          <div class="quick-btn"><i>▤</i><span>ANGEBOTE</span></div>
+          <div class="quick-btn"><i>🛍</i><span>SHOPIFY</span></div>
+          <div class="quick-btn"><i>☁</i><span>WETTER</span></div>
+          <div class="quick-btn"><i>♢</i><span>ERINNERUNGEN</span></div>
+        </div>
+      </section>
+
+      <section class="panel future-panel">
+        <div class="panel-head"><span>WEITERE MÖGLICHE FUNKTIONEN</span></div>
+        <div class="future-grid">
+          <div class="future-tile"><b>WHATSAPP</b><span>Kundenkommunikation</span></div>
+          <div class="future-tile"><b>BESTANDSWARNUNG</b><span>Bestand kritisch</span></div>
+          <div class="future-tile"><b>DRUCK-WARTESCHLANGE</b><span>Aktuelle Druckjobs</span></div>
+          <div class="future-tile"><b>TEAM AUFGABEN</b><span>Aufgaben & Projekte</span></div>
+          <div class="future-tile"><b>VERSAND STATUS</b><span>Sendungen verfolgen</span></div>
+          <div class="future-tile"><b>KUNDENANRUFE</b><span>Anrufprotokoll</span></div>
+          <div class="future-tile"><b>AI VORSCHLÄGE</b><span>Intelligente Insights</span></div>
+          <div class="future-tile"><b>TOP PRODUKTE</b><span>Bestseller anzeigen</span></div>
+          <div class="future-tile"><b>DRINGENDE HINWEISE</b><span>Wichtige Aktionen</span></div>
+        </div>
+      </section>
+
+      <section class="voice-dock">
+        <div class="voice-side">SAGEN SIE EINEN BEFEHL …</div>
+        <div class="voice-center">
+          <div class="voice-wave"></div>
+          <button id="toggle" class="voice-button" type="button" aria-label="JARVIS starten oder stoppen"></button>
+          <div>
+            <div class="voice-log" id="log">Bereit.</div>
+            <div class="core-state">JARVIS · <span id="hudState">STANDBY</span></div>
+          </div>
+        </div>
+        <div class="voice-side right">DRUCKELITE24 · BUSINESS ASSISTANT</div>
+      </section>
+
+    </main>
+
+    <section class="panel" id="draftPanel">
+      <div class="panel-head"><span>ENTWURF</span><span class="panel-dot ok"></span></div>
+      <div class="draft-inner">
+        <div id="draftSubject"></div>
+        <div id="draftBody"></div>
+        <button id="draftCopyBtn" type="button">Text kopieren</button>
+      </div>
+    </section>
+
+    <!-- Kompatibilität mit bestehendem HUD-Script -->
+    <canvas id="waveCanvas" class="compat" width="260" height="56"></canvas>
+    <canvas id="coreCanvas" class="compat" width="100" height="100"></canvas>
+    <div id="gaugeTrend" class="compat"><span id="gaugeTrendLabel"></span></div>
+
+  </div>
+
+  <audio id="remoteAudio" autoplay playsinline></audio>
+
+  <script>
+
+    (function () {
+
+      /* ---------- Boot-Sequenz ---------- */
+      var overlay = document.getElementById("bootOverlay");
+      var linesEl = document.getElementById("bootLines");
+      var barFill = document.getElementById("bootBarFill");
+
+      var bootLines = [
+        "DRUCKELITE24 OS · KERN WIRD GELADEN",
+        "SPRACHMODUL ......... OK",
+        "SHOPIFY-BRÜCKE ...... OK",
+        "WETTERDIENST ........ OK",
+        "AUDIO-SYSTEM ........ OK",
+        "JARVIS V5 BEREIT."
+      ];
+
+      var li = 0;
+      function nextLine() {
+        if (!linesEl) return;
+        if (li < bootLines.length) {
+          var d = document.createElement("div");
+          d.textContent = "> " + bootLines[li];
+          linesEl.appendChild(d);
+          li++;
+          if (barFill) barFill.style.width = Math.round((li / bootLines.length) * 100) + "%";
+          setTimeout(nextLine, 240);
+        } else {
+          setTimeout(function () {
+            if (overlay) {
+              overlay.classList.add("boot-done");
+              setTimeout(function () { overlay.remove(); }, 700);
+            }
+          }, 420);
+        }
       }
-    ).join("");
+      setTimeout(nextLine, 350);
 
 
-  list.querySelectorAll(
-    ".email-row[data-mail-id]"
-  ).forEach(
-    row => {
-      row.setAttribute(
-        "role",
-        "button"
-      );
-      row.setAttribute(
-        "tabindex",
-        "0"
-      );
-      row.title =
-        "Mail öffnen";
+      /* ---------- Uhr ---------- */
+      var clockEl = document.getElementById("hudClock");
+      var dayEl = document.getElementById("hudDay");
+      var monthEl = document.getElementById("hudMonth");
+      var bigTimeEl = document.getElementById("hudBigTime");
 
-      const open =
-        () =>
-          openGmailMessage(
-            row.dataset.mailId
-          );
+      var monthNames = [
+        "JANUAR", "FEBRUAR", "MÄRZ", "APRIL", "MAI", "JUNI",
+        "JULI", "AUGUST", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DEZEMBER"
+      ];
 
-      row.addEventListener(
-        "click",
-        open
-      );
+      function tick() {
+        var now = new Date();
+        var time = now.toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin" });
 
-      row.addEventListener(
-        "keydown",
-        event => {
-          if (
-            event.key === "Enter" ||
-            event.key === " "
-          ) {
-            event.preventDefault();
-            open();
+        if (clockEl) clockEl.textContent = time;
+        if (bigTimeEl) bigTimeEl.textContent = time;
+
+        var parts = new Intl.DateTimeFormat("de-DE", {
+          timeZone: "Europe/Berlin", day: "numeric", month: "numeric"
+        }).formatToParts(now);
+
+        var d = parts.find(function (p) { return p.type === "day"; });
+        var m = parts.find(function (p) { return p.type === "month"; });
+
+        if (dayEl && d) dayEl.textContent = d.value;
+        if (monthEl && m) monthEl.textContent = monthNames[Number(m.value) - 1] || "";
+      }
+      tick();
+      setInterval(tick, 1000);
+
+
+      /* ---------- CORE-Status folgt JARVIS ---------- */
+      var stateEl = document.getElementById("hudState");
+      var stateNames = {
+        offline: "STANDBY", connecting: "BOOT", listening: "LISTENING",
+        hearing: "INPUT", thinking: "PROCESSING", speaking: "OUTPUT"
+      };
+      new MutationObserver(function () {
+        var s = document.body.dataset.jarvisState || "offline";
+        if (stateEl) stateEl.textContent = stateNames[s] || "STANDBY";
+      }).observe(document.body, { attributes: true, attributeFilter: ["data-jarvis-state"] });
+
+
+      /* ---------- Ticker mit Live-Werten füllen ---------- */
+      var hudVals = { revenue: null, orders: null, temp: null, wx: null };
+
+      function updateTicker() {
+        var parts = ["<b>DRUCKELITE24</b> · JARVIS V5 ONLINE"];
+
+        if (hudVals.orders !== null) {
+          parts.push("BESTELLUNGEN HEUTE <b>" + hudVals.orders + "</b>");
+        }
+        if (hudVals.revenue !== null) {
+          parts.push("UMSATZ <b>" + hudVals.revenue + "</b>");
+        }
+        if (hudVals.temp !== null) {
+          parts.push("LUDWIGSHAFEN <b>" + hudVals.temp + "</b> " + (hudVals.wx || ""));
+        }
+
+        var html = parts.join(" &nbsp;·&nbsp; ") + " &nbsp;·&nbsp; ";
+        var a = document.getElementById("tickA");
+        var b = document.getElementById("tickB");
+        if (a) a.innerHTML = html;
+        if (b) b.innerHTML = html;
+      }
+
+
+      /* ---------- 7-TAGE-CHART ---------- */
+      function drawWeekChart(days) {
+        var canvas = document.getElementById("weekChart");
+        if (!canvas || !canvas.getContext || !days || !days.length) return;
+
+        var dpr = window.devicePixelRatio || 1;
+        var cw = canvas.clientWidth || 260;
+        canvas.width = cw * dpr;
+        canvas.height = 70 * dpr;
+
+        var ctx = canvas.getContext("2d");
+        ctx.scale(dpr, dpr);
+
+        var w = cw, h = 70, pad = 2, labelH = 12;
+        var chartH = h - labelH;
+        var max = Math.max.apply(null, days.map(function (d) { return d.revenue; }));
+        if (max <= 0) max = 1;
+
+        var barW = (w - pad * 2) / days.length;
+
+        days.forEach(function (d, i) {
+          var bh = Math.max(2, (d.revenue / max) * (chartH - 6));
+          var x = pad + i * barW + barW * 0.18;
+          var y = chartH - bh;
+          var isToday = i === days.length - 1;
+
+          ctx.fillStyle = isToday ? "#e70779" : "rgba(231, 7, 121, 0.32)";
+          if (isToday) {
+            ctx.shadowColor = "#e70779";
+            ctx.shadowBlur = 8;
+          } else {
+            ctx.shadowBlur = 0;
+          }
+          ctx.fillRect(x, y, barW * 0.64, bh);
+
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = isToday ? "#f5f5f7" : "#5c5c62";
+          ctx.font = "8px ui-monospace, monospace";
+          ctx.textAlign = "center";
+          ctx.fillText(d.label, pad + i * barW + barW / 2, h - 2);
+        });
+      }
+
+      async function loadWeek() {
+        try {
+          var r = await fetch("/api/shopify-week", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}"
+          });
+          var d = await r.json();
+          if (!r.ok || d.error) throw new Error(d.error || "Fehler");
+          drawWeekChart(d.days);
+        } catch (e) {
+          /* Chart bleibt leer, kein Drama */
+        }
+      }
+
+      loadWeek();
+      setInterval(loadWeek, 15 * 60 * 1000);
+
+
+      /* ---------- ECHTE SHOPIFY-DATEN ---------- */
+      var euro = function (n) {
+        return Number(n).toLocaleString("de-DE", {
+          style: "currency", currency: "EUR", maximumFractionDigits: 0
+        });
+      };
+
+      function setText(id, text) {
+        var el = document.getElementById(id);
+        if (el) el.textContent = text;
+      }
+
+      function setDot(id, ok) {
+        var el = document.getElementById(id);
+        if (el) el.classList.toggle("ok", !!ok);
+      }
+
+      async function loadShop() {
+        try {
+          var r = await fetch("/api/shopify-summary", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ period: "today" })
+          });
+          var d = await r.json();
+          if (!r.ok || d.error) throw new Error(d.error || "Fehler");
+
+          setText("statOrders", d.orders);
+          setText("statRevenue", euro(d.revenue));
+          setText("statAov", euro(d.average_order_value));
+          setText("shopUpdated",
+            "AKTUALISIERT " + new Date().toLocaleTimeString("de-DE", {
+              timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit"
+            }) + " UHR");
+          setText("sysShop", "ONLINE");
+          setDot("shopDot", true);
+
+          hudVals.orders = d.orders;
+          hudVals.revenue = euro(d.revenue);
+          updateTicker();
+
+          // Gestern nachladen
+          var r2 = await fetch("/api/shopify-summary", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ period: "yesterday" })
+          });
+          var d2 = await r2.json();
+          if (r2.ok && !d2.error) {
+            setText("statYesterday", d2.orders + " · " + euro(d2.revenue));
+
+            // Trend-Gauge: heute vs. gestern (echt berechnet)
+            var pct = d2.revenue > 0
+              ? Math.round((d.revenue / d2.revenue) * 100)
+              : (d.revenue > 0 ? 100 : 0);
+
+            var gauge = document.getElementById("gaugeTrend");
+            var gaugeLabel = document.getElementById("gaugeTrendLabel");
+            if (gauge) gauge.style.setProperty("--val", Math.min(100, pct));
+            if (gaugeLabel) gaugeLabel.textContent = pct + "%";
+          }
+        } catch (e) {
+          setText("shopUpdated", "SHOP-DATEN NICHT ERREICHBAR");
+          setText("sysShop", "OFFLINE");
+          setDot("shopDot", false);
+        }
+      }
+
+      loadShop();
+      setInterval(loadShop, 5 * 60 * 1000); // alle 5 Minuten
+
+
+      /* ---------- ECHTES WETTER ---------- */
+      var wxCodes = {
+        0: "KLAR", 1: "MEIST KLAR", 2: "TEILS BEWÖLKT", 3: "BEDECKT",
+        45: "NEBEL", 48: "NEBEL", 51: "NIESELN", 53: "NIESELN", 55: "NIESELN",
+        61: "REGEN", 63: "REGEN", 65: "STARKREGEN", 66: "EISREGEN", 67: "EISREGEN",
+        71: "SCHNEE", 73: "SCHNEE", 75: "SCHNEE", 77: "SCHNEE",
+        80: "SCHAUER", 81: "SCHAUER", 82: "SCHAUER",
+        85: "SCHNEE", 86: "SCHNEE", 95: "GEWITTER", 96: "GEWITTER", 99: "GEWITTER"
+      };
+
+      async function loadWeather() {
+        try {
+          var r = await fetch("/api/weather", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ location: "Ludwigshafen", day: "today" })
+          });
+          var d = await r.json();
+          if (!r.ok || d.error) throw new Error(d.error || "Fehler");
+
+          if (d.current && typeof d.current.temperature_2m === "number") {
+            setText("wxTemp", Math.round(d.current.temperature_2m) + "°");
+            setText("wxWind", Math.round(d.current.wind_speed_10m || 0));
+            hudVals.temp = Math.round(d.current.temperature_2m) + "°";
+          }
+          var f = d.forecast || {};
+          setText("wxDesc", wxCodes[f.weather_code] || "—");
+          hudVals.wx = wxCodes[f.weather_code] || "";
+          updateTicker();
+          if (typeof f.max_temperature === "number")
+            setText("wxMax", Math.round(f.max_temperature) + "°");
+          if (typeof f.min_temperature === "number")
+            setText("wxMin", Math.round(f.min_temperature) + "°");
+          if (typeof f.precipitation_probability === "number")
+            setText("wxRain", f.precipitation_probability + "%");
+
+          setText("sysWx", "ONLINE");
+          setDot("wxDot", true);
+        } catch (e) {
+          setText("wxDesc", "NICHT ERREICHBAR");
+          setText("sysWx", "OFFLINE");
+          setDot("wxDot", false);
+        }
+      }
+
+      loadWeather();
+      setInterval(loadWeather, 15 * 60 * 1000); // alle 15 Minuten
+
+
+      /* ---------- WELLENFORM (Canvas) ---------- */
+      var canvas = document.getElementById("waveCanvas");
+      var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      if (canvas && canvas.getContext && !reduceMotion) {
+        var ctx = canvas.getContext("2d");
+        var t = 0;
+
+        function amplitudeForState() {
+          var s = document.body.dataset.jarvisState || "offline";
+          if (s === "speaking") return 18;
+          if (s === "hearing") return 14;
+          if (s === "thinking") return 8;
+          if (s === "listening") return 5;
+          if (s === "connecting") return 10;
+          return 2.5;
+        }
+
+        function drawWave() {
+          var w = canvas.width, h = canvas.height, mid = h / 2;
+          ctx.clearRect(0, 0, w, h);
+          ctx.beginPath();
+          var amp = amplitudeForState();
+          for (var x = 0; x <= w; x += 2) {
+            var y = mid
+              + Math.sin(x * 0.05 + t) * amp * Math.sin(x * 0.011 + t * 0.7)
+              + Math.sin(x * 0.13 + t * 1.7) * amp * 0.35;
+            if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.strokeStyle = getComputedStyle(document.body)
+            .getPropertyValue("--reactor-color").trim() || "#e70779";
+          ctx.lineWidth = 1.6;
+          ctx.shadowColor = ctx.strokeStyle;
+          ctx.shadowBlur = 6;
+          ctx.stroke();
+          t += 0.09;
+          requestAnimationFrame(drawWave);
+        }
+        drawWave();
+      }
+
+
+      /* ---------- 3D-PARTIKELKUGEL IM KERN ---------- */
+      var coreCanvas = document.getElementById("coreCanvas");
+
+      if (coreCanvas && coreCanvas.getContext && !reduceMotion) {
+        var cctx = coreCanvas.getContext("2d");
+
+        // Punkte gleichmäßig auf einer Kugel verteilen
+        var COUNT = 320;
+        var pts = [];
+        var golden = Math.PI * (3 - Math.sqrt(5));
+
+        for (var pi = 0; pi < COUNT; pi++) {
+          var py = 1 - (pi / (COUNT - 1)) * 2;
+          var pr = Math.sqrt(1 - py * py);
+          var pth = golden * pi;
+          pts.push([Math.cos(pth) * pr, py, Math.sin(pth) * pr]);
+        }
+
+        // Nachbar-Paare einmalig berechnen (für das Netz)
+        var pairs = [];
+        for (var a = 0; a < COUNT; a++) {
+          for (var b = a + 1; b < COUNT; b++) {
+            var ddx = pts[a][0] - pts[b][0];
+            var ddy = pts[a][1] - pts[b][1];
+            var ddz = pts[a][2] - pts[b][2];
+            if (ddx * ddx + ddy * ddy + ddz * ddz < 0.06) {
+              pairs.push([a, b]);
+            }
           }
         }
-      );
-    }
-  );
-}
 
+        var rot = 0;
 
-async function loadInboxDashboard() {
-
-  const list =
-    document.getElementById(
-      "inboxList"
-    );
-
-
-  if (!list) {
-    return;
-  }
-
-
-  try {
-
-    const response =
-      await fetch(
-        "/api/gmail-inbox",
-        {
-          method:
-            "GET",
-          cache:
-            "no-store"
+        function sphereSpeed() {
+          var s = document.body.dataset.jarvisState || "offline";
+          if (s === "speaking") return 0.022;
+          if (s === "hearing") return 0.014;
+          if (s === "thinking") return 0.011;
+          if (s === "connecting") return 0.018;
+          if (s === "listening") return 0.006;
+          return 0.0025;
         }
-      );
 
-
-    const data =
-      await response.json();
-
-
-    if (
-      !response.ok ||
-      !data?.ok
-    ) {
-      throw new Error(
-        data?.error ||
-        "Gmail konnte nicht geladen werden."
-      );
-    }
-
-
-    renderInboxEmails(
-      data.emails
-    );
-
-  } catch (error) {
-
-    console.warn(
-      "Gmail Dashboard Fehler:",
-      error
-    );
-
-
-    list.innerHTML =
-      `<div class="email-row">
-        <div class="avatar">!</div>
-        <div class="email-sender">Gmail</div>
-        <div class="email-copy">
-          <div class="email-subject">Posteingang nicht verfügbar</div>
-          <div class="email-snippet">${escapeHtml(error.message || "Abruf fehlgeschlagen")}</div>
-        </div>
-        <div class="email-time">—</div>
-      </div>`;
-  }
-}
-
-
-function startInboxDashboardRefresh() {
-
-  if (inboxRefreshTimer) {
-    clearInterval(
-      inboxRefreshTimer
-    );
-  }
-
-
-  loadInboxDashboard();
-
-
-  inboxRefreshTimer =
-    setInterval(
-      () => {
-        loadInboxDashboard();
-      },
-      5 * 1000
-    );
-}
-
-
-/* =========================================================
-   PROACTIVE CHECK
-   ========================================================= */
-
-async function runProactiveCheck() {
-
-  if (
-    !active ||
-    greetingInProgress ||
-    assistantSpeaking ||
-    responseInProgress ||
-    runningToolCalls.size > 0
-  ) {
-
-    return;
-  }
-
-
-  try {
-
-    const response =
-      await fetch(
-        "/api/jarvis-checkin",
-        {
-
-          method:
-            "POST",
-
-          headers: {
-
-            "Content-Type":
-              "application/json"
-          },
-
-          body:
-            "{}"
+        function projected(p, cosR, sinR, cosT, sinT) {
+          // Rotation um die Y-Achse
+          var x = p[0] * cosR - p[2] * sinR;
+          var z = p[0] * sinR + p[2] * cosR;
+          // Leichte Neigung um die X-Achse
+          var y = p[1] * cosT - z * sinT;
+          var z2 = p[1] * sinT + z * cosT;
+          return [x, y, z2];
         }
-      );
 
+        function drawSphere() {
+          var dpr = window.devicePixelRatio || 1;
+          var size = coreCanvas.clientWidth || 100;
 
-    const data =
-      await response.json();
+          if (coreCanvas.width !== size * dpr) {
+            coreCanvas.width = size * dpr;
+            coreCanvas.height = size * dpr;
+          }
 
+          var w = coreCanvas.width;
+          var cx = w / 2, cy = w / 2;
+          var R = w * 0.36;
 
-    if (
-      !response.ok ||
-      !data?.hasNotice ||
-      !data?.text
-    ) {
-      return;
-    }
+          cctx.clearRect(0, 0, w, w);
 
+          rot += sphereSpeed();
+          var cosR = Math.cos(rot), sinR = Math.sin(rot);
+          var tilt = 0.42;
+          var cosT = Math.cos(tilt), sinT = Math.sin(tilt);
 
-    speakProactiveMessage(
-      data.text
-    );
+          var color = getComputedStyle(document.body)
+            .getPropertyValue("--reactor-color").trim() || "#e70779";
 
-  } catch (error) {
+          // Projizierte Punkte einmal pro Frame berechnen
+          var proj = [];
+          for (var i = 0; i < COUNT; i++) {
+            proj.push(projected(pts[i], cosR, sinR, cosT, sinT));
+          }
 
-    console.warn(
-      "Proactive Check Fehler:",
-      error
-    );
-  }
-}
+          // Netz-Linien (Tiefe steuert Transparenz)
+          cctx.strokeStyle = color;
+          cctx.lineWidth = Math.max(0.6, 0.55 * dpr);
 
+          for (var li = 0; li < pairs.length; li++) {
+            var pa = proj[pairs[li][0]];
+            var pb = proj[pairs[li][1]];
+            var depth = (pa[2] + pb[2]) / 2;
+            var alpha = 0.06 + (depth + 1) * 0.14;
 
-/* =========================================================
-   REMINDER CHECK
-   ========================================================= */
+            cctx.globalAlpha = alpha;
+            cctx.beginPath();
+            cctx.moveTo(cx + pa[0] * R, cy + pa[1] * R);
+            cctx.lineTo(cx + pb[0] * R, cy + pb[1] * R);
+            cctx.stroke();
+          }
 
-async function runReminderCheck() {
+          // Punkte
+          cctx.fillStyle = color;
+          for (var di = 0; di < COUNT; di++) {
+            var pp = proj[di];
+            var depthA = 0.15 + (pp[2] + 1) * 0.42;
+            var dotR = (0.8 + (pp[2] + 1) * 0.8) * dpr;
 
-  if (
-    !active ||
-    greetingInProgress ||
-    assistantSpeaking ||
-    responseInProgress
-  ) {
-    return;
-  }
+            cctx.globalAlpha = depthA;
+            cctx.beginPath();
+            cctx.arc(cx + pp[0] * R, cy + pp[1] * R, dotR, 0, Math.PI * 2);
+            cctx.fill();
+          }
 
-
-  try {
-
-    const response =
-      await fetch(
-        "/api/jarvis-reminder-check",
-        {
-
-          method:
-            "POST",
-
-          headers: {
-
-            "Content-Type":
-              "application/json"
-          },
-
-          body:
-            "{}"
+          cctx.globalAlpha = 1;
+          requestAnimationFrame(drawSphere);
         }
-      );
 
-
-    const data =
-      await response.json();
-
-
-    if (
-      !response.ok ||
-      !data?.hasNotice ||
-      !data?.text
-    ) {
-      return;
-    }
-
-
-    speakProactiveMessage(
-      data.text
-    );
-
-  } catch (error) {
-
-    console.warn(
-      "Reminder Check Fehler:",
-      error
-    );
-  }
-}
-
-
-/* =========================================================
-   BACKGROUND TIMERS
-   ========================================================= */
-
-function startBackgroundChecks() {
-
-  stopBackgroundChecks();
-
-
-  proactiveFirstCheckTimer =
-    setTimeout(
-      () => {
-
-        runProactiveCheck();
-
-      },
-      PROACTIVE_FIRST_CHECK_DELAY_MS
-    );
-
-
-  proactiveCheckTimer =
-    setInterval(
-      () => {
-
-        runProactiveCheck();
-
-      },
-      PROACTIVE_CHECK_INTERVAL_MS
-    );
-
-
-  reminderCheckTimer =
-    setInterval(
-      () => {
-
-        runReminderCheck();
-
-      },
-      REMINDER_CHECK_INTERVAL_MS
-    );
-}
-
-
-function stopBackgroundChecks() {
-
-  if (
-    proactiveFirstCheckTimer
-  ) {
-
-    clearTimeout(
-      proactiveFirstCheckTimer
-    );
-
-
-    proactiveFirstCheckTimer =
-      null;
-  }
-
-
-  if (
-    proactiveCheckTimer
-  ) {
-
-    clearInterval(
-      proactiveCheckTimer
-    );
-
-
-    proactiveCheckTimer =
-      null;
-  }
-
-
-  if (
-    reminderCheckTimer
-  ) {
-
-    clearInterval(
-      reminderCheckTimer
-    );
-
-
-    reminderCheckTimer =
-      null;
-  }
-}
-
-
-/* =========================================================
-   INTERRUPTION
-   ========================================================= */
-
-function handleUserInterruption() {
-
-  if (!active) {
-    return;
-  }
-
-
-  if (
-    !assistantSpeaking &&
-    !responseInProgress
-  ) {
-    return;
-  }
-
-
-  console.log(
-    "Mattl unterbricht JARVIS."
-  );
-
-
-  debugSet(
-    "dbgEvent",
-    "JARVIS wurde unterbrochen"
-  );
-
-
-  cancelCurrentResponse();
-
-
-  clearElevenAudio();
-
-
-  assistantSpeaking =
-    false;
-
-
-  greetingInProgress =
-    false;
-
-
-  setMicrophoneEnabled(
-    true
-  );
-
-
-  setJarvisState(
-    "hearing"
-  );
-
-
-  setLog(
-    "Ich höre zu …"
-  );
-}
-
-
-/* =========================================================
-   START JARVIS
-   ========================================================= */
-
-async function startJarvis() {
-
-  if (
-    active ||
-    starting
-  ) {
-    return;
-  }
-
-
-  starting =
-    true;
-
-
-  stopping =
-    false;
-
-
-  debugSet(
-    "dbgOpenAI",
-    "❌"
-  );
-
-
-  debugSet(
-    "dbgEleven",
-    "❌"
-  );
-
-
-  debugSet(
-    "dbgToken",
-    "❌"
-  );
-
-
-  debugSet(
-    "dbgVoice",
-    "-"
-  );
-
-
-  debugSet(
-    "dbgSocket",
-    "-"
-  );
-
-
-  debugSet(
-    "dbgText",
-    "❌"
-  );
-
-
-  debugSet(
-    "dbgAudio",
-    "❌"
-  );
-
-
-  debugSet(
-    "dbgPlayback",
-    "❌"
-  );
-
-
-  debugSet(
-    "dbgClose",
-    "-"
-  );
-
-
-  debugSet(
-    "dbgEvent",
-    "JARVIS startet"
-  );
-
-
-  setButtonActive(
-    true
-  );
-
-
-  setStatus(
-    "Verbinde …"
-  );
-
-
-  setJarvisState(
-    "starting"
-  );
-
-
-  setLog(
-    "JARVIS wird gestartet …"
-  );
-
-
-  try {
-
-    /*
-      AudioContext sofort im echten Button-Klick
-      aktivieren.
-    */
-
-    await ensureAudioContext();
-
-
-    debugSet(
-      "dbgPlayback",
-      "bereit"
-    );
-
-
-    const introPromise =
-      startIntro();
-
-
-    await createMicrophoneStream();
-
-
-    setLog(
-      "ElevenLabs wird verbunden …"
-    );
-
-
-    debugSet(
-      "dbgEvent",
-      "ElevenLabs wird verbunden"
-    );
-
-
-    await connectElevenLabs();
-
-
-    setLog(
-      "OpenAI Realtime wird verbunden …"
-    );
-
-
-    debugSet(
-      "dbgEvent",
-      "OpenAI wird verbunden"
-    );
-
-
-    await connectRealtime();
-
-
-    await introPromise;
-
-
-    active =
-      true;
-
-
-    await requestScreenWakeLock();
-
-
-    setStatus(
-      "Online"
-    );
-
-
-    setJarvisState(
-      "online"
-    );
-
-
-    debugSet(
-      "dbgEvent",
-      "JARVIS Online"
-    );
-
-
-    startBackgroundChecks();
-
-
-    await speakGreeting();
-
-  } catch (error) {
-
-    console.error(
-      "JARVIS Startfehler:",
-      error
-    );
-
-
-    setStatus(
-      "Fehler"
-    );
-
-
-    setLog(
-      error.message ||
-      "JARVIS konnte nicht gestartet werden."
-    );
-
-
-    debugSet(
-      "dbgEvent",
-      `STARTFEHLER: ${
-        error.message ||
-        "unbekannt"
-      }`
-    );
-
-
-    active =
-      false;
-
-
-    disconnectElevenLabs();
-
-
-    disconnectRealtime();
-
-
-    stopMicrophone();
-
-
-    stopIntro();
-
-
-    clearElevenAudio();
-
-
-    setButtonActive(
-      false
-    );
-
-
-    setJarvisState(
-      "offline"
-    );
-
-  } finally {
-
-    starting =
-      false;
-  }
-}
-
-
-/* =========================================================
-   STOP JARVIS
-   ========================================================= */
-
-async function stopJarvis(
-  updateUi = true
-) {
-
-  if (stopping) {
-    return;
-  }
-
-
-  stopping =
-    true;
-
-
-  active =
-    false;
-
-
-  await releaseScreenWakeLock();
-
-
-  greetingInProgress =
-    false;
-
-
-  assistantSpeaking =
-    false;
-
-
-  responseInProgress =
-    false;
-
-
-  stopBackgroundChecks();
-
-
-  setMicrophoneEnabled(
-    false
-  );
-
-
-  clearTtsTextBuffer();
-
-
-  clearElevenAudio();
-
-
-  disconnectElevenLabs();
-
-
-  disconnectRealtime();
-
-
-  stopMicrophone();
-
-
-  stopIntro();
-
-
-  runningToolCalls.clear();
-
-
-  if (updateUi) {
-
-    setButtonActive(
-      false
-    );
-
-
-    setStatus(
-      "Offline"
-    );
-
-
-    setJarvisState(
-      "offline"
-    );
-
-
-    setLog(
-      "JARVIS ist offline."
-    );
-
-
-    debugSet(
-      "dbgEvent",
-      "JARVIS Offline"
-    );
-  }
-
-
-  stopping =
-    false;
-}
-
-
-/* =========================================================
-   TOGGLE BUTTON
-   ========================================================= */
-
-if (button) {
-
-  button.addEventListener(
-    "click",
-    async () => {
-
-      if (
-        starting ||
-        stopping
-      ) {
-        return;
+        drawSphere();
       }
 
 
-      if (active) {
-
-        await stopJarvis();
-
-      } else {
-
-        await startJarvis();
+      /* ---------- Parallax ---------- */
+      var panel = document.getElementById("voicePanel");
+      if (panel && !reduceMotion) {
+        document.addEventListener("mousemove", function (e) {
+          var x = (e.clientX / window.innerWidth - 0.5) * 12;
+          var y = (e.clientY / window.innerHeight - 0.5) * 9;
+          panel.style.transform = "translate(" + x + "px, " + y + "px)";
+        });
       }
-    }
-  );
-}
 
 
-/* =========================================================
-   PAGE CLEANUP
-   ========================================================= */
+    })();
+  
+  </script>
 
-window.addEventListener(
-  "beforeunload",
-  () => {
-
-    stopBackgroundChecks();
-
-
-    if (inboxRefreshTimer) {
-      clearInterval(inboxRefreshTimer);
-      inboxRefreshTimer = null;
-    }
-
-
-    stopElevenKeepAlive();
-
-
-    clearElevenAudio();
-
-
-    disconnectElevenLabs();
-
-
-    disconnectRealtime();
-
-
-    stopMicrophone();
-
-
-    stopIntro();
-
-
-    if (audioContext) {
-
-      try {
-        audioContext.close();
-      } catch {}
-    }
-  }
-);
-
-
-/* =========================================================
-   INITIAL UI
-   ========================================================= */
-
-setStatus(
-  "Offline"
-);
-
-
-setJarvisState(
-  "offline"
-);
-
-
-setButtonActive(
-  false
-);
-
-
-setLog(
-  "JARVIS ist bereit."
-);
-
-
-debugSet(
-  "dbgEvent",
-  "Bereit"
-);
-
-
-startInboxDashboardRefresh();
-
-
-/* =========================================================
-   VERSION
-   ========================================================= */
-
-console.log(
-  "=============================================="
-);
-
-
-console.log(
-  "JARVIS APP V10.4 · GMAIL DRAFT FIX"
-);
-
-
-console.log(
-  "OpenAI Realtime: TEXT"
-);
-
-
-console.log(
-  "Voice Engine: ElevenLabs"
-);
-
-
-console.log(
-  "ElevenLabs Audio: PCM 24000 Hz"
-);
-
-
-console.log(
-  "Playback: Web Audio API"
-);
-
-
-console.log(
-  "WebSocket Auth: single_use_token"
-);
-
-
-console.log(
-  "Flush: true"
-);
-
-
-console.log(
-  "Inactivity Timeout: 180 Sekunden"
-);
-
-
-console.log(
-  "=============================================="
-);
+  <script src="app.js?v=22"></script>
+</body>
+</html>
