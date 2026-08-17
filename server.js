@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V10.1-ELEVENLABS-GMAIL-NEW-DRAFT-SEND-FIX";
+  "V10.1-SHOPIFY-BERLIN-DAY-FIX";
 
 
 /* =========================================================
@@ -163,6 +163,121 @@ function getBerlinHour() {
 }
 
 
+function getTimeZoneOffsetMs(
+  date,
+  timeZone
+) {
+
+  const parts =
+    new Intl.DateTimeFormat(
+      "en-US",
+      {
+        timeZone,
+        year:
+          "numeric",
+        month:
+          "2-digit",
+        day:
+          "2-digit",
+        hour:
+          "2-digit",
+        minute:
+          "2-digit",
+        second:
+          "2-digit",
+        hourCycle:
+          "h23"
+      }
+    ).formatToParts(date);
+
+
+  const values =
+    Object.fromEntries(
+      parts
+        .filter(
+          part =>
+            part.type !==
+            "literal"
+        )
+        .map(
+          part => [
+            part.type,
+            part.value
+          ]
+        )
+    );
+
+
+  const asUtc =
+    Date.UTC(
+      Number(values.year),
+      Number(values.month) - 1,
+      Number(values.day),
+      Number(values.hour),
+      Number(values.minute),
+      Number(values.second)
+    );
+
+
+  return (
+    asUtc -
+    date.getTime()
+  );
+}
+
+
+function berlinMidnightToUtc(
+  year,
+  month,
+  day
+) {
+
+  const timeZone =
+    "Europe/Berlin";
+
+
+  let utc =
+    Date.UTC(
+      year,
+      month - 1,
+      day,
+      0,
+      0,
+      0
+    );
+
+
+  // Zweimal korrigieren, damit Sommer-/Winterzeit sauber berücksichtigt wird.
+  for (
+    let i = 0;
+    i < 2;
+    i += 1
+  ) {
+
+    const offset =
+      getTimeZoneOffsetMs(
+        new Date(utc),
+        timeZone
+      );
+
+
+    utc =
+      Date.UTC(
+        year,
+        month - 1,
+        day,
+        0,
+        0,
+        0
+      ) -
+      offset;
+  }
+
+
+  return new Date(utc);
+}
+
+
 function getPeriodDates(
   period
 ) {
@@ -177,19 +292,14 @@ function getPeriodDates(
       {
         timeZone:
           "Europe/Berlin",
-
         year:
           "numeric",
-
         month:
           "2-digit",
-
         day:
           "2-digit"
       }
-    ).format(
-      now
-    );
+    ).format(now);
 
 
   const [
@@ -202,7 +312,7 @@ function getPeriodDates(
       .map(Number);
 
 
-  let start =
+  const localDate =
     new Date(
       Date.UTC(
         year,
@@ -216,34 +326,58 @@ function getPeriodDates(
     period ===
     "yesterday"
   ) {
-
-    start.setUTCDate(
-      start.getUTCDate() -
+    localDate.setUTCDate(
+      localDate.getUTCDate() -
       1
     );
   }
 
 
-  const end =
+  const startYear =
+    localDate.getUTCFullYear();
+
+  const startMonth =
+    localDate.getUTCMonth() +
+    1;
+
+  const startDay =
+    localDate.getUTCDate();
+
+
+  const nextLocalDate =
     new Date(
-      start
+      Date.UTC(
+        startYear,
+        startMonth - 1,
+        startDay + 1
+      )
     );
 
 
-  end.setUTCDate(
-    end.getUTCDate() +
-    1
-  );
+  const start =
+    berlinMidnightToUtc(
+      startYear,
+      startMonth,
+      startDay
+    );
+
+
+  const end =
+    berlinMidnightToUtc(
+      nextLocalDate.getUTCFullYear(),
+      nextLocalDate.getUTCMonth() + 1,
+      nextLocalDate.getUTCDate()
+    );
 
 
   return {
     start:
       start.toISOString(),
-
     end:
       end.toISOString()
   };
 }
+
 
 
 /* =========================================================
