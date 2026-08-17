@@ -207,6 +207,9 @@ let currentSelectedWhatsAppConversationId =
 let currentSelectedWhatsAppConversation =
   null;
 
+let pendingNewWhatsAppDraft =
+  null;
+
 let currentGmailDraftId =
   (() => {
     try {
@@ -548,17 +551,20 @@ function ensureDraftSendButton() {
     async () => {
 
       if (
-        !currentGmailDraftId
+        !currentGmailDraftId &&
+        !pendingNewWhatsAppDraft
       ) {
         setLog(
-          "Kein Gmail-Entwurf zum Senden vorhanden."
+          "Kein Entwurf zum Senden vorhanden."
         );
         return;
       }
 
       const confirmed =
         window.confirm(
-          "Diesen E-Mail-Entwurf jetzt wirklich senden?"
+          pendingNewWhatsAppDraft
+            ? "Diese WhatsApp jetzt wirklich senden?"
+            : "Diesen E-Mail-Entwurf jetzt wirklich senden?"
         );
 
       if (
@@ -585,51 +591,92 @@ function ensureDraftSendButton() {
                   "application/json"
               },
               body:
-                JSON.stringify({
-                  name:
-                    "send_email_draft",
-                  arguments: {
-                    draft_id:
-                      currentGmailDraftId,
-                    confirmation_text:
-                      "senden"
-                  }
-                })
+                JSON.stringify(
+                  pendingNewWhatsAppDraft
+                    ? {
+                        name:
+                          "send_new_whatsapp_draft",
+                        arguments: {
+                          confirmation_text:
+                            "senden"
+                        }
+                      }
+                    : {
+                        name:
+                          "send_email_draft",
+                        arguments: {
+                          draft_id:
+                            currentGmailDraftId,
+                          confirmation_text:
+                            "senden"
+                        }
+                      }
+                )
             }
           );
 
         const data =
           await response.json();
 
+        const sentOk =
+          pendingNewWhatsAppDraft
+            ? data?.whatsapp_sent?.sent ===
+                true ||
+              data?.result?.sent ===
+                true
+            : data?.sent?.sent ===
+                true;
+
         if (
           !response.ok ||
           !data?.ok ||
-          data?.sent?.sent !==
-            true
+          !sentOk
         ) {
           throw new Error(
             data?.error ||
-            "E-Mail konnte nicht gesendet werden."
+            (
+              pendingNewWhatsAppDraft
+                ? "WhatsApp konnte nicht gesendet werden."
+                : "E-Mail konnte nicht gesendet werden."
+            )
           );
         }
 
-        currentGmailDraftId =
-          null;
+        if (
+          pendingNewWhatsAppDraft
+        ) {
+          pendingNewWhatsAppDraft =
+            null;
 
-        try {
-          sessionStorage.removeItem(
-            "jarvisGmailDraftId"
+          panel.style.display =
+            "none";
+
+          setLog(
+            "WhatsApp wurde gesendet."
           );
-        } catch {}
 
-        panel.style.display =
-          "none";
+          loadWhatsAppDashboard();
 
-        setLog(
-          "E-Mail wurde gesendet."
-        );
+        } else {
 
-        loadInboxDashboard();
+          currentGmailDraftId =
+            null;
+
+          try {
+            sessionStorage.removeItem(
+              "jarvisGmailDraftId"
+            );
+          } catch {}
+
+          panel.style.display =
+            "none";
+
+          setLog(
+            "E-Mail wurde gesendet."
+          );
+
+          loadInboxDashboard();
+        }
 
       } catch (
         error
@@ -3874,9 +3921,20 @@ async function executeRealtimeTool(
     if (
       toolResult?.whatsapp_draft?.text
     ) {
+
+      pendingNewWhatsAppDraft =
+        toolName ===
+          "create_new_whatsapp_draft"
+          ? toolResult.whatsapp_draft
+          : null;
+
       showDraft({
         subject:
-          `WhatsApp · ${toolResult.whatsapp_draft.contact_name || "Kunde"}`,
+          `WhatsApp · ${
+            toolResult.whatsapp_draft.recipient ||
+            toolResult.whatsapp_draft.contact_name ||
+            "Kunde"
+          }`,
         body:
           toolResult.whatsapp_draft.text
       });
@@ -3887,6 +3945,9 @@ async function executeRealtimeTool(
       toolResult?.whatsapp_sent?.sent ===
         true
     ) {
+      pendingNewWhatsAppDraft =
+        null;
+
       loadWhatsAppDashboard();
     }
 
