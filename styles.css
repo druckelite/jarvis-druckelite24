@@ -3475,3 +3475,54 @@ audio { display: none; }
   line-height:1.25 !important;
   color:#b9bbc2 !important;
 }
+
+
+/* =========================================================
+   FINAL CLICK + SUPERCHAT NAME FIX 2026-08-17
+   ========================================================= */
+
+/* Deko-/Glow-Layer dürfen niemals Eingaben abfangen */
+.modern-mail::before,
+.modern-mail::after,
+.modern-whatsapp::before,
+.modern-whatsapp::after,
+.mail-panel::before,
+.mail-panel::after,
+.whatsapp-panel-clean::before,
+.whatsapp-panel-clean::after{
+  pointer-events:none !important;
+}
+
+/* Live-Inhalte sicher über dekorativen Layern */
+.modern-mail .modern-message-list,
+.modern-mail #inboxList,
+.modern-whatsapp .modern-message-list,
+.modern-whatsapp .wa-modern-list{
+  position:relative !important;
+  z-index:20 !important;
+  pointer-events:auto !important;
+}
+
+.modern-mail #inboxList [data-mail-id],
+.modern-whatsapp .wa-modern-list [data-wa-conversation-id]{
+  position:relative !important;
+  z-index:21 !important;
+  pointer-events:auto !important;
+  cursor:pointer !important;
+  user-select:none;
+}
+
+.modern-mail #inboxList [data-mail-id] * ,
+.modern-whatsapp .wa-modern-list [data-wa-conversation-id] *{
+  pointer-events:none !important;
+}
+
+.modern-mail #inboxList [data-mail-id]:hover{
+  outline:1px solid rgba(231,7,121,.20);
+  background:rgba(231,7,121,.085) !important;
+}
+
+.modern-whatsapp .wa-modern-list [data-wa-conversation-id]:hover{
+  outline:1px solid rgba(37,211,102,.18);
+  background:rgba(37,211,102,.075) !important;
+}
