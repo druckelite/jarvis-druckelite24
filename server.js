@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V10.1-BRIEFING-START-SILENT";
+  "V10.1-BRIEFING-GRAMMAR-FIX";
 
 
 /* =========================================================
@@ -390,8 +390,6 @@ async function getJarvisDailyBriefing() {
       today:
         null,
       yesterday:
-        null,
-      open_orders:
         null
     },
     weather:
@@ -437,16 +435,6 @@ async function getJarvisDailyBriefing() {
     result.shopify_yesterday_error =
       error.message ||
       "Shopify gestern konnte nicht gelesen werden.";
-  }
-
-
-  try {
-    result.shopify.open_orders =
-      await getShopifyOpenOrders();
-  } catch (error) {
-    result.shopify_open_error =
-      error.message ||
-      "Offene Bestellungen konnten nicht gelesen werden.";
   }
 
 
@@ -633,9 +621,14 @@ Das Briefing ist AUSFÜHRLICH und strukturiert. Nenne mindestens:
 - ungelesene E-Mails: Anzahl, wichtigste Absender/Betreffe und kurz, was Aufmerksamkeit braucht
 - Shopify HEUTE: Umsatz, Bestellungen und Durchschnittsbestellwert
 - Shopify GESTERN/VORTAG: Umsatz, Bestellungen und Durchschnittsbestellwert
-- aktuell offene/unbearbeitete Shopify-Bestellungen
 - aktuelles Wetter
 - zum Schluss eine kurze Prioritäten-Einschätzung für Mattl
+Formuliere Zahlen natürlich auf Deutsch. Beispiele:
+1 ungelesene Mail → „eine ungelesene Mail“
+2 ungelesene Mails → „zwei ungelesene Mails“
+1 Bestellung → „eine Bestellung“
+Nie Formulierungen wie „eins ungelesene Mail“ verwenden.
+Offene/unbearbeitete Bestellungen NICHT im Briefing erwähnen.
 Wenn einzelne Daten fehlen, sage das knapp. Erfinde nichts.
 WICHTIG: Diese ausführliche Zusammenfassung nur auf ausdrücklichen Briefing-Befehl geben. Beim normalen Start KEIN automatisches Mail-/Bestell-Briefing vorlesen.
 
@@ -1034,7 +1027,7 @@ const REALTIME_TOOLS = [
       "get_daily_briefing",
 
     description:
-      "Erstellt Mattls ausführliches Business-Briefing aus Gmail, Shopify heute, Shopify gestern, offenen Bestellungen und Wetter. Nur auf ausdrücklichen Briefing-Befehl verwenden.",
+      "Erstellt Mattls ausführliches Business-Briefing aus Gmail, Shopify heute, Shopify gestern und Wetter. Nur auf ausdrücklichen Briefing-Befehl verwenden.",
 
     parameters: {
       type:
@@ -5558,7 +5551,7 @@ app.post(
             result: {
               ...briefing,
               instruction:
-                "Gib Mattl jetzt ein ausführliches, gut gegliedertes deutsches Business-Briefing. Beginne direkt mit dem Überblick. Nenne ungelesene Mails, Shopify heute, Shopify gestern/Vortag, offene Bestellungen und Wetter. Hebe wichtige Kunden-/Angebotsmails hervor. Schließe mit 2 bis 4 konkreten Prioritäten für heute."
+                "Gib Mattl jetzt ein ausführliches, gut gegliedertes deutsches Business-Briefing. Beginne direkt mit dem Überblick. Nenne ungelesene Mails, Shopify heute, Shopify gestern/Vortag und Wetter. Offene Bestellungen nicht erwähnen. Formuliere Zahlen natürlich auf Deutsch, z. B. bei 1: 'eine ungelesene Mail' und 'eine Bestellung', niemals 'eins ungelesene Mail'. Hebe wichtige Kunden-/Angebotsmails hervor. Schließe mit 2 bis 4 konkreten Prioritäten für heute."
             }
           });
         }
