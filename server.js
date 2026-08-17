@@ -3700,6 +3700,196 @@ async function getSuperchatWhatsAppChannelId() {
 }
 
 
+
+const superchatContactDetailCache =
+  new Map();
+
+async function getSuperchatContactById(
+  contactId
+) {
+
+  const id =
+    String(
+      contactId || ""
+    ).trim();
+
+  if (
+    !id
+  ) {
+    return null;
+  }
+
+  const cached =
+    superchatContactDetailCache.get(
+      id
+    );
+
+  if (
+    cached &&
+    Date.now() -
+      cached.at <
+      10 * 60 * 1000
+  ) {
+    return cached.contact;
+  }
+
+  const data =
+    await superchatRequest(
+      `/contacts/${encodeURIComponent(id)}`
+    );
+
+  const raw =
+    data?.data &&
+    !Array.isArray(data.data)
+      ? data.data
+      : data;
+
+  const contact =
+    raw?.result &&
+    typeof raw.result ===
+      "object"
+      ? raw.result
+      : raw;
+
+  superchatContactDetailCache.set(
+    id,
+    {
+      at:
+        Date.now(),
+      contact
+    }
+  );
+
+  return contact;
+}
+
+
+function superchatContactDisplay(
+  contact
+) {
+
+  if (
+    !contact ||
+    typeof contact !==
+      "object"
+  ) {
+    return {
+      name:
+        "",
+      handle:
+        ""
+    };
+  }
+
+  const firstName =
+    String(
+      firstNonEmpty(
+        contact?.first_name,
+        contact?.firstName,
+        ""
+      ) || ""
+    ).trim();
+
+  const lastName =
+    String(
+      firstNonEmpty(
+        contact?.last_name,
+        contact?.lastName,
+        ""
+      ) || ""
+    ).trim();
+
+  const fullName =
+    [
+      firstName,
+      lastName
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
+  const handles =
+    Array.isArray(
+      contact?.handles
+    )
+      ? contact.handles
+      : [];
+
+  const bestHandle =
+    handles.find(
+      item =>
+        JSON.stringify(
+          item || {}
+        )
+          .toLowerCase()
+          .includes(
+            "whatsapp"
+          )
+    ) ||
+    handles[0] ||
+    null;
+
+  const handle =
+    String(
+      firstNonEmpty(
+        bestHandle?.value,
+        bestHandle?.identifier,
+        bestHandle?.phone,
+        bestHandle?.phone_number,
+        bestHandle?.number,
+        bestHandle?.email,
+        ""
+      ) || ""
+    ).trim();
+
+  return {
+    name:
+      fullName ||
+      String(
+        firstNonEmpty(
+          contact?.name,
+          contact?.display_name,
+          contact?.displayName,
+          handle,
+          ""
+        )
+      ),
+    handle
+  };
+}
+
+
+function extractSuperchatContactId(
+  conversation
+) {
+
+  const contacts =
+    Array.isArray(
+      conversation?.contacts
+    )
+      ? conversation.contacts
+      : [];
+
+  const first =
+    contacts[0];
+
+  return String(
+    firstNonEmpty(
+      typeof first ===
+        "string"
+        ? first
+        : "",
+      first?.id,
+      first?.contact_id,
+      first?.contactId,
+      conversation?.contact_id,
+      conversation?.contactId,
+      ""
+    ) || ""
+  ).trim();
+}
+
+
 async function getSuperchatContactsMap() {
 
   const data =
@@ -3829,6 +4019,388 @@ async function getSuperchatContactsMap() {
 }
 
 
+
+async function readSuperchatMessageHistory() {
+
+  try {
+    const history =
+      await readJarvisField(
+        "superchat_messages"
+      );
+
+    return Array.isArray(
+      history
+    )
+      ? history
+      : [];
+  } catch (
+    error
+  ) {
+    console.warn(
+      "[SUPERCHAT HISTORY READ WARN]",
+      error
+    );
+
+    return [];
+  }
+}
+
+
+async function writeSuperchatMessageHistory(
+  history
+) {
+
+  const safe =
+    Array.isArray(history)
+      ? history.slice(
+          -120
+        )
+      : [];
+
+  try {
+    await writeJarvisField(
+      "superchat_messages",
+      safe
+    );
+  } catch (
+    error
+  ) {
+    console.warn(
+      "[SUPERCHAT HISTORY WRITE WARN]",
+      error
+    );
+  }
+}
+
+
+function deepFindSuperchatValue(
+  value,
+  keys,
+  depth = 0
+) {
+
+  if (
+    depth > 6 ||
+    value === null ||
+    value === undefined
+  ) {
+    return "";
+  }
+
+  if (
+    Array.isArray(value)
+  ) {
+    for (
+      const item of
+      value
+    ) {
+      const found =
+        deepFindSuperchatValue(
+          item,
+          keys,
+          depth + 1
+        );
+
+      if (
+        found !==
+          "" &&
+        found !==
+          null &&
+        found !==
+          undefined
+      ) {
+        return found;
+      }
+    }
+
+    return "";
+  }
+
+  if (
+    typeof value !==
+      "object"
+  ) {
+    return "";
+  }
+
+  for (
+    const key of
+    keys
+  ) {
+    if (
+      Object.prototype
+        .hasOwnProperty
+        .call(
+          value,
+          key
+        )
+    ) {
+      const candidate =
+        value[key];
+
+      if (
+        typeof candidate ===
+          "string" ||
+        typeof candidate ===
+          "number"
+      ) {
+        const clean =
+          String(
+            candidate
+          ).trim();
+
+        if (
+          clean
+        ) {
+          return clean;
+        }
+      }
+    }
+  }
+
+  for (
+    const child of
+    Object.values(value)
+  ) {
+    const found =
+      deepFindSuperchatValue(
+        child,
+        keys,
+        depth + 1
+      );
+
+    if (
+      found !==
+        "" &&
+      found !==
+        null &&
+      found !==
+        undefined
+    ) {
+      return found;
+    }
+  }
+
+  return "";
+}
+
+
+function extractSuperchatWebhookMessage(
+  payload
+) {
+
+  const conversationId =
+    String(
+      deepFindSuperchatValue(
+        payload,
+        [
+          "conversation_id",
+          "conversationId"
+        ]
+      ) ||
+      payload?.conversation?.id ||
+      payload?.data?.conversation?.id ||
+      ""
+    ).trim();
+
+  const contactId =
+    String(
+      deepFindSuperchatValue(
+        payload,
+        [
+          "contact_id",
+          "contactId"
+        ]
+      ) ||
+      payload?.contact?.id ||
+      payload?.data?.contact?.id ||
+      ""
+    ).trim();
+
+  const channelId =
+    String(
+      deepFindSuperchatValue(
+        payload,
+        [
+          "channel_id",
+          "channelId"
+        ]
+      ) ||
+      payload?.channel?.id ||
+      payload?.data?.channel?.id ||
+      ""
+    ).trim();
+
+  const eventType =
+    String(
+      firstNonEmpty(
+        payload?.event,
+        payload?.type,
+        payload?.name,
+        payload?.event_type,
+        payload?.eventType,
+        ""
+      )
+    ).trim();
+
+  let text =
+    String(
+      firstNonEmpty(
+        payload?.message?.content?.text,
+        payload?.message?.text,
+        payload?.data?.message?.content?.text,
+        payload?.data?.message?.text,
+        payload?.content?.text,
+        payload?.data?.content?.text,
+        ""
+      )
+    ).trim();
+
+  if (
+    !text
+  ) {
+    text =
+      String(
+        deepFindSuperchatValue(
+          payload,
+          [
+            "text"
+          ]
+        ) || ""
+      ).trim();
+  }
+
+  const createdAt =
+    String(
+      firstNonEmpty(
+        payload?.created_at,
+        payload?.createdAt,
+        payload?.message?.created_at,
+        payload?.message?.createdAt,
+        payload?.data?.message?.created_at,
+        payload?.data?.message?.createdAt,
+        new Date()
+          .toISOString()
+      )
+    );
+
+  const directionRaw =
+    String(
+      firstNonEmpty(
+        payload?.direction,
+        payload?.message?.direction,
+        payload?.data?.message?.direction,
+        ""
+      )
+    )
+      .toLowerCase()
+      .trim();
+
+  const eventLower =
+    eventType
+      .toLowerCase();
+
+  const direction =
+    directionRaw ||
+    (
+      eventLower.includes(
+        "inbound"
+      ) ||
+      eventLower.includes(
+        "incoming"
+      )
+        ? "inbound"
+        : eventLower.includes(
+            "outbound"
+          )
+          ? "outbound"
+          : ""
+    );
+
+  if (
+    !conversationId ||
+    !text
+  ) {
+    return null;
+  }
+
+  return {
+    id:
+      String(
+        deepFindSuperchatValue(
+          payload,
+          [
+            "message_id",
+            "messageId"
+          ]
+        ) ||
+        payload?.message?.id ||
+        payload?.data?.message?.id ||
+        `${conversationId}-${Date.now()}`
+      ),
+    conversation_id:
+      conversationId,
+    contact_id:
+      contactId,
+    channel_id:
+      channelId,
+    text,
+    created_at:
+      createdAt,
+    direction,
+    event_type:
+      eventType
+  };
+}
+
+
+async function getSuperchatHistoryForConversation(
+  conversationId
+) {
+
+  const id =
+    String(
+      conversationId || ""
+    ).trim();
+
+  if (
+    !id
+  ) {
+    return [];
+  }
+
+  const history =
+    await readSuperchatMessageHistory();
+
+  return history
+    .filter(
+      item =>
+        String(
+          item?.conversation_id ||
+          ""
+        ) ===
+        id
+    )
+    .sort(
+      (
+        a,
+        b
+      ) =>
+        new Date(
+          a?.created_at ||
+          0
+        ).getTime() -
+        new Date(
+          b?.created_at ||
+          0
+        ).getTime()
+    )
+    .slice(
+      -20
+    );
+}
+
+
 async function getSuperchatConversations(
   limit = 20
 ) {
@@ -3845,23 +4417,13 @@ async function getSuperchatConversations(
 
   const [
     conversationData,
-    contactsMap
+    history
   ] =
     await Promise.all([
       superchatRequest(
         `/conversations?limit=${safeLimit}`
       ),
-      getSuperchatContactsMap()
-        .catch(
-          error => {
-            console.warn(
-              "[SUPERCHAT CONTACTS WARN]",
-              error
-            );
-
-            return new Map();
-          }
-        )
+      readSuperchatMessageHistory()
     ]);
 
   const rawConversations =
@@ -3869,7 +4431,7 @@ async function getSuperchatConversations(
       conversationData
     );
 
-  const all =
+  const normalized =
     rawConversations
       .map(
         normalizeSuperchatConversation
@@ -3877,47 +4439,136 @@ async function getSuperchatConversations(
       .filter(
         item =>
           item.id
-      )
-      .map(
-        item => {
+      );
 
-          const contact =
-            contactsMap.get(
-              String(
-                item.contact_id ||
-                ""
-              )
-            );
+  const enriched =
+    [];
+
+  for (
+    let index = 0;
+    index <
+      normalized.length;
+    index += 1
+  ) {
+
+    const item =
+      normalized[index];
+
+    const raw =
+      rawConversations[index] ||
+      item.raw ||
+      {};
+
+    const contactId =
+      item.contact_id ||
+      extractSuperchatContactId(
+        raw
+      );
+
+    if (
+      contactId
+    ) {
+      item.contact_id =
+        contactId;
+
+      try {
+        const contact =
+          await getSuperchatContactById(
+            contactId
+          );
+
+        const display =
+          superchatContactDisplay(
+            contact
+          );
+
+        if (
+          display.name
+        ) {
+          item.name =
+            display.name;
+        }
+
+        if (
+          display.handle
+        ) {
+          item.handle =
+            display.handle;
 
           if (
-            contact?.name &&
-            contact.name !==
+            !item.name ||
+            item.name ===
               "WhatsApp-Kontakt"
           ) {
             item.name =
-              contact.name;
+              display.handle;
           }
-          else if (
-            contact?.handle
-          ) {
-            item.name =
-              contact.handle;
-          }
-
-          if (
-            !item.handle &&
-            contact?.handle
-          ) {
-            item.handle =
-              contact.handle;
-          }
-
-          return item;
         }
+      } catch (
+        error
+      ) {
+        console.warn(
+          "[SUPERCHAT CONTACT DETAIL WARN]",
+          contactId,
+          error
+        );
+      }
+    }
+
+    const messages =
+      history
+        .filter(
+          message =>
+            String(
+              message?.conversation_id ||
+              ""
+            ) ===
+            String(
+              item.id
+            )
+        )
+        .sort(
+          (
+            a,
+            b
+          ) =>
+            new Date(
+              a?.created_at ||
+              0
+            ).getTime() -
+            new Date(
+              b?.created_at ||
+              0
+            ).getTime()
+        );
+
+    const latest =
+      messages[
+        messages.length - 1
+      ];
+
+    if (
+      latest?.text
+    ) {
+      item.preview =
+        latest.text;
+      item.updated_at =
+        latest.created_at ||
+        item.updated_at;
+    }
+
+    item.messages =
+      messages.slice(
+        -10
       );
 
+    enriched.push(
+      item
+    );
+  }
+
   const clearlyWhatsApp =
-    all.filter(
+    enriched.filter(
       item =>
         JSON.stringify(
           item.raw || {}
@@ -3931,7 +4582,7 @@ async function getSuperchatConversations(
   return (
     clearlyWhatsApp.length
       ? clearlyWhatsApp
-      : all
+      : enriched
   );
 }
 
@@ -3961,11 +4612,99 @@ async function getSuperchatConversation(
     data?.data &&
     !Array.isArray(data.data)
       ? data.data
-      : data;
+      : (
+          data?.result &&
+          typeof data.result ===
+            "object"
+            ? data.result
+            : data
+        );
 
-  return normalizeSuperchatConversation(
-    raw
-  );
+  const conversation =
+    normalizeSuperchatConversation(
+      raw
+    );
+
+  const contactId =
+    conversation.contact_id ||
+    extractSuperchatContactId(
+      raw
+    );
+
+  if (
+    contactId
+  ) {
+    conversation.contact_id =
+      contactId;
+
+    try {
+      const contact =
+        await getSuperchatContactById(
+          contactId
+        );
+
+      const display =
+        superchatContactDisplay(
+          contact
+        );
+
+      if (
+        display.name
+      ) {
+        conversation.name =
+          display.name;
+      }
+
+      if (
+        display.handle
+      ) {
+        conversation.handle =
+          display.handle;
+
+        if (
+          !conversation.name ||
+          conversation.name ===
+            "WhatsApp-Kontakt"
+        ) {
+          conversation.name =
+            display.handle;
+        }
+      }
+    } catch (
+      error
+    ) {
+      console.warn(
+        "[SUPERCHAT CONTACT DETAIL WARN]",
+        contactId,
+        error
+      );
+    }
+  }
+
+  const messages =
+    await getSuperchatHistoryForConversation(
+      id
+    );
+
+  conversation.messages =
+    messages;
+
+  const latest =
+    messages[
+      messages.length - 1
+    ];
+
+  if (
+    latest?.text
+  ) {
+    conversation.preview =
+      latest.text;
+    conversation.updated_at =
+      latest.created_at ||
+      conversation.updated_at;
+  }
+
+  return conversation;
 }
 
 async function createSuperchatReplyDraft(
@@ -4012,7 +4751,7 @@ async function createSuperchatReplyDraft(
             instructions:
               "Formuliere eine kurze, professionelle und natürliche deutsche WhatsApp-Antwort für Druckelite24. Keine erfundenen Preise, Liefertermine oder Zusagen. Antworte ausschließlich als gültiges JSON mit dem Feld text.",
             input:
-              `Kontakt: ${conversation.name}\nLetzte Nachricht: ${conversation.preview}\nAnweisung von Mattl: ${cleanInstruction}`,
+              `Kontakt: ${conversation.name}\nChatverlauf:\n${(conversation.messages || []).slice(-10).map(message => `${message.direction || "message"}: ${message.text}`).join("\n") || conversation.preview}\nAnweisung von Mattl: ${cleanInstruction}`,
             reasoning: {
               effort:
                 "low"
@@ -4208,6 +4947,92 @@ async function sendSuperchatDraft(
 
 
 /* Dashboard: letzte 5 Chats */
+
+
+/* =========================================================
+   SUPERCHAT WEBHOOK · INBOUND MESSAGES
+   Superchat liefert eingehende Nachrichten über Webhooks.
+   ========================================================= */
+
+app.post(
+  "/api/superchat-webhook",
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+
+      const message =
+        extractSuperchatWebhookMessage(
+          req.body
+        );
+
+      if (
+        !message
+      ) {
+        return res.json({
+          ok:
+            true,
+          stored:
+            false
+        });
+      }
+
+      const history =
+        await readSuperchatMessageHistory();
+
+      const exists =
+        history.some(
+          item =>
+            String(
+              item?.id ||
+              ""
+            ) ===
+            String(
+              message.id
+            )
+        );
+
+      if (
+        !exists
+      ) {
+        history.push(
+          message
+        );
+
+        await writeSuperchatMessageHistory(
+          history
+        );
+      }
+
+      return res.json({
+        ok:
+          true,
+        stored:
+          !exists
+      });
+
+    } catch (
+      error
+    ) {
+
+      console.error(
+        "[SUPERCHAT WEBHOOK ERROR]",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          ok:
+            false
+        });
+    }
+  }
+);
+
+
 app.get(
   "/api/superchat-conversations",
   async (
@@ -6755,8 +7580,10 @@ app.post(
                 conversation.name,
               preview:
                 conversation.preview,
+              messages:
+                conversation.messages || [],
               instruction:
-                "Der ausgewählte WhatsApp-Chat ist geladen. Beantworte Mattls Frage anhand dieser Daten und erfinde nichts."
+                "Der ausgewählte WhatsApp-Chat ist geladen. Nutze den über Webhooks gespeicherten Verlauf. Beantworte Mattls Frage anhand dieser Daten und erfinde nichts."
             }
           });
         }
