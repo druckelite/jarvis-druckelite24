@@ -3605,6 +3605,110 @@ async function getSuperchatWhatsAppChannelId() {
   return String(id);
 }
 
+
+async function getSuperchatContactsMap() {
+
+  const data =
+    await superchatRequest(
+      "/contacts?limit=100"
+    );
+
+  const contacts =
+    superchatArray(
+      data
+    );
+
+  const map =
+    new Map();
+
+  for (
+    const contact of
+    contacts
+  ) {
+
+    const id =
+      String(
+        firstNonEmpty(
+          contact?.id,
+          contact?.contact_id,
+          contact?.contactId
+        ) || ""
+      ).trim();
+
+    if (
+      !id
+    ) {
+      continue;
+    }
+
+    const firstName =
+      String(
+        firstNonEmpty(
+          contact?.first_name,
+          contact?.firstName,
+          ""
+        ) || ""
+      ).trim();
+
+    const lastName =
+      String(
+        firstNonEmpty(
+          contact?.last_name,
+          contact?.lastName,
+          ""
+        ) || ""
+      ).trim();
+
+    const fullName =
+      [
+        firstName,
+        lastName
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+
+    const handle =
+      Array.isArray(
+        contact?.handles
+      )
+        ? firstNonEmpty(
+            ...contact.handles.map(
+              item =>
+                item?.value ||
+                item?.identifier ||
+                item?.phone ||
+                item?.email ||
+                ""
+            )
+          )
+        : "";
+
+    map.set(
+      id,
+      {
+        id,
+        name:
+          fullName ||
+          String(
+            firstNonEmpty(
+              contact?.name,
+              contact?.display_name,
+              contact?.displayName,
+              handle,
+              "WhatsApp-Kontakt"
+            )
+          ),
+        raw:
+          contact
+      }
+    );
+  }
+
+  return map;
+}
+
+
 async function getSuperchatConversations(
   limit = 20
 ) {
@@ -3619,29 +3723,65 @@ async function getSuperchatConversations(
       )
     );
 
-  const data =
-    await superchatRequest(
-      `/conversations?limit=${safeLimit}`
+  const [
+    conversationData,
+    contactsMap
+  ] =
+    await Promise.all([
+      superchatRequest(
+        `/conversations?limit=${safeLimit}`
+      ),
+      getSuperchatContactsMap()
+        .catch(
+          error => {
+            console.warn(
+              "[SUPERCHAT CONTACTS WARN]",
+              error
+            );
+
+            return new Map();
+          }
+        )
+    ]);
+
+  const rawConversations =
+    superchatArray(
+      conversationData
     );
 
   const all =
-    superchatArray(
-      data
-    )
+    rawConversations
       .map(
         normalizeSuperchatConversation
       )
       .filter(
         item =>
           item.id
+      )
+      .map(
+        item => {
+
+          const contact =
+            contactsMap.get(
+              String(
+                item.contact_id ||
+                ""
+              )
+            );
+
+          if (
+            contact?.name &&
+            contact.name !==
+              "WhatsApp-Kontakt"
+          ) {
+            item.name =
+              contact.name;
+          }
+
+          return item;
+        }
       );
 
-  /*
-    Wenn die API im Conversation-Objekt den Kanaltyp mitsendet,
-    nur WhatsApp zeigen. Wenn nicht, lassen wir die Conversation
-    stehen, damit die Integration nicht an einer abweichenden
-    Response-Struktur scheitert.
-  */
   const clearlyWhatsApp =
     all.filter(
       item =>
