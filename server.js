@@ -3478,14 +3478,6 @@ function normalizeSuperchatConversation(
           {}
         );
 
-  const lastMessage =
-    conversation?.last_message ||
-    conversation?.lastMessage ||
-    conversation?.latest_message ||
-    conversation?.latestMessage ||
-    conversation?.message ||
-    {};
-
   const directContactName =
     [
       contact?.first_name,
@@ -3495,24 +3487,91 @@ function normalizeSuperchatConversation(
       .join(" ")
       .trim();
 
+  const directHandles =
+    Array.isArray(
+      contact?.handles
+    )
+      ? contact.handles
+      : [];
+
+  const bestDirectHandle =
+    directHandles.find(
+      item =>
+        JSON.stringify(
+          item || {}
+        )
+          .toLowerCase()
+          .includes(
+            "whatsapp"
+          )
+    ) ||
+    directHandles[0] ||
+    null;
+
+  const directHandleValue =
+    String(
+      firstNonEmpty(
+        bestDirectHandle?.value,
+        bestDirectHandle?.identifier,
+        bestDirectHandle?.phone,
+        bestDirectHandle?.number,
+        bestDirectHandle?.email,
+        ""
+      ) || ""
+    ).trim();
+
   const name =
     firstNonEmpty(
       directContactName,
       contact?.display_name,
       contact?.displayName,
       contact?.name,
+      directHandleValue,
       conversation?.contact_name,
       conversation?.title,
       conversation?.name,
       "WhatsApp-Kontakt"
     );
 
+  const candidateMessages = [
+    conversation?.last_message,
+    conversation?.lastMessage,
+    conversation?.latest_message,
+    conversation?.latestMessage,
+    conversation?.message,
+    conversation?.latest_inbound_message,
+    conversation?.latestInboundMessage,
+    conversation?.last_inbound_message,
+    conversation?.lastInboundMessage
+  ]
+    .filter(Boolean);
+
+  let lastMessage =
+    candidateMessages[0] ||
+    {};
+
+  if (
+    !candidateMessages.length &&
+    Array.isArray(
+      conversation?.messages
+    ) &&
+    conversation.messages.length
+  ) {
+    lastMessage =
+      conversation.messages[
+        conversation.messages.length - 1
+      ] || {};
+  }
+
   const text =
     firstNonEmpty(
       lastMessage?.text,
       lastMessage?.content?.text,
+      lastMessage?.content?.body,
       lastMessage?.body,
+      lastMessage?.message,
       conversation?.last_message_text,
+      conversation?.lastMessageText,
       conversation?.preview,
       ""
     );
@@ -3545,6 +3604,7 @@ function normalizeSuperchatConversation(
       conversation?.updatedAt,
       lastMessage?.created_at,
       lastMessage?.createdAt,
+      lastMessage?.timestamp,
       conversation?.created_at,
       conversation?.createdAt,
       ""
@@ -3566,6 +3626,8 @@ function normalizeSuperchatConversation(
         name ||
         "WhatsApp-Kontakt"
       ),
+    handle:
+      directHandleValue,
     preview:
       String(
         text ||
@@ -3700,37 +3762,63 @@ async function getSuperchatContactsMap() {
         .join(" ")
         .trim();
 
-    const handle =
+    const handles =
       Array.isArray(
         contact?.handles
       )
-        ? firstNonEmpty(
-            ...contact.handles.map(
-              item =>
-                item?.value ||
-                item?.identifier ||
-                item?.phone ||
-                item?.email ||
-                ""
+        ? contact.handles
+        : [];
+
+    const bestHandle =
+      handles.find(
+        item => {
+          const haystack =
+            JSON.stringify(
+              item || {}
             )
-          )
-        : "";
+              .toLowerCase();
+
+          return haystack
+            .includes(
+              "whatsapp"
+            );
+        }
+      ) ||
+      handles[0] ||
+      null;
+
+    const handleValue =
+      String(
+        firstNonEmpty(
+          bestHandle?.value,
+          bestHandle?.identifier,
+          bestHandle?.phone,
+          bestHandle?.number,
+          bestHandle?.email,
+          ""
+        ) || ""
+      ).trim();
+
+    const displayName =
+      fullName ||
+      String(
+        firstNonEmpty(
+          contact?.name,
+          contact?.display_name,
+          contact?.displayName,
+          handleValue,
+          "WhatsApp-Kontakt"
+        )
+      );
 
     map.set(
       id,
       {
         id,
         name:
-          fullName ||
-          String(
-            firstNonEmpty(
-              contact?.name,
-              contact?.display_name,
-              contact?.displayName,
-              handle,
-              "WhatsApp-Kontakt"
-            )
-          ),
+          displayName,
+        handle:
+          handleValue,
         raw:
           contact
       }
@@ -3808,6 +3896,20 @@ async function getSuperchatConversations(
           ) {
             item.name =
               contact.name;
+          }
+          else if (
+            contact?.handle
+          ) {
+            item.name =
+              contact.handle;
+          }
+
+          if (
+            !item.handle &&
+            contact?.handle
+          ) {
+            item.handle =
+              contact.handle;
           }
 
           return item;
