@@ -709,6 +709,11 @@ WHATSAPP / SUPERCHAT:
 - Eine neue WhatsApp wird immer zuerst nur als Entwurf erstellt und NICHT gesendet.
 - Nach dem Entwurf fragst du kurz, ob Mattl senden möchte.
 - Erst wenn Mattl ausdrücklich „senden“, „abschicken“ oder „versenden“ sagt → send_new_whatsapp_draft
+- Für „Schick [Kontakt] eine Sprachnachricht …“ oder „Antworte ihm per Sprachnachricht …“ → create_whatsapp_voice_draft.
+- create_whatsapp_voice_draft erstellt erst NUR den gesprochenen Textentwurf. Noch kein Audio und kein Versand.
+- Lies Mattl den geplanten Inhalt kurz vor bzw. nenne den Text und frage nach Bestätigung.
+- Erst nach ausdrücklichem „senden“, „abschicken“ oder „versenden“ → send_whatsapp_voice_draft.
+- Die Sprachnachricht wird dann mit ElevenLabs in JARVIS' hinterlegter Stimme erzeugt, zu Superchat hochgeladen und über WhatsApp gesendet.
 - Wenn ein Chat ausgewählt ist und Mattl fragt „Was will der Kunde?“, „lies den Chat“ oder sinngleich → get_whatsapp_conversation
 - Wenn Mattl auf den ausgewählten WhatsApp-Chat antworten möchte → create_whatsapp_reply_draft
 - create_whatsapp_reply_draft erstellt nur einen Entwurf und sendet NICHT.
@@ -1207,6 +1212,84 @@ const REALTIME_TOOLS = [
         "object",
 
       properties: {},
+
+      additionalProperties:
+        false
+    }
+  },
+
+
+  {
+    type:
+      "function",
+
+    name:
+      "create_whatsapp_voice_draft",
+
+    description:
+      "Erstellt einen WhatsApp-Sprachnachrichten-Entwurf an einen Superchat-Kontakt oder für den aktuell ausgewählten WhatsApp-Chat. Erzeugt und sendet noch kein Audio.",
+
+    parameters: {
+      type:
+        "object",
+
+      properties: {
+        recipient: {
+          type:
+            "string",
+          description:
+            "Name des Kontakts oder Telefonnummer. Kann leer bleiben, wenn im Dashboard bereits ein WhatsApp-Chat ausgewählt ist."
+        },
+
+        conversation_id: {
+          type:
+            "string",
+          description:
+            "ID des ausgewählten WhatsApp-Chats, falls vorhanden."
+        },
+
+        instruction: {
+          type:
+            "string",
+          description:
+            "Was JARVIS in der Sprachnachricht sagen soll."
+        }
+      },
+
+      required: [
+        "instruction"
+      ],
+
+      additionalProperties:
+        false
+    }
+  },
+
+
+  {
+    type:
+      "function",
+
+    name:
+      "send_whatsapp_voice_draft",
+
+    description:
+      "Erzeugt den zuletzt bestätigten WhatsApp-Sprachnachrichten-Entwurf mit ElevenLabs als Audio und sendet ihn über Superchat. Nur nach ausdrücklichem Sende-Befehl verwenden.",
+
+    parameters: {
+      type:
+        "object",
+
+      properties: {
+        confirmation_text: {
+          type:
+            "string"
+        }
+      },
+
+      required: [
+        "confirmation_text"
+      ],
 
       additionalProperties:
         false
@@ -3344,6 +3427,9 @@ let lastSuperchatDraft =
 let lastNewWhatsAppDraft =
   null;
 
+let lastWhatsAppVoiceDraft =
+  null;
+
 function isSuperchatConfigured() {
   return Boolean(
     process.env.SUPERCHAT_API_KEY
@@ -5052,6 +5138,506 @@ async function findSuperchatContact(
     direct_phone:
       false
   };
+}
+
+
+
+async function generateWhatsAppVoiceAudio(
+  text
+) {
+
+  const apiKey =
+    process.env
+      .ELEVENLABS_API_KEY;
+
+  const voiceId =
+    process.env
+      .ELEVENLABS_VOICE_ID ||
+    "Vje4UYe2YPbNqyQwJGra";
+
+  const modelId =
+    process.env
+      .ELEVENLABS_MODEL ||
+    "eleven_flash_v2_5";
+
+  if (
+    !apiKey
+  ) {
+    throw new Error(
+      "ELEVENLABS_API_KEY fehlt."
+    );
+  }
+
+  const cleanText =
+    String(
+      text || ""
+    ).trim();
+
+  if (
+    !cleanText
+  ) {
+    throw new Error(
+      "Text für Sprachnachricht fehlt."
+    );
+  }
+
+  const response =
+    await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`,
+      {
+        method:
+          "POST",
+        headers: {
+          "xi-api-key":
+            apiKey,
+          "Content-Type":
+            "application/json",
+          "Accept":
+            "audio/mpeg"
+        },
+        body:
+          JSON.stringify({
+            text:
+              cleanText,
+            model_id:
+              modelId
+          }),
+        signal:
+          timeoutSignal(
+            30000
+          )
+      }
+    );
+
+  if (
+    !response.ok
+  ) {
+    const raw =
+      await response.text();
+
+    throw new Error(
+      `ElevenLabs TTS fehlgeschlagen (${response.status}): ${raw.slice(0, 300)}`
+    );
+  }
+
+  const arrayBuffer =
+    await response.arrayBuffer();
+
+  return Buffer.from(
+    arrayBuffer
+  );
+}
+
+
+async function uploadSuperchatAudioFile(
+  audioBuffer
+) {
+
+  if (
+    !isSuperchatConfigured()
+  ) {
+    throw new Error(
+      "SUPERCHAT_API_KEY fehlt."
+    );
+  }
+
+  const form =
+    new FormData();
+
+  form.set(
+    "file",
+    new Blob(
+      [
+        audioBuffer
+      ],
+      {
+        type:
+          "audio/mpeg"
+      }
+    ),
+    `jarvis-sprachnachricht-${Date.now()}.mp3`
+  );
+
+  const response =
+    await fetch(
+      `${SUPERCHAT_BASE_URL}/files`,
+      {
+        method:
+          "POST",
+        headers: {
+          "X-API-KEY":
+            process.env
+              .SUPERCHAT_API_KEY,
+          "Accept":
+            "application/json"
+        },
+        body:
+          form,
+        signal:
+          timeoutSignal(
+            30000
+          )
+      }
+    );
+
+  const raw =
+    await response.text();
+
+  let data;
+
+  try {
+    data =
+      raw
+        ? JSON.parse(raw)
+        : {};
+  } catch {
+    data = {
+      raw
+    };
+  }
+
+  if (
+    !response.ok
+  ) {
+    throw new Error(
+      data?.error?.message ||
+      data?.message ||
+      `Superchat Datei-Upload fehlgeschlagen (${response.status}).`
+    );
+  }
+
+  const fileId =
+    String(
+      firstNonEmpty(
+        data?.id,
+        data?.file_id,
+        data?.fileId,
+        data?.data?.id,
+        data?.data?.file_id,
+        data?.data?.fileId,
+        data?.result?.id,
+        data?.result?.file_id,
+        data?.result?.fileId,
+        ""
+      ) || ""
+    ).trim();
+
+  if (
+    !fileId
+  ) {
+    throw new Error(
+      "Superchat hat nach dem Audio-Upload keine file_id zurückgegeben."
+    );
+  }
+
+  return {
+    id:
+      fileId,
+    raw:
+      data
+  };
+}
+
+
+async function createWhatsAppVoiceDraft(
+  recipient,
+  instruction,
+  conversationId
+) {
+
+  const cleanInstruction =
+    String(
+      instruction || ""
+    ).trim();
+
+  if (
+    !cleanInstruction
+  ) {
+    throw new Error(
+      "Inhalt der Sprachnachricht fehlt."
+    );
+  }
+
+  let target;
+  let context =
+    "";
+
+  if (
+    conversationId
+  ) {
+    const conversation =
+      await getSuperchatConversation(
+        conversationId
+      );
+
+    const identifier =
+      String(
+        firstNonEmpty(
+          conversation?.contact_id,
+          conversation?.handle,
+          ""
+        ) || ""
+      ).trim();
+
+    if (
+      !identifier
+    ) {
+      throw new Error(
+        "Der ausgewählte WhatsApp-Chat hat keinen verwendbaren Empfänger."
+      );
+    }
+
+    target = {
+      identifier,
+      contact_id:
+        conversation.contact_id ||
+        "",
+      name:
+        conversation.name ||
+        conversation.handle ||
+        "WhatsApp-Kontakt",
+      handle:
+        conversation.handle ||
+        ""
+    };
+
+    context =
+      (conversation.messages || [])
+        .slice(
+          -10
+        )
+        .map(
+          message =>
+            `${message.direction || "message"}: ${message.text}`
+        )
+        .join(
+          "\n"
+        );
+  } else {
+
+    target =
+      await findSuperchatContact(
+        recipient
+      );
+  }
+
+  const response =
+    await fetch(
+      "https://api.openai.com/v1/responses",
+      {
+        method:
+          "POST",
+        headers: {
+          Authorization:
+            `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type":
+            "application/json"
+        },
+        body:
+          JSON.stringify({
+            model:
+              process.env
+                .OPENAI_TEXT_MODEL ||
+              "gpt-5.6-terra",
+            instructions:
+              "Formuliere eine kurze, natürliche deutsche WhatsApp-Sprachnachricht für Druckelite24. Sie soll gesprochen natürlich klingen, ohne Betreff, ohne Markdown und ohne erfundene Preise, Liefertermine oder Zusagen. Antworte ausschließlich als gültiges JSON mit dem Feld text.",
+            input:
+              `Empfänger: ${target.name}\n${context ? `Letzter Chatverlauf:\n${context}\n` : ""}Anweisung von Mattl: ${cleanInstruction}`,
+            reasoning: {
+              effort:
+                "low"
+            },
+            text: {
+              format: {
+                type:
+                  "json_schema",
+                name:
+                  "whatsapp_voice_draft",
+                strict:
+                  true,
+                schema: {
+                  type:
+                    "object",
+                  properties: {
+                    text: {
+                      type:
+                        "string"
+                    }
+                  },
+                  required: [
+                    "text"
+                  ],
+                  additionalProperties:
+                    false
+                }
+              }
+            },
+            store:
+              false
+          }),
+        signal:
+          timeoutSignal(
+            30000
+          )
+      }
+    );
+
+  const data =
+    await response.json();
+
+  if (
+    !response.ok
+  ) {
+    throw new Error(
+      data?.error?.message ||
+      "Sprachnachrichten-Entwurf konnte nicht erstellt werden."
+    );
+  }
+
+  const parsed =
+    JSON.parse(
+      extractResponseText(
+        data
+      )
+    );
+
+  const text =
+    String(
+      parsed?.text ||
+      ""
+    ).trim();
+
+  if (
+    !text
+  ) {
+    throw new Error(
+      "Sprachnachrichten-Entwurf ist leer."
+    );
+  }
+
+  lastWhatsAppVoiceDraft = {
+    recipient:
+      target.name,
+    identifier:
+      target.identifier,
+    contact_id:
+      target.contact_id ||
+      "",
+    handle:
+      target.handle ||
+      "",
+    conversation_id:
+      conversationId ||
+      "",
+    text,
+    created_at:
+      new Date()
+        .toISOString()
+  };
+
+  return {
+    ...lastWhatsAppVoiceDraft,
+    sent:
+      false,
+    type:
+      "voice"
+  };
+}
+
+
+async function sendWhatsAppVoiceDraft(
+  confirmationText
+) {
+
+  const confirmation =
+    normalize(
+      confirmationText
+    );
+
+  if (
+    !/\b(senden|abschicken|versenden)\b/i.test(
+      confirmation
+    )
+  ) {
+    throw new Error(
+      "Sprachnachricht darf nur nach ausdrücklichem Sende-Befehl gesendet werden."
+    );
+  }
+
+  if (
+    !lastWhatsAppVoiceDraft
+  ) {
+    throw new Error(
+      "Kein WhatsApp-Sprachnachrichten-Entwurf zum Senden vorhanden."
+    );
+  }
+
+  const audioBuffer =
+    await generateWhatsAppVoiceAudio(
+      lastWhatsAppVoiceDraft
+        .text
+    );
+
+  const uploaded =
+    await uploadSuperchatAudioFile(
+      audioBuffer
+    );
+
+  const channelId =
+    await getSuperchatWhatsAppChannelId();
+
+  const data =
+    await superchatRequest(
+      "/messages",
+      {
+        method:
+          "POST",
+        body:
+          JSON.stringify({
+            to: [
+              {
+                identifier:
+                  lastWhatsAppVoiceDraft
+                    .identifier
+              }
+            ],
+            from: {
+              channel_id:
+                channelId
+            },
+            content: {
+              type:
+                "file",
+              file: {
+                id:
+                  uploaded.id
+              }
+            }
+          })
+      }
+    );
+
+  const sent = {
+    sent:
+      true,
+    type:
+      "voice",
+    recipient:
+      lastWhatsAppVoiceDraft
+        .recipient,
+    text:
+      lastWhatsAppVoiceDraft
+        .text,
+    file_id:
+      uploaded.id,
+    superchat_response:
+      data
+  };
+
+  lastWhatsAppVoiceDraft =
+    null;
+
+  return sent;
 }
 
 
@@ -8115,6 +8701,56 @@ app.post(
               instruction:
                 "Gib Mattl jetzt ein ausführliches, gut gegliedertes deutsches Business-Briefing. Beginne direkt mit dem Überblick. Nenne ungelesene Mails, Shopify heute, Shopify gestern/Vortag und Wetter. Offene Bestellungen nicht erwähnen. Formuliere Zahlen natürlich auf Deutsch, z. B. bei 1: 'eine ungelesene Mail' und 'eine Bestellung', niemals 'eins ungelesene Mail'. Hebe wichtige Kunden-/Angebotsmails hervor. Schließe mit 2 bis 4 konkreten Prioritäten für heute."
             }
+          });
+        }
+
+
+        case "create_whatsapp_voice_draft": {
+
+          const draft =
+            await createWhatsAppVoiceDraft(
+              args.recipient,
+              args.instruction,
+              args.conversation_id
+            );
+
+          return res.json({
+            ok:
+              true,
+            whatsapp_voice_draft:
+              draft,
+            result: {
+              created:
+                true,
+              sent:
+                false,
+              type:
+                "voice",
+              recipient:
+                draft.recipient,
+              text:
+                draft.text,
+              instruction:
+                "Sprachnachrichten-Entwurf ist fertig und noch NICHT gesendet. Nenne Mattl den geplanten Text und frage kurz, ob er senden möchte."
+            }
+          });
+        }
+
+
+        case "send_whatsapp_voice_draft": {
+
+          const sent =
+            await sendWhatsAppVoiceDraft(
+              args.confirmation_text
+            );
+
+          return res.json({
+            ok:
+              true,
+            whatsapp_voice_sent:
+              sent,
+            result:
+              sent
           });
         }
 
