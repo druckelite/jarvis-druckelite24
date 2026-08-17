@@ -3526,3 +3526,37 @@ audio { display: none; }
   outline:1px solid rgba(37,211,102,.18);
   background:rgba(37,211,102,.075) !important;
 }
+
+
+/* =========================================================
+   TEMP JARVIS DIAGNOSTIC BOX
+   ========================================================= */
+
+#jarvisDiagBox{
+  position:fixed;
+  right:12px;
+  bottom:56px;
+  z-index:999999;
+  width:min(520px,calc(100vw - 24px));
+  padding:10px 12px;
+  border:1px solid rgba(231,7,121,.55);
+  border-radius:8px;
+  background:rgba(8,9,13,.96);
+  box-shadow:0 0 24px rgba(231,7,121,.18);
+  color:#e7e7ec;
+  font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  pointer-events:none;
+}
+
+#jarvisDiagBox .diag-title{
+  margin-bottom:5px;
+  color:#ff2d9a;
+  font-weight:800;
+  letter-spacing:.12em;
+}
+
+#jarvisDiagBox > div:not(.diag-title){
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+
