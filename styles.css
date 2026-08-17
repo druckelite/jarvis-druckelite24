@@ -3741,3 +3741,61 @@ audio { display: none; }
 .modern-whatsapp .wa-modern-list [data-wa-conversation-id].selected .msg-copy b{
   color:#ecfff3 !important;
 }
+
+
+/* =========================================================
+   GMAIL · JARVIS ANTWORTEN + BESTÄTIGTES SENDEN
+   ========================================================= */
+
+.gmail-mail-actions .gmail-mail-ai-reply{
+  border-color:rgba(231,7,121,.72) !important;
+  background:linear-gradient(180deg,rgba(231,7,121,.16),rgba(231,7,121,.06)) !important;
+  color:#ff5db1 !important;
+  min-width:170px !important;
+}
+
+.gmail-mail-actions .gmail-mail-ai-reply:hover{
+  background:rgba(231,7,121,.22) !important;
+  box-shadow:0 0 18px rgba(231,7,121,.16);
+}
+
+.gmail-mail-actions button:disabled,
+.draft-send-confirm:disabled{
+  opacity:.55;
+  cursor:wait;
+}
+
+.jarvis-draft-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  padding:10px 12px 12px;
+  border-top:1px solid rgba(255,255,255,.08);
+}
+
+.draft-send-confirm{
+  min-width:112px;
+  height:36px;
+  border:1px solid rgba(53,239,121,.58);
+  border-radius:7px;
+  background:rgba(53,239,121,.08);
+  color:#62f69a;
+  font:700 10px var(--font-mono,monospace);
+  letter-spacing:.10em;
+  cursor:pointer;
+}
+
+.draft-send-confirm:hover{
+  background:rgba(53,239,121,.15);
+  box-shadow:0 0 16px rgba(53,239,121,.13);
+}
+
+@media(max-width:680px){
+  .gmail-mail-actions{
+    flex-wrap:wrap;
+  }
+
+  .gmail-mail-actions button{
+    flex:1 1 120px;
+  }
+}
