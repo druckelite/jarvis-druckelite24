@@ -3560,3 +3560,12 @@ audio { display: none; }
   overflow-wrap:anywhere;
 }
 
+
+
+/* Diagnose Runde 2 */
+#jarvisDiagBox{
+  width:min(900px,calc(100vw - 24px)) !important;
+  max-height:240px;
+  overflow:auto;
+  font-size:11px !important;
+}
