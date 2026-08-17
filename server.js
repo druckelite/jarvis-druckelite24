@@ -7590,18 +7590,101 @@ app.get(
             )
         ]);
 
+      const conversationResults =
+        Array.isArray(
+          conversationsRaw?.results
+        )
+          ? conversationsRaw.results
+          : [];
+
+      const contactResults =
+        Array.isArray(
+          contactsRaw?.results
+        )
+          ? contactsRaw.results
+          : [];
+
+      const firstConversation =
+        conversationResults[0] || {};
+
+      const firstContact =
+        contactResults[0] || {};
+
+      const nestedConversationKeys = {};
+
+      for (
+        const key of
+        Object.keys(
+          firstConversation
+        ).slice(
+          0,
+          25
+        )
+      ) {
+        const value =
+          firstConversation[key];
+
+        if (
+          value &&
+          typeof value === "object" &&
+          !Array.isArray(value)
+        ) {
+          nestedConversationKeys[key] =
+            Object.keys(value)
+              .slice(0, 20);
+        }
+      }
+
+      const nestedContactKeys = {};
+
+      for (
+        const key of
+        Object.keys(
+          firstContact
+        ).slice(
+          0,
+          25
+        )
+      ) {
+        const value =
+          firstContact[key];
+
+        if (
+          value &&
+          typeof value === "object" &&
+          !Array.isArray(value)
+        ) {
+          nestedContactKeys[key] =
+            Object.keys(value)
+              .slice(0, 20);
+        }
+      }
+
       return res.json({
-        ok: true,
-        configured:
-          isSuperchatConfigured(),
-        conversations_shape:
-          safeShape(
-            conversationsRaw
+        ok:
+          true,
+        conversation_result_count:
+          conversationResults.length,
+        conversation_keys:
+          Object.keys(
+            firstConversation
+          ).slice(
+            0,
+            30
           ),
-        contacts_shape:
-          safeShape(
-            contactsRaw
-          )
+        conversation_nested_keys:
+          nestedConversationKeys,
+        contact_result_count:
+          contactResults.length,
+        contact_keys:
+          Object.keys(
+            firstContact
+          ).slice(
+            0,
+            30
+          ),
+        contact_nested_keys:
+          nestedContactKeys
       });
 
     } catch (
@@ -7611,7 +7694,8 @@ app.get(
       return res
         .status(500)
         .json({
-          ok: false,
+          ok:
+            false,
           error:
             error.message ||
             "Diagnose fehlgeschlagen."
