@@ -5419,6 +5419,30 @@ function renderInboxEmails(emails) {
 
 
 
+function setWhatsAppStatus(
+  text,
+  state = ""
+) {
+
+  const el =
+    document.querySelector(
+      ".modern-whatsapp .wa-state"
+    );
+
+  if (
+    !el
+  ) {
+    return;
+  }
+
+  el.textContent =
+    text;
+
+  el.dataset.state =
+    state;
+}
+
+
 function getWhatsAppListElement() {
 
   return (
@@ -5657,6 +5681,14 @@ async function loadWhatsAppDashboard() {
       data.conversations
     );
 
+    setWhatsAppStatus(
+      Array.isArray(data.conversations) &&
+      data.conversations.length
+        ? "● LIVE"
+        : "● VERBUNDEN · 0 CHATS",
+      "ok"
+    );
+
   } catch (
     error
   ) {
@@ -5664,6 +5696,28 @@ async function loadWhatsAppDashboard() {
       "Superchat Dashboard Fehler:",
       error
     );
+
+    setWhatsAppStatus(
+      "● FEHLER",
+      "error"
+    );
+
+    const list =
+      getWhatsAppListElement();
+
+    if (
+      list
+    ) {
+      list.innerHTML =
+        `<div class="message-row modern-message-row superchat-error-row">
+          <div class="sender-avatar wa-avatar">!</div>
+          <div class="msg-copy">
+            <b>Superchat nicht geladen</b>
+            <span>${escapeHtml(error?.message || "Unbekannter Fehler")}</span>
+          </div>
+          <time>—</time>
+        </div>`;
+    }
   }
 }
 
@@ -6569,3 +6623,77 @@ setInterval(
   loadWhatsAppDashboard,
   30 * 1000
 );
+
+/* =========================================================
+   GMAIL CLICK SAFETY
+   Delegation hält Mail-Klicks auch nach Live-Refresh stabil.
+   ========================================================= */
+
+document.addEventListener(
+  "click",
+  event => {
+
+    const row =
+      event.target?.closest?.(
+        "#inboxList .email-row[data-mail-id]"
+      );
+
+    if (
+      !row
+    ) {
+      return;
+    }
+
+    const id =
+      row.dataset.mailId;
+
+    if (
+      id
+    ) {
+      openGmailMessage(
+        id
+      );
+    }
+  }
+);
+
+
+document.addEventListener(
+  "keydown",
+  event => {
+
+    if (
+      event.key !==
+        "Enter" &&
+      event.key !==
+        " "
+    ) {
+      return;
+    }
+
+    const row =
+      event.target?.closest?.(
+        "#inboxList .email-row[data-mail-id]"
+      );
+
+    if (
+      !row
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const id =
+      row.dataset.mailId;
+
+    if (
+      id
+    ) {
+      openGmailMessage(
+        id
+      );
+    }
+  }
+);
+
