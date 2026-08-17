@@ -3420,3 +3420,58 @@ audio { display: none; }
     font-size:.64rem !important;
   }
 }
+
+
+/* =========================================================
+   SUPERCHAT + GMAIL INTERACTION SAFETY 2026-08-17
+   ========================================================= */
+
+.modern-mail #inboxList,
+.modern-whatsapp .wa-modern-list{
+  position:relative;
+  z-index:3;
+  pointer-events:auto !important;
+}
+
+.modern-mail .email-row[data-mail-id],
+.modern-whatsapp [data-wa-conversation-id]{
+  position:relative;
+  z-index:4;
+  pointer-events:auto !important;
+  cursor:pointer;
+}
+
+.modern-mail .email-row[data-mail-id] * ,
+.modern-whatsapp [data-wa-conversation-id] *{
+  pointer-events:none;
+}
+
+.modern-mail .email-row[data-mail-id]:hover{
+  background:rgba(231,7,121,.09) !important;
+}
+
+.modern-whatsapp [data-wa-conversation-id]:hover{
+  background:rgba(37,211,102,.075) !important;
+}
+
+.modern-whatsapp .wa-state[data-state="ok"]{
+  color:#31dc77 !important;
+}
+
+.modern-whatsapp .wa-state[data-state="error"]{
+  color:#ff5c74 !important;
+}
+
+.modern-whatsapp .superchat-error-row{
+  min-height:58px !important;
+}
+
+.modern-whatsapp .superchat-error-row .msg-copy b{
+  color:#ff7a8d !important;
+}
+
+.modern-whatsapp .superchat-error-row .msg-copy span{
+  white-space:normal !important;
+  line-height:1.25 !important;
+  color:#b9bbc2 !important;
+}
