@@ -5374,45 +5374,22 @@ function renderInboxEmails(emails) {
       }
     ).join("");
 
-
   list.querySelectorAll(
-    ".email-row[data-mail-id]"
+    "[data-mail-id]"
   ).forEach(
     row => {
       row.setAttribute(
         "role",
         "button"
       );
+
       row.setAttribute(
         "tabindex",
         "0"
       );
+
       row.title =
         "Mail öffnen";
-
-      const open =
-        () =>
-          openGmailMessage(
-            row.dataset.mailId
-          );
-
-      row.addEventListener(
-        "click",
-        open
-      );
-
-      row.addEventListener(
-        "keydown",
-        event => {
-          if (
-            event.key === "Enter" ||
-            event.key === " "
-          ) {
-            event.preventDefault();
-            open();
-          }
-        }
-      );
     }
   );
 }
@@ -6635,7 +6612,7 @@ document.addEventListener(
 
     const row =
       event.target?.closest?.(
-        "#inboxList .email-row[data-mail-id]"
+        "#inboxList [data-mail-id]"
       );
 
     if (
@@ -6673,7 +6650,7 @@ document.addEventListener(
 
     const row =
       event.target?.closest?.(
-        "#inboxList .email-row[data-mail-id]"
+        "#inboxList [data-mail-id]"
       );
 
     if (
@@ -6695,5 +6672,59 @@ document.addEventListener(
       );
     }
   }
+);
+
+
+
+/* =========================================================
+   GMAIL POINTER CAPTURE
+   Fängt Mail-Klicks bereits in der Capture-Phase ab.
+   ========================================================= */
+
+document.addEventListener(
+  "pointerup",
+  event => {
+
+    const target =
+      event.target;
+
+    if (
+      !target ||
+      typeof target.closest !==
+        "function"
+    ) {
+      return;
+    }
+
+    const row =
+      target.closest(
+        "#inboxList [data-mail-id]"
+      );
+
+    if (
+      !row
+    ) {
+      return;
+    }
+
+    const id =
+      row.getAttribute(
+        "data-mail-id"
+      );
+
+    if (
+      !id
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    openGmailMessage(
+      id
+    );
+  },
+  true
 );
 
