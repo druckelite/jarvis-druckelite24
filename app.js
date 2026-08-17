@@ -172,6 +172,9 @@ const ELEVEN_PCM_SAMPLE_RATE =
 let proactiveCheckTimer =
   null;
 
+let proactiveCheckInFlight =
+  false;
+
 let proactiveFirstCheckTimer =
   null;
 
@@ -214,7 +217,7 @@ const PROACTIVE_CHECK_INTERVAL_MS =
   5 * 1000;
 
 const PROACTIVE_FIRST_CHECK_DELAY_MS =
-  5 * 1000;
+  2 * 1000;
 
 const REMINDER_CHECK_INTERVAL_MS =
   60 * 1000;
@@ -5430,6 +5433,7 @@ function startInboxDashboardRefresh() {
 async function runProactiveCheck() {
 
   if (
+    proactiveCheckInFlight ||
     !active ||
     greetingInProgress ||
     assistantSpeaking ||
@@ -5440,6 +5444,10 @@ async function runProactiveCheck() {
 
     return;
   }
+
+
+  proactiveCheckInFlight =
+    true;
 
 
   try {
@@ -5487,6 +5495,11 @@ async function runProactiveCheck() {
       "Proactive Check Fehler:",
       error
     );
+
+  } finally {
+
+    proactiveCheckInFlight =
+      false;
   }
 }
 
