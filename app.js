@@ -210,6 +210,9 @@ let currentSelectedWhatsAppConversation =
 let pendingNewWhatsAppDraft =
   null;
 
+let pendingWhatsAppVoiceDraft =
+  null;
+
 let currentGmailDraftId =
   (() => {
     try {
@@ -552,7 +555,8 @@ function ensureDraftSendButton() {
 
       if (
         !currentGmailDraftId &&
-        !pendingNewWhatsAppDraft
+        !pendingNewWhatsAppDraft &&
+        !pendingWhatsAppVoiceDraft
       ) {
         setLog(
           "Kein Entwurf zum Senden vorhanden."
@@ -562,9 +566,11 @@ function ensureDraftSendButton() {
 
       const confirmed =
         window.confirm(
-          pendingNewWhatsAppDraft
-            ? "Diese WhatsApp jetzt wirklich senden?"
-            : "Diesen E-Mail-Entwurf jetzt wirklich senden?"
+          pendingWhatsAppVoiceDraft
+            ? "Diese WhatsApp-Sprachnachricht jetzt wirklich erzeugen und senden?"
+            : pendingNewWhatsAppDraft
+              ? "Diese WhatsApp jetzt wirklich senden?"
+              : "Diesen E-Mail-Entwurf jetzt wirklich senden?"
         );
 
       if (
@@ -592,25 +598,34 @@ function ensureDraftSendButton() {
               },
               body:
                 JSON.stringify(
-                  pendingNewWhatsAppDraft
+                  pendingWhatsAppVoiceDraft
                     ? {
                         name:
-                          "send_new_whatsapp_draft",
+                          "send_whatsapp_voice_draft",
                         arguments: {
                           confirmation_text:
                             "senden"
                         }
                       }
-                    : {
-                        name:
-                          "send_email_draft",
-                        arguments: {
-                          draft_id:
-                            currentGmailDraftId,
-                          confirmation_text:
-                            "senden"
+                    : pendingNewWhatsAppDraft
+                      ? {
+                          name:
+                            "send_new_whatsapp_draft",
+                          arguments: {
+                            confirmation_text:
+                              "senden"
+                          }
                         }
-                      }
+                      : {
+                          name:
+                            "send_email_draft",
+                          arguments: {
+                            draft_id:
+                              currentGmailDraftId,
+                            confirmation_text:
+                              "senden"
+                          }
+                        }
                 )
             }
           );
@@ -619,13 +634,18 @@ function ensureDraftSendButton() {
           await response.json();
 
         const sentOk =
-          pendingNewWhatsAppDraft
-            ? data?.whatsapp_sent?.sent ===
+          pendingWhatsAppVoiceDraft
+            ? data?.whatsapp_voice_sent?.sent ===
                 true ||
               data?.result?.sent ===
                 true
-            : data?.sent?.sent ===
-                true;
+            : pendingNewWhatsAppDraft
+              ? data?.whatsapp_sent?.sent ===
+                  true ||
+                data?.result?.sent ===
+                  true
+              : data?.sent?.sent ===
+                  true;
 
         if (
           !response.ok ||
@@ -635,14 +655,32 @@ function ensureDraftSendButton() {
           throw new Error(
             data?.error ||
             (
-              pendingNewWhatsAppDraft
-                ? "WhatsApp konnte nicht gesendet werden."
-                : "E-Mail konnte nicht gesendet werden."
+              pendingWhatsAppVoiceDraft
+                ? "WhatsApp-Sprachnachricht konnte nicht gesendet werden."
+                : pendingNewWhatsAppDraft
+                  ? "WhatsApp konnte nicht gesendet werden."
+                  : "E-Mail konnte nicht gesendet werden."
             )
           );
         }
 
         if (
+          pendingWhatsAppVoiceDraft
+        ) {
+
+          pendingWhatsAppVoiceDraft =
+            null;
+
+          panel.style.display =
+            "none";
+
+          setLog(
+            "WhatsApp-Sprachnachricht wurde gesendet."
+          );
+
+          loadWhatsAppDashboard();
+
+        } else         if (
           pendingNewWhatsAppDraft
         ) {
           pendingNewWhatsAppDraft =
@@ -3783,7 +3821,9 @@ async function executeRealtimeTool(
       toolName ===
         "get_whatsapp_conversation" ||
       toolName ===
-        "create_whatsapp_reply_draft"
+        "create_whatsapp_reply_draft" ||
+      toolName ===
+        "create_whatsapp_voice_draft"
     ) &&
     !args.conversation_id &&
     currentSelectedWhatsAppConversationId
@@ -3915,6 +3955,40 @@ async function executeRealtimeTool(
 
       currentSelectedWhatsAppConversation =
         toolResult.conversation;
+    }
+
+
+    if (
+      toolResult?.whatsapp_voice_draft?.text
+    ) {
+
+      pendingWhatsAppVoiceDraft =
+        toolResult.whatsapp_voice_draft;
+
+      pendingNewWhatsAppDraft =
+        null;
+
+      showDraft({
+        subject:
+          `Sprachnachricht · ${
+            toolResult.whatsapp_voice_draft.recipient ||
+            "Kunde"
+          }`,
+        body:
+          toolResult.whatsapp_voice_draft.text
+      });
+    }
+
+
+    if (
+      toolResult?.whatsapp_voice_sent?.sent ===
+        true
+    ) {
+
+      pendingWhatsAppVoiceDraft =
+        null;
+
+      loadWhatsAppDashboard();
     }
 
 
