@@ -6728,3 +6728,199 @@ document.addEventListener(
   true
 );
 
+
+
+/* =========================================================
+   TEMP DIAGNOSTIC OVERLAY
+   ========================================================= */
+
+function ensureJarvisDiagBox() {
+
+  let box =
+    document.getElementById(
+      "jarvisDiagBox"
+    );
+
+  if (
+    box
+  ) {
+    return box;
+  }
+
+  box =
+    document.createElement(
+      "div"
+    );
+
+  box.id =
+    "jarvisDiagBox";
+
+  box.innerHTML =
+    `<div class="diag-title">JARVIS DIAG</div>
+     <div id="diagSuperchat">Superchat: wartet …</div>
+     <div id="diagGmail">Gmail Klick: wartet …</div>`;
+
+  document.body.appendChild(
+    box
+  );
+
+  return box;
+}
+
+
+function setDiagLine(
+  id,
+  text
+) {
+
+  ensureJarvisDiagBox();
+
+  const el =
+    document.getElementById(
+      id
+    );
+
+  if (
+    el
+  ) {
+    el.textContent =
+      text;
+  }
+}
+
+
+async function runSuperchatDiagnostic() {
+
+  try {
+
+    const response =
+      await fetch(
+        "/api/superchat-diagnostic",
+        {
+          cache:
+            "no-store"
+        }
+      );
+
+    const data =
+      await response.json();
+
+    if (
+      !response.ok ||
+      !data?.ok
+    ) {
+      throw new Error(
+        data?.error ||
+        "Diagnose fehlgeschlagen"
+      );
+    }
+
+    const conv =
+      data.conversations_shape || {};
+
+    const contacts =
+      data.contacts_shape || {};
+
+    const convKeys =
+      conv?.first &&
+      typeof conv.first === "object"
+        ? Object.keys(
+            conv.first
+          ).slice(0, 8)
+        : Object.keys(
+            conv
+          ).slice(0, 8);
+
+    const contactKeys =
+      contacts?.first &&
+      typeof contacts.first === "object"
+        ? Object.keys(
+            contacts.first
+          ).slice(0, 8)
+        : Object.keys(
+            contacts
+          ).slice(0, 8);
+
+    setDiagLine(
+      "diagSuperchat",
+      `Superchat: Conv[${convKeys.join(", ")}] · Contact[${contactKeys.join(", ")}]`
+    );
+
+    console.log(
+      "[JARVIS DIAG SUPERCHAT]",
+      data
+    );
+
+  } catch (
+    error
+  ) {
+
+    setDiagLine(
+      "diagSuperchat",
+      `Superchat: FEHLER · ${error.message}`
+    );
+  }
+}
+
+
+document.addEventListener(
+  "pointerdown",
+  event => {
+
+    const target =
+      event.target;
+
+    if (
+      !target ||
+      typeof target.closest !==
+        "function"
+    ) {
+      return;
+    }
+
+    const inbox =
+      target.closest(
+        "#inboxList"
+      );
+
+    if (
+      !inbox
+    ) {
+      return;
+    }
+
+    const row =
+      target.closest(
+        "[data-mail-id]"
+      );
+
+    const id =
+      row?.getAttribute(
+        "data-mail-id"
+      ) || "KEINE-ID";
+
+    setDiagLine(
+      "diagGmail",
+      `Gmail Klick: erkannt · ${id}`
+    );
+
+    console.log(
+      "[JARVIS DIAG GMAIL CLICK]",
+      {
+        target:
+          target.tagName,
+        rowFound:
+          Boolean(row),
+        id
+      }
+    );
+  },
+  true
+);
+
+
+setTimeout(
+  runSuperchatDiagnostic,
+  1200
+);
+
