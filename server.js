@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V10.1-SHOPIFY-BERLIN-DAY-FIX";
+  "V10.1-BRIEFING-START-SILENT";
 
 
 /* =========================================================
@@ -380,6 +380,90 @@ function getPeriodDates(
 
 
 
+async function getJarvisDailyBriefing() {
+
+  const result = {
+    generated_at:
+      new Date().toISOString(),
+    unread_emails: [],
+    shopify: {
+      today:
+        null,
+      yesterday:
+        null,
+      open_orders:
+        null
+    },
+    weather:
+      null
+  };
+
+
+  try {
+
+    if (
+      isGmailConfigured()
+    ) {
+      result.unread_emails =
+        await getUnreadEmails();
+    }
+
+  } catch (error) {
+
+    result.gmail_error =
+      error.message ||
+      "Gmail konnte nicht gelesen werden.";
+  }
+
+
+  try {
+    result.shopify.today =
+      await getShopifySummary(
+        "today"
+      );
+  } catch (error) {
+    result.shopify_today_error =
+      error.message ||
+      "Shopify heute konnte nicht gelesen werden.";
+  }
+
+
+  try {
+    result.shopify.yesterday =
+      await getShopifySummary(
+        "yesterday"
+      );
+  } catch (error) {
+    result.shopify_yesterday_error =
+      error.message ||
+      "Shopify gestern konnte nicht gelesen werden.";
+  }
+
+
+  try {
+    result.shopify.open_orders =
+      await getShopifyOpenOrders();
+  } catch (error) {
+    result.shopify_open_error =
+      error.message ||
+      "Offene Bestellungen konnten nicht gelesen werden.";
+  }
+
+
+  try {
+    result.weather =
+      await getWeather();
+  } catch (error) {
+    result.weather_error =
+      error.message ||
+      "Wetter konnte nicht gelesen werden.";
+  }
+
+
+  return result;
+}
+
+
 /* =========================================================
    JARVIS PERSONALITY
    ========================================================= */
@@ -541,6 +625,19 @@ Wenn Mattl nach:
 - Erinnerungen
 - aktuellen Informationen
 fragt, verwende die verfügbaren Tools.
+
+BRIEFING:
+Wenn Mattl „Briefing“, „Morning Briefing“, „Tagesbriefing“ oder sinngleich sagt:
+→ get_daily_briefing
+Das Briefing ist AUSFÜHRLICH und strukturiert. Nenne mindestens:
+- ungelesene E-Mails: Anzahl, wichtigste Absender/Betreffe und kurz, was Aufmerksamkeit braucht
+- Shopify HEUTE: Umsatz, Bestellungen und Durchschnittsbestellwert
+- Shopify GESTERN/VORTAG: Umsatz, Bestellungen und Durchschnittsbestellwert
+- aktuell offene/unbearbeitete Shopify-Bestellungen
+- aktuelles Wetter
+- zum Schluss eine kurze Prioritäten-Einschätzung für Mattl
+Wenn einzelne Daten fehlen, sage das knapp. Erfinde nichts.
+WICHTIG: Diese ausführliche Zusammenfassung nur auf ausdrücklichen Briefing-Befehl geben. Beim normalen Start KEIN automatisches Mail-/Bestell-Briefing vorlesen.
 
 WICHTIG:
 Erfinde niemals Live-Daten.
@@ -923,6 +1020,26 @@ const REALTIME_TOOLS = [
         }
       },
 
+      additionalProperties:
+        false
+    }
+  },
+
+
+  {
+    type:
+      "function",
+
+    name:
+      "get_daily_briefing",
+
+    description:
+      "Erstellt Mattls ausführliches Business-Briefing aus Gmail, Shopify heute, Shopify gestern, offenen Bestellungen und Wetter. Nur auf ausdrücklichen Briefing-Befehl verwenden.",
+
+    parameters: {
+      type:
+        "object",
+      properties: {},
       additionalProperties:
         false
     }
@@ -5428,6 +5545,25 @@ app.post(
         }
 
 
+        case "get_daily_briefing": {
+
+          const briefing =
+            await getJarvisDailyBriefing();
+
+
+          return res.json({
+            ok:
+              true,
+            briefing,
+            result: {
+              ...briefing,
+              instruction:
+                "Gib Mattl jetzt ein ausführliches, gut gegliedertes deutsches Business-Briefing. Beginne direkt mit dem Überblick. Nenne ungelesene Mails, Shopify heute, Shopify gestern/Vortag, offene Bestellungen und Wetter. Hebe wichtige Kunden-/Angebotsmails hervor. Schließe mit 2 bis 4 konkreten Prioritäten für heute."
+            }
+          });
+        }
+
+
         case "get_weather":
 
           data =
@@ -5672,6 +5808,9 @@ let lastOpenOrdersNotice = {
 const notifiedEmailIds =
   new Set();
 
+let proactiveBaselineInitialized =
+  false;
+
 
 app.get(
   "/api/gmail-message/:id",
@@ -5772,6 +5911,66 @@ app.post(
   ) => {
 
     try {
+
+
+      /* Beim ersten Hintergrund-Check nur aktuellen Stand merken.
+         Keine bestehenden Mails/Bestellungen beim Start vorlesen. */
+      if (
+        !proactiveBaselineInitialized
+      ) {
+
+        try {
+
+          if (
+            isGmailConfigured()
+          ) {
+
+            const baselineEmails =
+              await getUnreadEmails();
+
+
+            for (
+              const email of
+              baselineEmails
+            ) {
+              notifiedEmailIds.add(
+                email.id
+              );
+            }
+          }
+
+
+          const baselineOpenOrders =
+            await getShopifyOpenOrders();
+
+
+          lastOpenOrdersNotice = {
+            count:
+              baselineOpenOrders.count || 0,
+            at:
+              Date.now()
+          };
+
+        } catch (error) {
+
+          console.warn(
+            "[PROACTIVE BASELINE ERROR]",
+            error
+          );
+        }
+
+
+        proactiveBaselineInitialized =
+          true;
+
+
+        return res.json({
+          ok:
+            true,
+          hasNotice:
+            false
+        });
+      }
 
 
       /* Gmail */
