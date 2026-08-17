@@ -3203,3 +3203,220 @@ audio { display: none; }
     display:none;
   }
 }
+
+
+/* =========================================================
+   READABILITY TUNE 2026-08-17
+   Ziel:
+   - Texte deutlich besser lesbar
+   - Shopify etwas kompakter
+   - Gmail bekommt mehr Höhe
+   - JARVIS-Core in der Mitte größer
+   - Keine Funktions-/JS-Änderung
+   ========================================================= */
+
+@media (min-width:1181px){
+
+  /* Mitte etwas stärker gewichten */
+  .cockpit.cockpit-clean{
+    grid-template-columns:minmax(315px,.94fr) minmax(390px,1.08fr) minmax(315px,.94fr) !important;
+    gap:8px !important;
+  }
+
+  /* Links: Shopify kleiner, Gmail größer */
+  .zone-left{
+    grid-template-rows:minmax(0,.92fr) minmax(0,1.08fr) !important;
+  }
+
+  /* Grundtypografie größer */
+  .panel-head{
+    font-size:.66rem !important;
+    letter-spacing:.13em !important;
+  }
+
+  .head-brand small{
+    font-size:.49rem !important;
+  }
+
+  .brand-icon{
+    width:27px !important;
+    height:27px !important;
+  }
+
+  /* SHOPIFY kompakter, aber lesbarer */
+  .modern-shopify{
+    padding:8px 9px 6px !important;
+  }
+
+  .modern-shop-grid{
+    height:calc(100% - 52px) !important;
+    grid-template-columns:minmax(0,1.48fr) minmax(138px,.68fr) !important;
+  }
+
+  .shop-main-copy span{
+    font-size:.55rem !important;
+  }
+
+  .shop-main-copy b{
+    font-size:2.05rem !important;
+  }
+
+  .shop-main-copy em{
+    font-size:.50rem !important;
+  }
+
+  .kpi-copy span{
+    font-size:.50rem !important;
+  }
+
+  .kpi-copy b{
+    font-size:1.30rem !important;
+  }
+
+  .kpi-copy em{
+    font-size:.47rem !important;
+  }
+
+  .modern-shop-footer{
+    font-size:.48rem !important;
+  }
+
+  /* GMAIL: deutlich größere echte Mailtexte */
+  .modern-mail #inboxList{
+    height:calc(100% - 34px) !important;
+  }
+
+  .modern-mail .email-row{
+    grid-template-columns:30px minmax(82px,108px) minmax(0,1fr) 42px !important;
+    gap:8px !important;
+    padding:1px 2px !important;
+  }
+
+  .modern-mail .avatar{
+    width:26px !important;
+    height:26px !important;
+    font-size:8.5px !important;
+  }
+
+  .modern-mail .email-sender{
+    font-size:9.5px !important;
+  }
+
+  .modern-mail .email-subject{
+    font-size:10px !important;
+  }
+
+  .modern-mail .email-snippet{
+    margin-top:2px !important;
+    font-size:8px !important;
+    line-height:1.25 !important;
+  }
+
+  .modern-mail .email-time{
+    font-size:7.5px !important;
+  }
+
+  /* WhatsApp besser lesbar */
+  .modern-whatsapp .msg-copy b,
+  .modern-whatsapp .modern-message-row .msg-copy b{
+    font-size:.72rem !important;
+  }
+
+  .modern-whatsapp .msg-copy span,
+  .modern-whatsapp .modern-message-row .msg-copy span{
+    font-size:.60rem !important;
+  }
+
+  .modern-whatsapp .message-row time,
+  .modern-whatsapp .modern-message-row time{
+    font-size:.53rem !important;
+  }
+
+  .sender-avatar,
+  .msg-avatar{
+    width:26px !important;
+    height:26px !important;
+    font-size:.58rem !important;
+  }
+
+  /* JARVIS in der Mitte deutlich größer */
+  .stage{
+    gap:8px !important;
+  }
+
+  .stage-title .eyebrow{
+    font-size:.57rem !important;
+    letter-spacing:.28em !important;
+  }
+
+  .stage-title h1{
+    font-size:clamp(2.35rem,3.4vw,3.55rem) !important;
+  }
+
+  .voice-button{
+    width:min(285px,20vw) !important;
+  }
+
+  .voice-log{
+    font-size:.78rem !important;
+  }
+
+  .core-state{
+    font-size:.64rem !important;
+  }
+
+  .core-loc{
+    font-size:.53rem !important;
+  }
+
+  /* Wetter / News lesbarer */
+  .weather-emoji{
+    font-size:1.65rem !important;
+  }
+
+  .wx-temp{
+    font-size:2rem !important;
+  }
+
+  .wx-desc{
+    font-size:.63rem !important;
+  }
+
+  .wx-cell span{
+    font-size:.90rem !important;
+  }
+
+  .wx-cell label{
+    font-size:.45rem !important;
+  }
+
+  .news-modern-item{
+    grid-template-columns:52px minmax(0,1fr) !important;
+  }
+
+  .news-modern-item b{
+    font-size:.68rem !important;
+  }
+
+  .news-modern-item span{
+    font-size:.56rem !important;
+    line-height:1.25 !important;
+  }
+
+  .news-modern-item small{
+    font-size:.44rem !important;
+  }
+
+  /* Untere Statusleiste + Befehle */
+  .compact-sys .sys-line span{
+    font-size:.45rem !important;
+  }
+
+  .compact-sys .sys-line b{
+    font-size:.61rem !important;
+  }
+
+  .command-chip{
+    font-size:.64rem !important;
+  }
+}
