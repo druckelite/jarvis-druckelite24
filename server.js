@@ -701,6 +701,15 @@ Eindeutige Werbe-/Newsletter-Mails werden im Hintergrund nur bei sehr hoher Sich
 
 Der E-Mail-Entwurf wird im HUD angezeigt.
 
+WHATSAPP / SUPERCHAT:
+- Für die letzten WhatsApp-Chats → get_whatsapp_conversations
+- Wenn ein Chat ausgewählt ist und Mattl fragt „Was will der Kunde?“, „lies den Chat“ oder sinngleich → get_whatsapp_conversation
+- Wenn Mattl auf den ausgewählten WhatsApp-Chat antworten möchte → create_whatsapp_reply_draft
+- create_whatsapp_reply_draft erstellt nur einen Entwurf und sendet NICHT.
+- WhatsApp darf ausschließlich nach dem unmittelbaren ausdrücklichen Befehl „senden“, „abschicken“ oder „versenden“ gesendet werden.
+- Dann → send_whatsapp_draft
+- Ohne ausdrücklichen Sende-Befehl darf send_whatsapp_draft NIEMALS verwendet werden.
+
 NOTIZEN:
 Wenn Mattl sagt:
 "Merke dir..."
@@ -1192,6 +1201,125 @@ const REALTIME_TOOLS = [
         "object",
 
       properties: {},
+
+      additionalProperties:
+        false
+    }
+  },
+
+
+  {
+    type:
+      "function",
+
+    name:
+      "get_whatsapp_conversations",
+
+    description:
+      "Liest die letzten WhatsApp-Konversationen aus Superchat.",
+
+    parameters: {
+      type:
+        "object",
+      properties: {},
+      additionalProperties:
+        false
+    }
+  },
+
+
+  {
+    type:
+      "function",
+
+    name:
+      "get_whatsapp_conversation",
+
+    description:
+      "Liest den aktuell ausgewählten Superchat-WhatsApp-Chat.",
+
+    parameters: {
+      type:
+        "object",
+
+      properties: {
+        conversation_id: {
+          type:
+            "string"
+        }
+      },
+
+      required: [
+        "conversation_id"
+      ],
+
+      additionalProperties:
+        false
+    }
+  },
+
+
+  {
+    type:
+      "function",
+
+    name:
+      "create_whatsapp_reply_draft",
+
+    description:
+      "Erstellt einen WhatsApp-Antwortentwurf für den ausgewählten Superchat-Chat. Sendet nichts.",
+
+    parameters: {
+      type:
+        "object",
+
+      properties: {
+        conversation_id: {
+          type:
+            "string"
+        },
+
+        instruction: {
+          type:
+            "string"
+        }
+      },
+
+      required: [
+        "conversation_id",
+        "instruction"
+      ],
+
+      additionalProperties:
+        false
+    }
+  },
+
+
+  {
+    type:
+      "function",
+
+    name:
+      "send_whatsapp_draft",
+
+    description:
+      "Sendet den letzten WhatsApp-Entwurf. DARF NUR nach einem unmittelbaren ausdrücklichen Befehl wie senden, abschicken oder versenden benutzt werden.",
+
+    parameters: {
+      type:
+        "object",
+
+      properties: {
+        confirmation_text: {
+          type:
+            "string"
+        }
+      },
+
+      required: [
+        "confirmation_text"
+      ],
 
       additionalProperties:
         false
@@ -3124,7 +3252,711 @@ async function checkAndFireDueReminders() {
 
 
   return due;
-}/* =========================================================
+}
+/* =========================================================
+   SUPERCHAT · WHATSAPP
+   ========================================================= */
+
+const SUPERCHAT_BASE_URL =
+  "https://api.superchat.com/v1.0";
+
+let lastSuperchatDraft =
+  null;
+
+function isSuperchatConfigured() {
+  return Boolean(
+    process.env.SUPERCHAT_API_KEY
+  );
+}
+
+async function superchatRequest(
+  path,
+  options = {}
+) {
+
+  if (
+    !isSuperchatConfigured()
+  ) {
+    throw new Error(
+      "SUPERCHAT_API_KEY fehlt."
+    );
+  }
+
+  const response =
+    await fetch(
+      `${SUPERCHAT_BASE_URL}${path}`,
+      {
+        ...options,
+        headers: {
+          "X-API-KEY":
+            process.env.SUPERCHAT_API_KEY,
+          "Accept":
+            "application/json",
+          ...(options.body
+            ? {
+                "Content-Type":
+                  "application/json"
+              }
+            : {}),
+          ...(options.headers || {})
+        },
+        signal:
+          timeoutSignal(
+            15000
+          )
+      }
+    );
+
+  const raw =
+    await response.text();
+
+  let data;
+
+  try {
+    data =
+      raw
+        ? JSON.parse(raw)
+        : {};
+  } catch {
+    data = {
+      raw
+    };
+  }
+
+  if (
+    !response.ok
+  ) {
+    throw new Error(
+      data?.message ||
+      data?.error?.message ||
+      data?.error ||
+      `Superchat Fehler ${response.status}.`
+    );
+  }
+
+  return data;
+}
+
+function superchatArray(
+  data
+) {
+
+  if (
+    Array.isArray(data)
+  ) {
+    return data;
+  }
+
+  for (
+    const key of [
+      "data",
+      "items",
+      "conversations",
+      "channels",
+      "contacts",
+      "results"
+    ]
+  ) {
+    if (
+      Array.isArray(
+        data?.[key]
+      )
+    ) {
+      return data[key];
+    }
+  }
+
+  return [];
+}
+
+function firstNonEmpty(
+  ...values
+) {
+
+  for (
+    const value of
+    values
+  ) {
+    if (
+      value !==
+        undefined &&
+      value !==
+        null &&
+      String(value)
+        .trim()
+    ) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function normalizeSuperchatConversation(
+  conversation
+) {
+
+  const contact =
+    conversation?.contact ||
+    conversation?.customer ||
+    conversation?.participant ||
+    {};
+
+  const lastMessage =
+    conversation?.last_message ||
+    conversation?.lastMessage ||
+    conversation?.latest_message ||
+    conversation?.latestMessage ||
+    conversation?.message ||
+    {};
+
+  const name =
+    firstNonEmpty(
+      contact?.display_name,
+      contact?.displayName,
+      contact?.name,
+      [
+        contact?.first_name,
+        contact?.last_name
+      ]
+        .filter(Boolean)
+        .join(" "),
+      conversation?.contact_name,
+      conversation?.title,
+      conversation?.name,
+      "WhatsApp-Kontakt"
+    );
+
+  const text =
+    firstNonEmpty(
+      lastMessage?.text,
+      lastMessage?.content?.text,
+      lastMessage?.body,
+      conversation?.last_message_text,
+      conversation?.preview,
+      ""
+    );
+
+  const contactId =
+    firstNonEmpty(
+      contact?.id,
+      conversation?.contact_id,
+      conversation?.contactId,
+      ""
+    );
+
+  const channelId =
+    firstNonEmpty(
+      conversation?.channel_id,
+      conversation?.channelId,
+      conversation?.channel?.id,
+      lastMessage?.channel_id,
+      lastMessage?.channel?.id,
+      ""
+    );
+
+  const updatedAt =
+    firstNonEmpty(
+      conversation?.updated_at,
+      conversation?.updatedAt,
+      lastMessage?.created_at,
+      lastMessage?.createdAt,
+      conversation?.created_at,
+      conversation?.createdAt,
+      ""
+    );
+
+  return {
+    id:
+      firstNonEmpty(
+        conversation?.id,
+        conversation?.conversation_id,
+        conversation?.conversationId
+      ),
+    contact_id:
+      contactId,
+    channel_id:
+      channelId,
+    name:
+      String(name || "WhatsApp-Kontakt"),
+    preview:
+      String(text || ""),
+    updated_at:
+      updatedAt,
+    raw:
+      conversation
+  };
+}
+
+async function getSuperchatWhatsAppChannelId() {
+
+  const configured =
+    String(
+      process.env
+        .SUPERCHAT_CHANNEL_ID ||
+      ""
+    ).trim();
+
+  if (
+    configured
+  ) {
+    return configured;
+  }
+
+  const data =
+    await superchatRequest(
+      "/channels?limit=100"
+    );
+
+  const channels =
+    superchatArray(
+      data
+    );
+
+  const whatsapp =
+    channels.find(
+      channel => {
+        const haystack =
+          JSON.stringify(
+            channel || {}
+          )
+            .toLowerCase();
+
+        return haystack
+          .includes(
+            "whatsapp"
+          );
+      }
+    );
+
+  const id =
+    firstNonEmpty(
+      whatsapp?.id,
+      whatsapp?.channel_id,
+      whatsapp?.channelId
+    );
+
+  if (
+    !id
+  ) {
+    throw new Error(
+      "Kein WhatsApp-Kanal in Superchat gefunden."
+    );
+  }
+
+  return String(id);
+}
+
+async function getSuperchatConversations(
+  limit = 20
+) {
+
+  const safeLimit =
+    Math.max(
+      1,
+      Math.min(
+        100,
+        Number(limit) ||
+        20
+      )
+    );
+
+  const data =
+    await superchatRequest(
+      `/conversations?limit=${safeLimit}`
+    );
+
+  const all =
+    superchatArray(
+      data
+    )
+      .map(
+        normalizeSuperchatConversation
+      )
+      .filter(
+        item =>
+          item.id
+      );
+
+  /*
+    Wenn die API im Conversation-Objekt den Kanaltyp mitsendet,
+    nur WhatsApp zeigen. Wenn nicht, lassen wir die Conversation
+    stehen, damit die Integration nicht an einer abweichenden
+    Response-Struktur scheitert.
+  */
+  const clearlyWhatsApp =
+    all.filter(
+      item =>
+        JSON.stringify(
+          item.raw || {}
+        )
+          .toLowerCase()
+          .includes(
+            "whatsapp"
+          )
+    );
+
+  return (
+    clearlyWhatsApp.length
+      ? clearlyWhatsApp
+      : all
+  );
+}
+
+async function getSuperchatConversation(
+  conversationId
+) {
+
+  const id =
+    String(
+      conversationId || ""
+    ).trim();
+
+  if (
+    !id
+  ) {
+    throw new Error(
+      "Keine Superchat Conversation ausgewählt."
+    );
+  }
+
+  const data =
+    await superchatRequest(
+      `/conversations/${encodeURIComponent(id)}`
+    );
+
+  const raw =
+    data?.data &&
+    !Array.isArray(data.data)
+      ? data.data
+      : data;
+
+  return normalizeSuperchatConversation(
+    raw
+  );
+}
+
+async function createSuperchatReplyDraft(
+  conversationId,
+  instruction
+) {
+
+  const conversation =
+    await getSuperchatConversation(
+      conversationId
+    );
+
+  const cleanInstruction =
+    String(
+      instruction || ""
+    ).trim();
+
+  if (
+    !cleanInstruction
+  ) {
+    throw new Error(
+      "Anweisung für die WhatsApp-Antwort fehlt."
+    );
+  }
+
+  const response =
+    await fetch(
+      "https://api.openai.com/v1/responses",
+      {
+        method:
+          "POST",
+        headers: {
+          Authorization:
+            `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type":
+            "application/json"
+        },
+        body:
+          JSON.stringify({
+            model:
+              process.env
+                .OPENAI_TEXT_MODEL ||
+              "gpt-5.6-terra",
+            instructions:
+              "Formuliere eine kurze, professionelle und natürliche deutsche WhatsApp-Antwort für Druckelite24. Keine erfundenen Preise, Liefertermine oder Zusagen. Antworte ausschließlich als gültiges JSON mit dem Feld text.",
+            input:
+              `Kontakt: ${conversation.name}\nLetzte Nachricht: ${conversation.preview}\nAnweisung von Mattl: ${cleanInstruction}`,
+            reasoning: {
+              effort:
+                "low"
+            },
+            text: {
+              format: {
+                type:
+                  "json_schema",
+                name:
+                  "whatsapp_reply",
+                strict:
+                  true,
+                schema: {
+                  type:
+                    "object",
+                  properties: {
+                    text: {
+                      type:
+                        "string"
+                    }
+                  },
+                  required: [
+                    "text"
+                  ],
+                  additionalProperties:
+                    false
+                }
+              }
+            },
+            store:
+              false
+          }),
+        signal:
+          timeoutSignal(
+            30000
+          )
+      }
+    );
+
+  const data =
+    await response.json();
+
+  if (
+    !response.ok
+  ) {
+    throw new Error(
+      data?.error?.message ||
+      "WhatsApp-Entwurf konnte nicht erstellt werden."
+    );
+  }
+
+  const parsed =
+    JSON.parse(
+      extractResponseText(
+        data
+      )
+    );
+
+  const text =
+    String(
+      parsed?.text ||
+      ""
+    ).trim();
+
+  if (
+    !text
+  ) {
+    throw new Error(
+      "WhatsApp-Entwurf ist leer."
+    );
+  }
+
+  lastSuperchatDraft = {
+    conversation_id:
+      conversation.id,
+    contact_id:
+      conversation.contact_id,
+    channel_id:
+      conversation.channel_id,
+    contact_name:
+      conversation.name,
+    text,
+    created_at:
+      new Date()
+        .toISOString()
+  };
+
+  return {
+    ...lastSuperchatDraft,
+    sent:
+      false
+  };
+}
+
+async function sendSuperchatDraft(
+  confirmationText
+) {
+
+  const confirmation =
+    normalize(
+      confirmationText
+    );
+
+  if (
+    !/\b(senden|abschicken|versenden)\b/i.test(
+      confirmation
+    )
+  ) {
+    throw new Error(
+      "WhatsApp darf nur nach ausdrücklichem Sende-Befehl gesendet werden."
+    );
+  }
+
+  if (
+    !lastSuperchatDraft
+  ) {
+    throw new Error(
+      "Kein WhatsApp-Entwurf zum Senden vorhanden."
+    );
+  }
+
+  const channelId =
+    lastSuperchatDraft
+      .channel_id ||
+    await getSuperchatWhatsAppChannelId();
+
+  const contactId =
+    String(
+      lastSuperchatDraft
+        .contact_id ||
+      ""
+    ).trim();
+
+  if (
+    !contactId
+  ) {
+    throw new Error(
+      "Superchat Kontakt-ID fehlt. Bitte Chat neu auswählen."
+    );
+  }
+
+  const data =
+    await superchatRequest(
+      "/messages",
+      {
+        method:
+          "POST",
+        body:
+          JSON.stringify({
+            to: [
+              {
+                identifier:
+                  contactId
+              }
+            ],
+            from: {
+              channel_id:
+                channelId
+            },
+            content: {
+              type:
+                "text",
+              text:
+                lastSuperchatDraft
+                  .text
+            }
+          })
+      }
+    );
+
+  const sent =
+    {
+      sent:
+        true,
+      conversation_id:
+        lastSuperchatDraft
+          .conversation_id,
+      contact_name:
+        lastSuperchatDraft
+          .contact_name,
+      text:
+        lastSuperchatDraft
+          .text,
+      superchat_response:
+        data
+    };
+
+  lastSuperchatDraft =
+    null;
+
+  return sent;
+}
+
+
+/* Dashboard: letzte 5 Chats */
+app.get(
+  "/api/superchat-conversations",
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+      const conversations =
+        await getSuperchatConversations(
+          20
+        );
+
+      return res.json({
+        ok:
+          true,
+        conversations:
+          conversations.slice(
+            0,
+            5
+          )
+      });
+
+    } catch (
+      error
+    ) {
+      console.error(
+        "[SUPERCHAT CONVERSATIONS ERROR]",
+        error
+      );
+
+      return res
+        .status(500)
+        .json({
+          ok:
+            false,
+          error:
+            error.message ||
+            "Superchat-Chats konnten nicht geladen werden."
+        });
+    }
+  }
+);
+
+
+app.get(
+  "/api/superchat-conversation/:id",
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+      const conversation =
+        await getSuperchatConversation(
+          req.params.id
+        );
+
+      return res.json({
+        ok:
+          true,
+        conversation
+      });
+
+    } catch (
+      error
+    ) {
+      return res
+        .status(500)
+        .json({
+          ok:
+            false,
+          error:
+            error.message ||
+            "Superchat-Chat konnte nicht geladen werden."
+        });
+    }
+  }
+);
+
+/* =========================================================
    GMAIL
    ========================================================= */
 
@@ -5553,6 +6385,90 @@ app.post(
               instruction:
                 "Gib Mattl jetzt ein ausführliches, gut gegliedertes deutsches Business-Briefing. Beginne direkt mit dem Überblick. Nenne ungelesene Mails, Shopify heute, Shopify gestern/Vortag und Wetter. Offene Bestellungen nicht erwähnen. Formuliere Zahlen natürlich auf Deutsch, z. B. bei 1: 'eine ungelesene Mail' und 'eine Bestellung', niemals 'eins ungelesene Mail'. Hebe wichtige Kunden-/Angebotsmails hervor. Schließe mit 2 bis 4 konkreten Prioritäten für heute."
             }
+          });
+        }
+
+
+        case "get_whatsapp_conversations":
+
+          data = {
+            conversations:
+              await getSuperchatConversations(
+                20
+              )
+          };
+
+          break;
+
+
+        case "get_whatsapp_conversation": {
+
+          const conversation =
+            await getSuperchatConversation(
+              args.conversation_id
+            );
+
+          return res.json({
+            ok:
+              true,
+            conversation,
+            result: {
+              found:
+                true,
+              name:
+                conversation.name,
+              preview:
+                conversation.preview,
+              instruction:
+                "Der ausgewählte WhatsApp-Chat ist geladen. Beantworte Mattls Frage anhand dieser Daten und erfinde nichts."
+            }
+          });
+        }
+
+
+        case "create_whatsapp_reply_draft": {
+
+          const draft =
+            await createSuperchatReplyDraft(
+              args.conversation_id,
+              args.instruction
+            );
+
+          return res.json({
+            ok:
+              true,
+            whatsapp_draft:
+              draft,
+            result: {
+              created:
+                true,
+              sent:
+                false,
+              contact_name:
+                draft.contact_name,
+              text:
+                draft.text,
+              instruction:
+                "WhatsApp-Entwurf ist fertig, aber noch NICHT gesendet. Frage Mattl kurz, ob er ihn senden möchte."
+            }
+          });
+        }
+
+
+        case "send_whatsapp_draft": {
+
+          const sent =
+            await sendSuperchatDraft(
+              args.confirmation_text
+            );
+
+          return res.json({
+            ok:
+              true,
+            whatsapp_sent:
+              sent,
+            result:
+              sent
           });
         }
 
