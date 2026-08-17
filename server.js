@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V10.1-BRIEFING-GRAMMAR-FIX";
+  "V10.1-PROACTIVE-REPEAT-FIX";
 
 
 /* =========================================================
@@ -6022,22 +6022,22 @@ app.post(
                 true,
 
               text:
-                `Mattl, ${fresh.length} neue ungelesene ${
+                `${
                   fresh.length === 1
-                    ? "Mail"
-                    : "Mails"
-                }.${
-                  offerCount
-                    ? ` ${offerCount} davon sieht nach einer Angebots- oder Preisanfrage aus.`
-                    : ""
+                    ? "Mattl, du hast eine neue ungelesene Mail."
+                    : `Mattl, du hast ${fresh.length} neue ungelesene Mails.`
                 }${
-                  autoMovedAdvertising.length
-                    ? ` Zusätzlich habe ich ${autoMovedAdvertising.length} eindeutige ${
-                        autoMovedAdvertising.length === 1
-                          ? "Werbemail"
-                          : "Werbemails"
-                      } nach Bearbeitet verschoben.`
-                    : ""
+                  offerCount === 1
+                    ? " Eine davon sieht nach einer Angebots- oder Preisanfrage aus."
+                    : offerCount > 1
+                      ? ` ${offerCount} davon sehen nach Angebots- oder Preisanfragen aus.`
+                      : ""
+                }${
+                  autoMovedAdvertising.length === 1
+                    ? " Zusätzlich habe ich eine eindeutige Werbemail nach Bearbeitet verschoben."
+                    : autoMovedAdvertising.length > 1
+                      ? ` Zusätzlich habe ich ${autoMovedAdvertising.length} eindeutige Werbemails nach Bearbeitet verschoben.`
+                      : ""
                 }`
             });
           }
@@ -6053,11 +6053,9 @@ app.post(
               hasNotice:
                 true,
               text:
-                `Mattl, ich habe ${autoMovedAdvertising.length} eindeutige ${
-                  autoMovedAdvertising.length === 1
-                    ? "Werbemail"
-                    : "Werbemails"
-                } automatisch nach Bearbeitet verschoben.`
+                autoMovedAdvertising.length === 1
+                  ? "Mattl, ich habe eine eindeutige Werbemail automatisch nach Bearbeitet verschoben."
+                  : `Mattl, ich habe ${autoMovedAdvertising.length} eindeutige Werbemails automatisch nach Bearbeitet verschoben.`
             });
           }
 
@@ -6074,93 +6072,7 @@ app.post(
       }
 
 
-      /* Shopify */
-
-      try {
-
-        const open =
-          await getShopifyOpenOrders();
-
-
-        if (
-          !open.count
-        ) {
-
-          lastOpenOrdersNotice = {
-
-            count:
-              0,
-
-            at:
-              Date.now()
-          };
-
-
-          return res.json({
-
-            ok:
-              true,
-
-            hasNotice:
-              false
-          });
-        }
-
-
-        const changed =
-          lastOpenOrdersNotice
-            .count !==
-          open.count;
-
-
-        const cooldown =
-          Date.now() -
-            lastOpenOrdersNotice
-              .at >
-          2 *
-            60 *
-            60 *
-            1000;
-
-
-        if (
-          changed ||
-          cooldown
-        ) {
-
-          lastOpenOrdersNotice = {
-
-            count:
-              open.count,
-
-            at:
-              Date.now()
-          };
-
-
-          return res.json({
-
-            ok:
-              true,
-
-            hasNotice:
-              true,
-
-            text:
-              `Mattl, aktuell sind ${open.count} Bestellungen noch unbearbeitet.`
-          });
-        }
-
-
-      } catch (
-        error
-      ) {
-
-        console.warn(
-          "[SHOPIFY BACKGROUND ERROR]",
-          error
-        );
-      }
+      /* Offene Shopify-Bestellungen werden bewusst nicht proaktiv vorgelesen. */
 
 
       return res.json({
