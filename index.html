@@ -229,7 +229,13 @@
     </main>
 
     <section class="panel" id="draftPanel">
-      <div class="panel-head"><span>ENTWURF</span><span class="panel-dot ok"></span></div>
+      <div class="panel-head draft-panel-head">
+        <span>ENTWURF</span>
+        <div class="draft-head-actions">
+          <span class="panel-dot ok"></span>
+          <button id="draftCloseBtn" class="draft-close-btn" type="button" aria-label="Entwurf ausblenden" title="Entwurf ausblenden">×</button>
+        </div>
+      </div>
       <div class="draft-inner">
         <div id="draftSubject"></div>
         <div id="draftBody"></div>
