@@ -2,7 +2,7 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V10.4 · ZAHLEN & TTS BUFFER FIX
+   V10.5 · BARGE-IN + INTRO DUCKING FIX
    OPENAI REALTIME TEXT
    + ELEVENLABS WEBSOCKET
    + PCM 24 KHZ
@@ -144,6 +144,15 @@ let elevenSessionId =
 let elevenKeepAliveTimer =
   null;
 
+let elevenReconnectPromise =
+  null;
+
+const pendingElevenTexts =
+  [];
+
+let pendingElevenFlush =
+  false;
+
 
 /* =========================================================
    WEB AUDIO / PCM STATE
@@ -249,19 +258,19 @@ const INTRO_START =
   4;
 
 const INTRO_START_VOLUME =
-  0.24;
+  0.10;
 
 const INTRO_VOICE_DELAY_MS =
-  900;
+  700;
 
 const INTRO_BACKGROUND_VOLUME =
-  0.014;
+  0.006;
 
 const INTRO_DUCK_DURATION_MS =
-  1400;
+  550;
 
 const INTRO_FADE_DURATION_MS =
-  20000;
+  4500;
 
 
 /* =========================================================
@@ -1636,8 +1645,13 @@ async function scheduleElevenPcm(
   );
 
 
+  /*
+    Mikrofon während der Ausgabe bewusst AN lassen.
+    WebRTC-Echounterdrückung + Realtime-VAD ermöglichen dadurch
+    echtes Barge-in: Mattl kann JARVIS mitten im Satz unterbrechen.
+  */
   setMicrophoneEnabled(
-    false
+    true
   );
 
 
@@ -1934,7 +1948,7 @@ function startStopSpeechRecognition() {
 
 
       if (
-        /(^|\s)(stop|stopp|halt|ruhe|genug)(\s|$|[.!?,])/i.test(
+        /(^|\s)(stop|stopp|halt|warte|moment|ruhe|genug|nein|jarvis)(\s|$|[.!?,])/i.test(
           normalized
         )
       ) {
@@ -2778,6 +2792,14 @@ async function connectElevenLabs() {
       socket.onclose =
         event => {
 
+          if (
+            sessionId !==
+            elevenSessionId
+          ) {
+            return;
+          }
+
+
           elevenConnected =
             false;
 
@@ -3533,6 +3555,23 @@ function sendTextToElevenLabs(
     !elevenReady
   ) {
 
+    if (
+      active &&
+      elevenReconnectPromise
+    ) {
+      pendingElevenTexts.push(
+        clean
+      );
+
+      debugSet(
+        "dbgEvent",
+        "ElevenLabs verbindet neu · Text gepuffert"
+      );
+
+      return;
+    }
+
+
     console.warn(
       "ElevenLabs nicht bereit."
     );
@@ -3589,6 +3628,14 @@ function flushElevenLabs() {
       WebSocket.OPEN ||
     !elevenReady
   ) {
+
+    if (
+      active &&
+      elevenReconnectPromise
+    ) {
+      pendingElevenFlush =
+        true;
+    }
 
     return;
   }
@@ -6489,6 +6536,116 @@ function stopBackgroundChecks() {
 
 
 /* =========================================================
+   ELEVENLABS · SAUBERER NEUSTART NACH UNTERBRECHUNG
+   Verhindert, dass bereits erzeugte alte Audiopakete nach einem
+   Barge-in wieder anfangen zu sprechen.
+   ========================================================= */
+
+function reconnectElevenLabsAfterInterruption() {
+
+  if (
+    !active ||
+    elevenReconnectPromise
+  ) {
+    return;
+  }
+
+
+  /*
+    Alte Socket-Callbacks sofort ungültig machen, noch bevor
+    der Socket vollständig geschlossen wurde.
+  */
+  elevenSessionId +=
+    1;
+
+
+  stopElevenKeepAlive();
+
+
+  const staleSocket =
+    elevenSocket;
+
+
+  elevenSocket =
+    null;
+
+  elevenConnected =
+    false;
+
+  elevenReady =
+    false;
+
+  elevenTokenData =
+    null;
+
+
+  if (staleSocket) {
+    try {
+      staleSocket.close(
+        1000,
+        "Barge-in"
+      );
+    } catch {}
+  }
+
+
+  elevenReconnectPromise =
+    connectElevenLabs()
+      .then(
+        () => {
+
+          const queued =
+            pendingElevenTexts.splice(
+              0,
+              pendingElevenTexts.length
+            );
+
+
+          for (
+            const text of queued
+          ) {
+            sendTextToElevenLabs(
+              text
+            );
+          }
+
+
+          if (
+            pendingElevenFlush
+          ) {
+            pendingElevenFlush =
+              false;
+
+            flushElevenLabs();
+          }
+        }
+      )
+      .catch(
+        error => {
+
+          console.warn(
+            "ElevenLabs Reconnect nach Unterbrechung fehlgeschlagen:",
+            error
+          );
+
+          pendingElevenTexts.length =
+            0;
+
+          pendingElevenFlush =
+            false;
+        }
+      )
+      .finally(
+        () => {
+
+          elevenReconnectPromise =
+            null;
+        }
+      );
+}
+
+
+/* =========================================================
    INTERRUPTION
    ========================================================= */
 
@@ -6518,10 +6675,19 @@ function handleUserInterruption() {
   );
 
 
+  stopStopSpeechRecognition();
+
   cancelCurrentResponse();
 
 
   clearElevenAudio();
+
+
+  /*
+    Falls die Unterbrechung während der Startbegrüßung kommt,
+    darf die Intro-Musik nicht weiterlaufen.
+  */
+  stopIntro();
 
 
   assistantSpeaking =
@@ -6530,6 +6696,14 @@ function handleUserInterruption() {
 
   greetingInProgress =
     false;
+
+
+  /*
+    ElevenLabs kann nach dem Abbruch noch alte Audiopakete senden.
+    Deshalb wird nur die TTS-Verbindung sauber neu aufgebaut;
+    OpenAI/Reatime und der Rest von JARVIS bleiben online.
+  */
+  reconnectElevenLabsAfterInterruption();
 
 
   setMicrophoneEnabled(
@@ -6862,6 +7036,16 @@ async function stopJarvis(
 
 
   runningToolCalls.clear();
+
+
+  pendingElevenTexts.length =
+    0;
+
+  pendingElevenFlush =
+    false;
+
+  elevenReconnectPromise =
+    null;
 
 
   if (updateUi) {
