@@ -27,6 +27,18 @@ const logEl =
 const remoteAudio =
   document.querySelector("#remoteAudio");
 
+const JARVIS_SCREEN_ROLE =
+  window.JARVIS_SCREEN_ROLE ||
+  "single";
+
+const JARVIS_VOICE_SCREEN =
+  JARVIS_SCREEN_ROLE === "center" ||
+  JARVIS_SCREEN_ROLE === "single";
+
+const JARVIS_COMMS_SCREEN =
+  JARVIS_SCREEN_ROLE === "right" ||
+  JARVIS_SCREEN_ROLE === "single";
+
 
 /* =========================================================
    DEBUG HUD
@@ -6728,6 +6740,11 @@ function handleUserInterruption() {
 
 async function startJarvis() {
 
+  if (!JARVIS_VOICE_SCREEN) {
+    console.log(`Voice-Core ist auf Bildschirm ${JARVIS_SCREEN_ROLE} deaktiviert.`);
+    return;
+  }
+
   if (
     active ||
     starting
@@ -7162,24 +7179,35 @@ window.addEventListener(
    INITIAL UI
    ========================================================= */
 
-setStatus(
-  "Offline"
-);
+if (JARVIS_VOICE_SCREEN) {
+  setStatus(
+    "Offline"
+  );
 
+  setJarvisState(
+    "offline"
+  );
 
-setJarvisState(
-  "offline"
-);
+  setButtonActive(
+    false
+  );
 
+  setLog(
+    "JARVIS ist bereit."
+  );
+} else {
+  setStatus(
+    "Display"
+  );
 
-setButtonActive(
-  false
-);
+  setJarvisState(
+    "online"
+  );
 
-
-setLog(
-  "JARVIS ist bereit."
-);
+  setButtonActive(
+    false
+  );
+}
 
 
 debugSet(
@@ -7188,7 +7216,9 @@ debugSet(
 );
 
 
-startInboxDashboardRefresh();
+if (JARVIS_COMMS_SCREEN) {
+  startInboxDashboardRefresh();
+}
 
 
 /* =========================================================
@@ -7201,7 +7231,7 @@ console.log(
 
 
 console.log(
-  "JARVIS APP V10.4 · SOFT INTRO MIX"
+  "JARVIS APP V10.6 · TRIPLE SCREEN + VOICEFIX"
 );
 
 
@@ -7246,11 +7276,13 @@ console.log(
 
 
 /* Superchat Dashboard Refresh */
-loadWhatsAppDashboard();
-setInterval(
-  loadWhatsAppDashboard,
-  30 * 1000
-);
+if (JARVIS_COMMS_SCREEN) {
+  loadWhatsAppDashboard();
+  setInterval(
+    loadWhatsAppDashboard,
+    30 * 1000
+  );
+}
 
 /* =========================================================
    GMAIL CLICK SAFETY
