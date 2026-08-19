@@ -3799,3 +3799,200 @@ audio { display: none; }
     flex:1 1 120px;
   }
 }
+
+/* =========================================================
+   JARVIS V10.6 · TRIPLE SCREEN DESKTOP
+   ========================================================= */
+@media (min-width: 1000px) {
+  body[data-screen-role="left"],
+  body[data-screen-role="center"],
+  body[data-screen-role="right"] {
+    width: 100vw;
+    height: 100vh;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  body[data-screen-role="left"] .hud,
+  body[data-screen-role="center"] .hud,
+  body[data-screen-role="right"] .hud {
+    width: 100vw;
+    max-width: none;
+    height: 100vh;
+    min-height: 100vh;
+    margin: 0;
+    padding: 10px 12px 12px;
+    gap: 8px;
+  }
+
+  body[data-screen-role="left"] .cockpit.cockpit-clean,
+  body[data-screen-role="center"] .cockpit.cockpit-clean,
+  body[data-screen-role="right"] .cockpit.cockpit-clean {
+    height: calc(100vh - 55px - 20px - 20px);
+    min-height: 0;
+    overflow: hidden;
+    gap: 10px;
+  }
+
+  body[data-screen-role="left"] .command-bar,
+  body[data-screen-role="right"] .command-bar {
+    display: none !important;
+  }
+
+  /* LINKS · BUSINESS WALL */
+  body[data-screen-role="left"] .cockpit.cockpit-clean {
+    display: block;
+  }
+
+  body[data-screen-role="left"] .stage,
+  body[data-screen-role="left"] .zone-right,
+  body[data-screen-role="left"] #draftPanel,
+  body[data-screen-role="left"] .modern-mail {
+    display: none !important;
+  }
+
+  body[data-screen-role="left"] .zone-left {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body[data-screen-role="left"] .modern-shopify {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    padding: 18px 20px 16px;
+  }
+
+  body[data-screen-role="left"] .modern-shopify .panel-head {
+    height: 44px;
+    min-height: 44px;
+    font-size: .78rem;
+  }
+
+  body[data-screen-role="left"] .modern-shop-grid {
+    height: calc(100% - 80px);
+    min-height: 0;
+    grid-template-columns: minmax(0, 1.65fr) minmax(260px, .72fr);
+    gap: 14px;
+  }
+
+  body[data-screen-role="left"] .shop-main-card,
+  body[data-screen-role="left"] .modern-kpi {
+    border-color: rgba(231, 7, 121, .25);
+  }
+
+  body[data-screen-role="left"] .shop-main-copy b {
+    font-size: clamp(3rem, 5.2vw, 6.2rem);
+    line-height: 1;
+  }
+
+  body[data-screen-role="left"] .shop-kpi-column {
+    gap: 12px;
+  }
+
+  body[data-screen-role="left"] .modern-kpi {
+    min-height: 0;
+    padding: 18px;
+  }
+
+  body[data-screen-role="left"] .modern-kpi b {
+    font-size: clamp(1.7rem, 2.3vw, 3rem);
+  }
+
+  /* MITTE · COMMAND CENTER */
+  body[data-screen-role="center"] .cockpit.cockpit-clean {
+    display: grid;
+    grid-template-columns: 1fr;
+    place-items: center;
+  }
+
+  body[data-screen-role="center"] .zone-left,
+  body[data-screen-role="center"] .zone-right,
+  body[data-screen-role="center"] #draftPanel {
+    display: none !important;
+  }
+
+  body[data-screen-role="center"] .stage {
+    display: flex;
+    width: min(1180px, 96vw);
+    height: 100%;
+    min-height: 0;
+    align-items: center;
+    justify-content: center;
+  }
+
+  body[data-screen-role="center"] .stage-title h1 {
+    font-size: clamp(4rem, 7vw, 8rem);
+  }
+
+  body[data-screen-role="center"] .stage-title .eyebrow {
+    font-size: .85rem;
+    letter-spacing: .42em;
+  }
+
+  body[data-screen-role="center"] .voice-button {
+    width: min(500px, 38vw);
+  }
+
+  body[data-screen-role="center"] .voice-log {
+    font-size: 1rem;
+    max-width: 760px;
+  }
+
+  body[data-screen-role="center"] .command-bar {
+    min-height: 42px;
+  }
+
+  /* RECHTS · COMMS & INFO */
+  body[data-screen-role="right"] .cockpit.cockpit-clean {
+    display: block;
+  }
+
+  body[data-screen-role="right"] .zone-left,
+  body[data-screen-role="right"] .stage {
+    display: none !important;
+  }
+
+  body[data-screen-role="right"] .zone-right {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
+    grid-template-rows: minmax(0, 1.05fr) minmax(0, .95fr) 64px;
+    gap: 10px;
+    overflow: hidden;
+  }
+
+  body[data-screen-role="right"] .modern-mail {
+    display: flex !important;
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    min-height: 0;
+  }
+
+  body[data-screen-role="right"] .modern-whatsapp {
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 0;
+  }
+
+  body[data-screen-role="right"] .right-bottom-grid {
+    grid-column: 2;
+    grid-row: 2;
+    min-height: 0;
+    height: 100%;
+  }
+
+  body[data-screen-role="right"] .system-strip {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    min-height: 64px;
+  }
+
+  body[data-screen-role="right"] .modern-message-list {
+    min-height: 0;
+    overflow: hidden;
+  }
+}
