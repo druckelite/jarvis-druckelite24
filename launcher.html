@@ -10,7 +10,7 @@
 </head>
 <body>
 <div class="wrap"><div class="card">
-<div class="brand">DRUCKELITE24 · JARVIS V10.6</div>
+<div class="brand">DRUCKELITE24 · JARVIS V10.6.1</div>
 <h1>TRIPLE SCREEN</h1>
 <p>Dein bestehender JARVIS wird auf drei echte Desktop-Monitore verteilt. Voice und Startmusik laufen ausschließlich im mittleren Command Center.</p>
 <div class="layout">
@@ -23,30 +23,134 @@
 <div class="hint">Desktop only · Windows-Anzeige: „Diese Anzeigen erweitern“.</div>
 </div></div>
 <script>
-const statusEl=document.getElementById('status');const btn=document.getElementById('launch');
-function status(t,c=''){statusEl.textContent=t;statusEl.className=c}
-function role(i){return ['left','center','right'][i]}
-async function launch(){
- btn.disabled=true;
- try{
-  if(!('getScreenDetails' in window)){throw new Error('Fensterverwaltung wird nicht unterstützt. Bitte aktuellen Chrome verwenden.')}
-  status('Bildschirme werden erkannt …');
-  const details=await window.getScreenDetails();
-  const screens=[...details.screens].sort((a,b)=>(a.left-b.left)||(a.top-b.top));
-  if(screens.length<3) throw new Error(`Nur ${screens.length} Bildschirm(e) erkannt. Windows muss alle 3 Anzeigen erweitern.`);
-  const opened=[];
-  for(let i=0;i<3;i++){
-    const s=screens[i],r=role(i);
-    const u=new URL('/index.html',location.origin);u.searchParams.set('screen',r);
-    const left=Math.round(s.availLeft??s.left),top=Math.round(s.availTop??s.top),width=Math.round(s.availWidth??s.width),height=Math.round(s.availHeight??s.height);
-    const features=`popup=yes,left=${left},top=${top},width=${width},height=${height}`;
-    const w=window.open(u.href,`jarvis_${r}`,features);
-    if(w){opened.push(w);setTimeout(()=>{try{w.moveTo(left,top);w.resizeTo(width,height)}catch{}},350)}
-  }
-  if(opened.length!==3) throw new Error('Chrome hat mindestens ein Fenster blockiert. Pop-ups erlauben und erneut starten.');
-  status('3 JARVIS-Fenster geöffnet: Business · Command Center · Comms.','ok');
- }catch(e){status(e.message||String(e),'bad')}finally{btn.disabled=false}
+const statusEl=document.getElementById('status');
+const btn=document.getElementById('launch');
+
+function status(t,c=''){
+  statusEl.textContent=t;
+  statusEl.className=c;
 }
+
+function role(i){
+  return ['left','center','right'][i];
+}
+
+function makePlaceholder(win,label){
+  try{
+    win.document.open();
+    win.document.write(`<!doctype html>
+      <html lang="de">
+      <head>
+        <meta charset="utf-8">
+        <title>JARVIS · ${label}</title>
+        <style>
+          html,body{margin:0;width:100%;height:100%;background:#060608;color:#fff;font-family:Arial,sans-serif}
+          body{display:grid;place-items:center}
+          div{text-align:center}
+          b{display:block;color:#e70779;letter-spacing:.18em;font-size:26px;margin-bottom:10px}
+          span{color:#8e8e98}
+        </style>
+      </head>
+      <body><div><b>JARVIS</b><span>${label} wird vorbereitet …</span></div></body>
+      </html>`);
+    win.document.close();
+  }catch{}
+}
+
+async function launch(){
+  btn.disabled=true;
+
+  /*
+    WICHTIG:
+    Die drei Fenster werden SOFORT innerhalb des echten Klick-Events
+    reserviert. Erst danach folgt das asynchrone getScreenDetails().
+    Dadurch verliert Chrome die Benutzeraktivierung nicht mehr zwischen
+    Monitor-Erkennung und window.open().
+  */
+  const slots=[
+    {r:'left',   name:'jarvis_left',   label:'BUSINESS WALL'},
+    {r:'center', name:'jarvis_center', label:'COMMAND CENTER'},
+    {r:'right',  name:'jarvis_right',  label:'COMMS & INFO'}
+  ];
+
+  const opened=slots.map(item=>{
+    const w=window.open(
+      'about:blank',
+      item.name,
+      'popup=yes,width=900,height=700'
+    );
+    if(w) makePlaceholder(w,item.label);
+    return {...item,w};
+  });
+
+  try{
+    if(opened.some(item=>!item.w)){
+      for(const item of opened){
+        try{ item.w?.close(); }catch{}
+      }
+      throw new Error('Chrome blockiert noch Pop-ups. Bitte Pop-ups und Weiterleitungen für diese Render-Adresse immer zulassen.');
+    }
+
+    if(!('getScreenDetails' in window)){
+      throw new Error('Fensterverwaltung wird nicht unterstützt. Bitte aktuellen Chrome verwenden.');
+    }
+
+    status('3 Fenster reserviert · Bildschirme werden erkannt …');
+
+    const details=await window.getScreenDetails();
+    const screens=[...details.screens]
+      .sort((a,b)=>(a.left-b.left)||(a.top-b.top));
+
+    if(screens.length<3){
+      throw new Error(`Nur ${screens.length} Bildschirm(e) erkannt. Windows muss alle 3 Anzeigen erweitern.`);
+    }
+
+    for(let i=0;i<3;i++){
+      const item=opened[i];
+      const s=screens[i];
+
+      const left=Math.round(s.availLeft??s.left);
+      const top=Math.round(s.availTop??s.top);
+      const width=Math.round(s.availWidth??s.width);
+      const height=Math.round(s.availHeight??s.height);
+
+      const u=new URL('/index.html',location.origin);
+      u.searchParams.set('screen',item.r);
+
+      try{
+        item.w.moveTo(left,top);
+        item.w.resizeTo(width,height);
+      }catch{}
+
+      item.w.location.replace(u.href);
+
+      setTimeout(()=>{
+        try{
+          item.w.moveTo(left,top);
+          item.w.resizeTo(width,height);
+          item.w.focus();
+        }catch{}
+      },600);
+    }
+
+    status('Erfolgreich: Ein Klick hat alle 3 JARVIS-Fenster gestartet.','ok');
+
+  }catch(e){
+    status(e.message||String(e),'bad');
+
+    // Bei einem echten Fehler keine leeren Platzhalter stehen lassen.
+    if(!String(e?.message||'').includes('Pop-ups')){
+      for(const item of opened){
+        try{
+          if(item.w && item.w.location.href==='about:blank') item.w.close();
+        }catch{}
+      }
+    }
+  }finally{
+    btn.disabled=false;
+  }
+}
+
 btn.addEventListener('click',launch);
 </script>
 </body>
