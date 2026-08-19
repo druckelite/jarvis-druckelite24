@@ -7416,3 +7416,106 @@ document.addEventListener(
 
 
 
+
+/* =========================================================
+   JARVIS V10.8 · WINDOWS WAKE-WORD AUTOSTART
+   Wird nur aktiv, wenn die URL ?autostart=1 enthält.
+   Normale Button-Nutzung bleibt unverändert.
+   ========================================================= */
+
+function sendJarvisStartupCommand(text) {
+  const clean = String(text || "").trim();
+
+  if (!clean || !dataChannel || dataChannel.readyState !== "open") {
+    return false;
+  }
+
+  sendRealtimeEvent({
+    type: "conversation.item.create",
+    item: {
+      type: "message",
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: clean
+        }
+      ]
+    }
+  });
+
+  responseInProgress = true;
+
+  sendRealtimeEvent({
+    type: "response.create",
+    response: {
+      output_modalities: ["text"]
+    }
+  });
+
+  return true;
+}
+
+function queueJarvisStartupCommand(mode) {
+  const commands = {
+    briefing: "Gib mir jetzt mein ausführliches Morning- beziehungsweise Tagesbriefing.",
+    shop: "Prüfe jetzt Druckelite24. Wie läuft mein Business heute? Nutze die verfügbaren Live-Daten und nenne mir die wichtigsten Auffälligkeiten.",
+    mail: "Prüfe jetzt meine ungelesenen E-Mails und nenne mir nur die wichtigsten.",
+    orders: "Prüfe jetzt meine offenen Shopify-Bestellungen und sage mir kurz, was auffällig ist."
+  };
+
+  const command = commands[String(mode || "").toLowerCase()];
+  if (!command) return;
+
+  const startedAt = Date.now();
+
+  const trySend = () => {
+    if (!active) return;
+
+    const busy =
+      greetingInProgress ||
+      assistantSpeaking ||
+      responseInProgress ||
+      runningToolCalls.size > 0 ||
+      hasPendingElevenAudio();
+
+    if (!busy && sendJarvisStartupCommand(command)) {
+      setLog("Startbefehl wird ausgeführt …");
+      return;
+    }
+
+    if (Date.now() - startedAt < 30000) {
+      setTimeout(trySend, 450);
+    }
+  };
+
+  setTimeout(trySend, 700);
+}
+
+(function enableWakeWordAutostart() {
+  const params = new URLSearchParams(window.location.search);
+  const autostart = params.get("autostart") === "1";
+  const startupMode = params.get("startup") || "";
+
+  if (!autostart || !JARVIS_VOICE_SCREEN) {
+    return;
+  }
+
+  window.addEventListener(
+    "load",
+    () => {
+      setTimeout(async () => {
+        if (active || starting || stopping) return;
+
+        try {
+          await startJarvis();
+          queueJarvisStartupCommand(startupMode);
+        } catch (error) {
+          console.error("Wake-Word Autostart fehlgeschlagen:", error);
+          setLog("Sprachstart blockiert. Einmalige Browser-/Mikrofonfreigabe prüfen.");
+        }
+      }, 500);
+    },
+    { once: true }
+  );
+})();
