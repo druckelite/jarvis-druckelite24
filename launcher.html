@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Druckelite24 · JARVIS Triple Screen</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#060608;color:#f5f5f7;font-family:Arial,Helvetica,sans-serif}body{min-width:1100px;overflow:hidden;background:radial-gradient(circle at 50% 35%,rgba(231,7,121,.13),transparent 32%),#060608}.wrap{height:100vh;display:grid;place-items:center;padding:40px}.card{width:min(820px,88vw);background:rgba(17,17,22,.96);border:1px solid #2a2a30;padding:38px 42px;clip-path:polygon(0 0,calc(100% - 16px) 0,100% 16px,100% 100%,16px 100%,0 calc(100% - 16px));box-shadow:0 30px 90px rgba(0,0,0,.6)}.brand{font-size:12px;letter-spacing:.32em;color:#e70779;font-weight:800}h1{font-size:42px;letter-spacing:.04em;margin:10px 0 8px}p{color:#a7a7b1;line-height:1.6;margin:0}.layout{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:24px 0}.screen{border:1px solid #2a2a30;background:#0b0b10;padding:14px}.screen b{display:block;color:#fff;margin-bottom:5px}.screen span{font-size:12px;color:#85858f}.actions{display:grid;grid-template-columns:1fr auto;gap:10px;margin-top:20px}button,a.btn{border:1px solid rgba(231,7,121,.55);background:#e70779;color:#fff;padding:16px 18px;font-size:16px;font-weight:800;cursor:pointer;text-align:center;text-decoration:none}a.btn{background:#111116;color:#ddd;border-color:#33333b}button:hover,a.btn:hover{filter:brightness(1.08)}#status{margin-top:16px;padding:13px 14px;background:#0a0a0e;border:1px solid #24242b;color:#b7b7c0;min-height:48px;white-space:pre-line;font-size:13px}.ok{color:#9cf0b8!important}.bad{color:#ff9a9a!important}.hint{font-size:12px;color:#70707a;margin-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap"><div class="card">
+<div class="brand">DRUCKELITE24 · JARVIS V10.6</div>
+<h1>TRIPLE SCREEN</h1>
+<p>Dein bestehender JARVIS wird auf drei echte Desktop-Monitore verteilt. Voice und Startmusik laufen ausschließlich im mittleren Command Center.</p>
+<div class="layout">
+  <div class="screen"><b>LINKS · BUSINESS</b><span>Shopify · Umsatz · Bestellungen</span></div>
+  <div class="screen"><b>MITTE · JARVIS</b><span>Voice Core · Steuerung</span></div>
+  <div class="screen"><b>RECHTS · COMMS</b><span>Gmail · WhatsApp · Wetter · News</span></div>
+</div>
+<div class="actions"><button id="launch">3 BILDSCHIRME STARTEN</button><a class="btn" href="/index.html?screen=single">EINZELANSICHT</a></div>
+<div id="status">Bereit. Chrome-Fensterverwaltung und Pop-ups für diese Adresse müssen erlaubt sein.</div>
+<div class="hint">Desktop only · Windows-Anzeige: „Diese Anzeigen erweitern“.</div>
+</div></div>
+<script>
+const statusEl=document.getElementById('status');const btn=document.getElementById('launch');
+function status(t,c=''){statusEl.textContent=t;statusEl.className=c}
+function role(i){return ['left','center','right'][i]}
+async function launch(){
+ btn.disabled=true;
+ try{
+  if(!('getScreenDetails' in window)){throw new Error('Fensterverwaltung wird nicht unterstützt. Bitte aktuellen Chrome verwenden.')}
+  status('Bildschirme werden erkannt …');
+  const details=await window.getScreenDetails();
+  const screens=[...details.screens].sort((a,b)=>(a.left-b.left)||(a.top-b.top));
+  if(screens.length<3) throw new Error(`Nur ${screens.length} Bildschirm(e) erkannt. Windows muss alle 3 Anzeigen erweitern.`);
+  const opened=[];
+  for(let i=0;i<3;i++){
+    const s=screens[i],r=role(i);
+    const u=new URL('/index.html',location.origin);u.searchParams.set('screen',r);
+    const left=Math.round(s.availLeft??s.left),top=Math.round(s.availTop??s.top),width=Math.round(s.availWidth??s.width),height=Math.round(s.availHeight??s.height);
+    const features=`popup=yes,left=${left},top=${top},width=${width},height=${height}`;
+    const w=window.open(u.href,`jarvis_${r}`,features);
+    if(w){opened.push(w);setTimeout(()=>{try{w.moveTo(left,top);w.resizeTo(width,height)}catch{}},350)}
+  }
+  if(opened.length!==3) throw new Error('Chrome hat mindestens ein Fenster blockiert. Pop-ups erlauben und erneut starten.');
+  status('3 JARVIS-Fenster geöffnet: Business · Command Center · Comms.','ok');
+ }catch(e){status(e.message||String(e),'bad')}finally{btn.disabled=false}
+}
+btn.addEventListener('click',launch);
+</script>
+</body>
+</html>
