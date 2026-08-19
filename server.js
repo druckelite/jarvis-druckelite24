@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V10.6-TRIPLE-SCREEN-VOICEFIX";
+  "V10.7-SMART-BUSINESS-PULSE";
 
 
 /* =========================================================
@@ -441,7 +441,10 @@ async function getJarvisDailyBriefing() {
 
   try {
     result.weather =
-      await getWeather();
+      await getWeatherData(
+        "Ludwigshafen am Rhein",
+        "today"
+      );
   } catch (error) {
     result.weather_error =
       error.message ||
@@ -450,6 +453,162 @@ async function getJarvisDailyBriefing() {
 
 
   return result;
+}
+
+
+/* =========================================================
+   SMART BUSINESS PULSE · V10.7
+   Paralleler Business-Agent für breite Statusfragen.
+   Nutzt ausschließlich bereits vorhandene Datenquellen.
+   ========================================================= */
+
+async function getJarvisBusinessPulse() {
+
+  const startedAt =
+    Date.now();
+
+  const tasks = {
+    shopify_today:
+      () => getShopifySummary("today"),
+
+    shopify_yesterday:
+      () => getShopifySummary("yesterday"),
+
+    unread_emails:
+      () => isGmailConfigured()
+        ? getUnreadEmails()
+        : Promise.resolve([]),
+
+    open_orders:
+      () => getShopifyOpenOrders(),
+
+    weather:
+      () => getWeatherData(
+        "Ludwigshafen am Rhein",
+        "today"
+      ),
+
+    reminders:
+      () => getActiveReminders()
+  };
+
+  const entries =
+    Object.entries(tasks);
+
+  const settled =
+    await Promise.allSettled(
+      entries.map(([, run]) => run())
+    );
+
+  const pulse = {
+    generated_at:
+      new Date().toISOString(),
+
+    duration_ms:
+      Date.now() - startedAt,
+
+    sources: {},
+    signals: []
+  };
+
+  settled.forEach((result, index) => {
+    const key =
+      entries[index][0];
+
+    if (result.status === "fulfilled") {
+      pulse.sources[key] = {
+        ok: true,
+        data: result.value
+      };
+    } else {
+      pulse.sources[key] = {
+        ok: false,
+        error:
+          result.reason?.message ||
+          String(result.reason || "Unbekannter Fehler")
+      };
+    }
+  });
+
+  const today =
+    pulse.sources.shopify_today?.data;
+
+  const yesterday =
+    pulse.sources.shopify_yesterday?.data;
+
+  if (today && yesterday) {
+    const yRevenue =
+      Number(yesterday.revenue || 0);
+
+    const tRevenue =
+      Number(today.revenue || 0);
+
+    const changePct =
+      yRevenue > 0
+        ? ((tRevenue - yRevenue) / yRevenue) * 100
+        : (tRevenue > 0 ? 100 : 0);
+
+    pulse.signals.push({
+      type: "shopify_revenue_vs_yesterday",
+      level:
+        changePct <= -25
+          ? "warning"
+          : changePct >= 25
+            ? "positive"
+            : "info",
+      value_percent:
+        Number(changePct.toFixed(1)),
+      today_revenue:
+        tRevenue,
+      yesterday_revenue:
+        yRevenue
+    });
+  }
+
+  const emails =
+    pulse.sources.unread_emails?.data || [];
+
+  if (Array.isArray(emails)) {
+    const offerCount =
+      emails.filter(email =>
+        email?.possible_offer_inquiry
+      ).length;
+
+    pulse.signals.push({
+      type: "unread_email_load",
+      level:
+        offerCount > 0
+          ? "attention"
+          : emails.length >= 5
+            ? "warning"
+            : "info",
+      unread_count:
+        emails.length,
+      possible_offer_inquiries:
+        offerCount
+    });
+  }
+
+  const openOrders =
+    pulse.sources.open_orders?.data;
+
+  if (openOrders) {
+    pulse.signals.push({
+      type: "open_orders",
+      level:
+        Number(openOrders.count || 0) >= 25
+          ? "attention"
+          : "info",
+      count:
+        Number(openOrders.count || 0),
+      oldest_order_name:
+        openOrders.oldest_order_name || null,
+      oldest_order_created_at:
+        openOrders.oldest_order_created_at || null
+    });
+  }
+
+  return pulse;
 }
 
 
@@ -617,6 +776,17 @@ Wenn Mattl nach:
 - Erinnerungen
 - aktuellen Informationen
 fragt, verwende die verfügbaren Tools.
+
+BUSINESS PULSE / GESAMTSTATUS:
+Wenn Mattl breit nach seinem aktuellen Business fragt, zum Beispiel:
+- „Wie läuft mein Business heute?“
+- „Wie sieht es heute aus?“
+- „Gib mir einen Überblick über den Laden.“
+- „Was ist heute wichtig?“
+→ get_business_pulse
+Dieses Tool ist für einen schnellen Gesamtstatus gedacht und sammelt mehrere vorhandene Quellen parallel.
+Nenne zuerst die 2 bis 4 wichtigsten Erkenntnisse. Danach nur relevante Details.
+Erfinde keine fehlenden Werte. Wenn eine Quelle nicht erreichbar ist, sage das nur dann, wenn es die Antwort wesentlich beeinflusst.
 
 BRIEFING:
 Wenn Mattl „Briefing“, „Morning Briefing“, „Tagesbriefing“ oder sinngleich sagt:
@@ -1037,6 +1207,26 @@ const REALTIME_TOOLS = [
         }
       },
 
+      additionalProperties:
+        false
+    }
+  },
+
+
+  {
+    type:
+      "function",
+
+    name:
+      "get_business_pulse",
+
+    description:
+      "Liefert einen intelligenten Gesamtstatus für Druckelite24. Ruft Shopify heute/gestern, ungelesene Gmail-Nachrichten, offene Bestellungen, Wetter und Erinnerungen parallel ab und berechnet wichtige Signale. Für breite Fragen wie 'Wie läuft mein Business heute?'.",
+
+    parameters: {
+      type:
+        "object",
+      properties: {},
       additionalProperties:
         false
     }
@@ -8685,6 +8875,24 @@ app.post(
                 "Bearbeitet",
               instruction:
                 "Die ausgewählte Mail wurde nach Bearbeitet verschoben. Bestätige das Mattl kurz."
+            }
+          });
+        }
+
+
+        case "get_business_pulse": {
+
+          const pulse =
+            await getJarvisBusinessPulse();
+
+          return res.json({
+            ok:
+              true,
+            pulse,
+            result: {
+              ...pulse,
+              instruction:
+                "Gib Mattl einen kompakten Business-Gesamtstatus. Beginne mit den wichtigsten 2 bis 4 Erkenntnissen aus signals und den verfügbaren Quellen. Nutze nur gelieferte Live-Daten. Priorisiere Umsatz/Bestellungen, wichtige ungelesene Kunden- oder Angebotsmails, offene Bestellungen und fällige Erinnerungen. Wetter nur erwähnen, wenn es sinnvoll ist. Fehlende Quellen nicht erfinden."
             }
           });
         }
