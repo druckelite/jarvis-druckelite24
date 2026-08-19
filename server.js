@@ -12,7 +12,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V10.5-BARGE-IN-SHORT-REPLIES";
+  "V10.6-TRIPLE-SCREEN-VOICEFIX";
 
 
 /* =========================================================
@@ -24,7 +24,8 @@ const PUBLIC_FILES =
     "index.html",
     "app.js",
     "styles.css",
-    "Intro.mp3"
+    "Intro.mp3",
+    "launcher.html"
   ]);
 
 
@@ -9682,7 +9683,7 @@ app.get(
   ) => {
 
     return res.sendFile(
-      "index.html",
+      "launcher.html",
       {
 
         root:
