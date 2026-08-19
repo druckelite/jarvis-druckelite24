@@ -12,9 +12,19 @@
     content="Druckelite24 JARVIS Business Voice Assistant"
   />
   <title>Druckelite24 · JARVIS</title>
-  <link rel="stylesheet" href="styles.css?v=5.3.4-recovered" />
+  <link rel="stylesheet" href="styles.css?v=10.6-triple" />
 </head>
 <body>
+  <script>
+    (function(){
+      const allowed = new Set(["left", "center", "right", "single"]);
+      const requested = new URLSearchParams(location.search).get("screen") || "single";
+      const role = allowed.has(requested) ? requested : "single";
+      window.JARVIS_SCREEN_ROLE = role;
+      document.body.dataset.screenRole = role;
+      document.documentElement.dataset.screenRole = role;
+    })();
+  </script>
 
   <!-- ===================================================
        BOOT-OVERLAY
@@ -404,6 +414,29 @@
 
   <audio id="remoteAudio" autoplay playsinline></audio>
 
+  <script>
+    (function(){
+      const role = window.JARVIS_SCREEN_ROLE || "single";
+      const labels = {
+        left: ["BUSINESS WALL", "MONITOR LINKS · BUSINESS"],
+        center: ["JARVIS COMMAND CENTER", "MONITOR MITTE · VOICE CORE"],
+        right: ["COMMS & INFO", "MONITOR RECHTS · KOMMUNIKATION"],
+        single: ["JARVIS OS", "V10.6 · BUSINESS VOICE ASSISTANT"]
+      };
+      const label = labels[role] || labels.single;
+      const topTitle = document.querySelector(".top-title");
+      const topSub = document.querySelector(".top-sub");
+      if (topTitle) topTitle.textContent = label[0];
+      if (topSub) topSub.textContent = label[1];
+      if (role === "right") {
+        const mail = document.querySelector(".modern-mail");
+        const right = document.querySelector(".zone-right");
+        if (mail && right) right.insertBefore(mail, right.firstChild);
+      }
+      if (role !== "single") document.title = "JARVIS · " + label[0];
+    })();
+  </script>
+
 
   <!-- ===================================================
        HUD-SCRIPT: Boot, Uhr, Live-Daten, Welle, Datenstrom
@@ -574,8 +607,14 @@
         }
       }
 
-      loadWeek();
-      setInterval(loadWeek, 15 * 60 * 1000);
+      var jarvisScreenRole = window.JARVIS_SCREEN_ROLE || "single";
+      var showBusinessScreen = jarvisScreenRole === "left" || jarvisScreenRole === "single";
+      var showInfoScreen = jarvisScreenRole === "right" || jarvisScreenRole === "single";
+
+      if (showBusinessScreen) {
+        loadWeek();
+        setInterval(loadWeek, 15 * 60 * 1000);
+      }
 
 
       /* ---------- ECHTE SHOPIFY-DATEN ---------- */
@@ -646,8 +685,10 @@
         }
       }
 
-      loadShop();
-      setInterval(loadShop, 5 * 60 * 1000); // alle 5 Minuten
+      if (showBusinessScreen) {
+        loadShop();
+        setInterval(loadShop, 5 * 60 * 1000); // alle 5 Minuten
+      }
 
 
       /* ---------- ECHTES WETTER ---------- */
@@ -695,8 +736,10 @@
         }
       }
 
-      loadWeather();
-      setInterval(loadWeather, 15 * 60 * 1000); // alle 15 Minuten
+      if (showInfoScreen) {
+        loadWeather();
+        setInterval(loadWeather, 15 * 60 * 1000); // alle 15 Minuten
+      }
 
 
       /* ---------- WELLENFORM (Canvas) ---------- */
@@ -911,6 +954,6 @@
     })();
   </script>
 
-<script src="app.js?v=22"></script>
+<script src="app.js?v=10.6-triple"></script>
 </body>
 </html>
