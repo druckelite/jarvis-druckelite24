@@ -131,8 +131,23 @@ export function createMailRouter({ getAccessToken, apiKey, pollIntervalMs = 8000
     const entities = { "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&apos;": "'" };
     text = text.replace(/&nbsp;|&amp;|&lt;|&gt;|&quot;|&#39;|&apos;/g, m => entities[m]);
     text = text.replace(/&#(\d+);/g, (m, d) => String.fromCharCode(Number(d)));
-    text = text.replace(/[ \t]+/g, " ").replace(/\n[ \t]+/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
-    return text;
+    // Zeilenbasiert bereinigen statt regex-Ketten: entfernt Leerzeilen-Wildwuchs aus
+    // tabellenbasierten Mail-Templates zuverlässig (max. 1 Leerzeile zwischen Absätzen,
+    // keine Leerzeilen am Anfang/Ende).
+    const lines = text.split("\n").map(l => l.replace(/[ \t]+/g, " ").trim());
+    const cleaned = [];
+    let blank = false;
+    for (const line of lines) {
+      if (line === "") {
+        if (!blank && cleaned.length) cleaned.push("");
+        blank = true;
+      } else {
+        cleaned.push(line);
+        blank = false;
+      }
+    }
+    while (cleaned.length && cleaned[cleaned.length - 1] === "") cleaned.pop();
+    return cleaned.join("\n");
   }
 
   function looksLikeBrokenPlainText(text) {
