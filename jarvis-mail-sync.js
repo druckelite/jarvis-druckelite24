@@ -105,13 +105,20 @@ export function createMailRouter({ getAccessToken, apiKey, pollIntervalMs = 8000
 
   function collectAttachments(payload, out = []) {
     if (!payload) return out;
-    if (payload.filename && payload.body?.attachmentId) {
-      out.push({
+    const isAttachmentPart = payload.filename && (payload.body?.attachmentId || payload.body?.data) &&
+      !(payload.mimeType === "text/plain" || payload.mimeType === "text/html");
+    if (isAttachmentPart) {
+      const entry = {
         filename: payload.filename,
         mimeType: payload.mimeType || "application/octet-stream",
         size: payload.body.size || 0,
-        attachmentId: payload.body.attachmentId
-      });
+        attachmentId: payload.body.attachmentId || null
+      };
+      // Kleine Anhänge liefert Gmail manchmal direkt inline mit, ohne separaten Abruf nötig
+      if (!entry.attachmentId && payload.body?.data) {
+        entry.inlineDataBase64 = String(payload.body.data).replace(/-/g, "+").replace(/_/g, "/");
+      }
+      out.push(entry);
     }
     if (payload.parts) for (const part of payload.parts) collectAttachments(part, out);
     return out;
