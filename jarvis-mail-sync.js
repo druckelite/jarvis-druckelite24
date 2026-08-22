@@ -289,5 +289,74 @@ export function createMailRouter({ getAccessToken, apiKey, pollIntervalMs = 8000
     res.json({ ok: true, until: snoozeStore[messageId].until });
   });
 
+  // ---- KI-Antwortvorschlag (läuft komplett auf dem Server, kein Claude.ai nötig) ----
+  function extractResponseText(data) {
+    if (!data) return "";
+    const direct = String(data.output_text || "").trim();
+    if (direct) return direct;
+    const pieces = [];
+    for (const item of data.output || []) {
+      if (item?.type !== "message") continue;
+      for (const content of item.content || []) {
+        if (content?.type === "output_text" && content?.text) pieces.push(content.text);
+      }
+    }
+    return pieces.join("\n").trim();
+  }
+
+  const TEMPLATE_PROMPTS = {
+    allgemein: "Formuliere eine freundliche, allgemeine Antwort auf diese E-Mail im Namen von Matthias (Mattl) von Druckelite24.",
+    angebot: "Formuliere eine Antwort, die ein Angebot ankündigt bzw. begleitet: Bedanke dich für die Anfrage, fasse kurz zusammen was bestellt/angefragt wurde, nenne dass die Kalkulation als Angebot beigefügt/folgt, und frage nach fehlenden Angaben (Stückzahl, Größen, Logo-Position, Wunschtermin) falls relevant.",
+    druckvorschau: "Formuliere eine Antwort, die eine Druckvorschau begleitet: Bedanke dich, weise darauf hin dass die Druckvorschau/Mockup anbei bzw. verlinkt ist, bitte um Freigabe oder Rückmeldung zu Änderungswünschen, nenne dass nach Freigabe die Produktion startet."
+  };
+  const TONE_PROMPTS = {
+    "freundlich-professionell": "Ton: freundlich, professionell, Sie-Anrede zum Kunden.",
+    kurz: "Ton: sehr kurz und direkt, maximal 4 Sätze.",
+    foermlich: "Ton: förmlich, konsequente Sie-Anrede, zurückhaltend."
+  };
+
+  router.post("/suggest", async (req, res) => {
+    if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY fehlt auf dem Server." });
+    const { template = "allgemein", instruction = "", tone = "freundlich-professionell", from = "", subject = "", bodyText = "" } = req.body;
+    try {
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: process.env.OPENAI_TEXT_MODEL || "gpt-5.6-terra",
+          instructions: `Du bist der E-Mail-Assistent von Druckelite24, einer Textildruckerei & Stickerei in Ludwigshafen (B2B: Firmen, Vereine, Teams; DTF-Druck, Flex, Stick, Siebdruck). Du schreibst im Namen von Matthias ("Mattl"). ${TONE_PROMPTS[tone] || ""} Schreibe NUR den E-Mail-Text (kein Betreff, keine Meta-Kommentare), auf Deutsch. Grußformel am Ende: "Viele Grüße\\nMatthias / Druckelite24". Antworte ausschließlich als gültiges JSON mit dem Feld text.`,
+          input: `${TEMPLATE_PROMPTS[template] || TEMPLATE_PROMPTS.allgemein}\n\n${instruction ? "Zusätzliche Vorgabe des Nutzers: " + instruction + "\n\n" : ""}Ursprüngliche E-Mail von ${from}:\nBetreff: ${subject}\n\n${bodyText}`,
+          reasoning: { effort: "low" },
+          text: {
+            format: {
+              type: "json_schema",
+              name: "mail_reply_draft",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: { text: { type: "string" } },
+                required: ["text"],
+                additionalProperties: false
+              }
+            }
+          },
+          store: false
+        }),
+        signal: AbortSignal.timeout(30000)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || "Antwortvorschlag konnte nicht erstellt werden.");
+      const parsed = JSON.parse(extractResponseText(data));
+      const text = String(parsed?.text || "").trim();
+      if (!text) throw new Error("Antwortvorschlag ist leer.");
+      res.json({ text });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   return router;
 }
