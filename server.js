@@ -6390,10 +6390,22 @@ app.get(
     res
   ) => {
 
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Content-Type, x-jarvis-key");
+
     try {
       const conversations =
         await getSuperchatConversations(
           20
+        );
+
+      const limit =
+        Math.max(
+          1,
+          Math.min(
+            20,
+            Number(req.query.limit) || 5
+          )
         );
 
       return res.json({
@@ -6406,7 +6418,7 @@ app.get(
         conversations:
           conversations.slice(
             0,
-            5
+            limit
           )
       });
 
@@ -6439,6 +6451,9 @@ app.get(
     res
   ) => {
 
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Content-Type, x-jarvis-key");
+
     try {
       const conversation =
         await getSuperchatConversation(
@@ -6463,6 +6478,79 @@ app.get(
             error.message ||
             "Superchat-Chat konnte nicht geladen werden."
         });
+    }
+  }
+);
+
+
+/* Preflight (CORS) fuer die drei Superchat-Routen, die der
+   Mail-Client / das Command Center von aussen aufruft. */
+app.options(
+  [
+    "/api/superchat-conversations",
+    "/api/superchat-conversation/:id",
+    "/api/superchat-send"
+  ],
+  (req, res) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Content-Type, x-jarvis-key");
+    res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.sendStatus(204);
+  }
+);
+
+
+/* Direktes Senden einer Text-Antwort aus dem Command Center /
+   Chat-UI heraus (kein Sprachbefehl noetig, eigener Bestaetigungs-
+   Dialog passiert bereits im Frontend). Nutzt dieselbe Superchat-
+   REST-API wie sendSuperchatDraft(). */
+app.post(
+  "/api/superchat-send",
+  async (req, res) => {
+
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Content-Type, x-jarvis-key");
+
+    const providedKey = req.headers["x-jarvis-key"];
+    if (process.env.MAIL_API_KEY && providedKey !== process.env.MAIL_API_KEY) {
+      return res.status(401).json({ ok: false, error: "Ungültiger oder fehlender API-Key" });
+    }
+
+    try {
+      const { contactId, channelId, text } = req.body || {};
+
+      const cleanText = String(text || "").trim();
+      if (!cleanText) {
+        return res.status(400).json({ ok: false, error: "Kein Text angegeben." });
+      }
+
+      const cleanContactId = String(contactId || "").trim();
+      if (!cleanContactId) {
+        return res.status(400).json({ ok: false, error: "Kontakt-ID fehlt." });
+      }
+
+      const resolvedChannelId =
+        channelId || (await getSuperchatWhatsAppChannelId());
+
+      const data = await superchatRequest(
+        "/messages",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            to: [{ identifier: cleanContactId }],
+            from: { channel_id: resolvedChannelId },
+            content: { type: "text", text: cleanText }
+          })
+        }
+      );
+
+      return res.json({ ok: true, superchat_response: data });
+    } catch (error) {
+      console.error("[SUPERCHAT SEND ERROR]", error);
+      return res.status(500).json({
+        ok: false,
+        error: error.message || "Nachricht konnte nicht gesendet werden."
+      });
     }
   }
 );
