@@ -103,6 +103,20 @@ export function createMailRouter({ getAccessToken, apiKey, pollIntervalMs = 8000
     return "";
   }
 
+  function collectAttachments(payload, out = []) {
+    if (!payload) return out;
+    if (payload.filename && payload.body?.attachmentId) {
+      out.push({
+        filename: payload.filename,
+        mimeType: payload.mimeType || "application/octet-stream",
+        size: payload.body.size || 0,
+        attachmentId: payload.body.attachmentId
+      });
+    }
+    if (payload.parts) for (const part of payload.parts) collectAttachments(part, out);
+    return out;
+  }
+
   function buildRawMessage({ to, subject, body, inReplyTo }) {
     const lines = [
       `To: ${to}`,
@@ -214,8 +228,17 @@ export function createMailRouter({ getAccessToken, apiKey, pollIntervalMs = 8000
         to: headers.To || "",
         subject: headers.Subject || "(kein Betreff)",
         date: headers.Date || "",
-        bodyText: bodyText.slice(0, 6000)
+        bodyText: bodyText.slice(0, 6000),
+        attachments: collectAttachments(msg.payload)
       });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  router.get("/attachment/:messageId/:attachmentId", async (req, res) => {
+    try {
+      const att = await gmailFetch(`/messages/${req.params.messageId}/attachments/${req.params.attachmentId}`);
+      const dataBase64 = String(att.data || "").replace(/-/g, "+").replace(/_/g, "/");
+      res.json({ dataBase64, size: att.size || 0 });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -282,6 +305,13 @@ export function createMailRouter({ getAccessToken, apiKey, pollIntervalMs = 8000
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  router.post("/mark-unread", async (req, res) => {
+    try {
+      await gmailFetch(`/messages/${req.body.messageId}/modify`, { method: "POST", body: JSON.stringify({ addLabelIds: ["UNREAD"] }) });
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   router.post("/snooze", (req, res) => {
     const { messageId, hours, subject, from } = req.body;
     if (!messageId || !hours) return res.status(400).json({ error: "messageId und hours erforderlich" });
@@ -304,20 +334,21 @@ export function createMailRouter({ getAccessToken, apiKey, pollIntervalMs = 8000
     return pieces.join("\n").trim();
   }
 
-  const TEMPLATE_PROMPTS = {
-    allgemein: "Formuliere eine freundliche, allgemeine Antwort auf diese E-Mail im Namen von Matthias (Mattl) von Druckelite24.",
-    angebot: "Formuliere eine Antwort, die ein Angebot ankündigt bzw. begleitet: Bedanke dich für die Anfrage, fasse kurz zusammen was bestellt/angefragt wurde, nenne dass die Kalkulation als Angebot beigefügt/folgt, und frage nach fehlenden Angaben (Stückzahl, Größen, Logo-Position, Wunschtermin) falls relevant.",
-    druckvorschau: "Formuliere eine Antwort, die eine Druckvorschau begleitet: Bedanke dich, weise darauf hin dass die Druckvorschau/Mockup anbei bzw. verlinkt ist, bitte um Freigabe oder Rückmeldung zu Änderungswünschen, nenne dass nach Freigabe die Produktion startet."
-  };
   const TONE_PROMPTS = {
     "freundlich-professionell": "Ton: freundlich, professionell, Sie-Anrede zum Kunden.",
     kurz: "Ton: sehr kurz und direkt, maximal 4 Sätze.",
-    foermlich: "Ton: förmlich, konsequente Sie-Anrede, zurückhaltend."
+    verkauf: "Ton: verkaufsorientiert und einladend – hebe passenden Zusatznutzen hervor (z.B. Mengenrabatt bei größerer Stückzahl, kostenlose Druckvorschau), ohne aufdringlich zu wirken."
   };
+
+  const BUSINESS_KNOWLEDGE = `Geschäftswissen von Druckelite24 (nur einbauen, wenn es zur Anfrage passt – keine Preise oder Termine erfinden, die hier nicht stehen):
+- Lieferzeit nach Druckfreigabe: ca. 5–8 Werktage.
+- Mengenrabatt-Staffel: ab 5 Stück 5% Rabatt, steigend bis ab 100 Stück 30% Rabatt.
+- Vor Produktionsbeginn gibt es immer eine kostenlose Druckvorschau/Mockup zur Freigabe.
+- Leistungen: DTF-Druck, Flexdruck, Stickerei, Siebdruck.`;
 
   router.post("/suggest", async (req, res) => {
     if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY fehlt auf dem Server." });
-    const { template = "allgemein", instruction = "", tone = "freundlich-professionell", from = "", subject = "", bodyText = "" } = req.body;
+    const { instruction = "", tone = "freundlich-professionell", from = "", subject = "", bodyText = "" } = req.body;
     try {
       const response = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
@@ -327,8 +358,17 @@ export function createMailRouter({ getAccessToken, apiKey, pollIntervalMs = 8000
         },
         body: JSON.stringify({
           model: process.env.OPENAI_TEXT_MODEL || "gpt-5.6-terra",
-          instructions: `Du bist der E-Mail-Assistent von Druckelite24, einer Textildruckerei & Stickerei in Ludwigshafen (B2B: Firmen, Vereine, Teams; DTF-Druck, Flex, Stick, Siebdruck). Du schreibst im Namen von Matthias ("Mattl"). ${TONE_PROMPTS[tone] || ""} Schreibe NUR den E-Mail-Text (kein Betreff, keine Meta-Kommentare), auf Deutsch. Grußformel am Ende: "Viele Grüße\\nMatthias / Druckelite24". Antworte ausschließlich als gültiges JSON mit dem Feld text.`,
-          input: `${TEMPLATE_PROMPTS[template] || TEMPLATE_PROMPTS.allgemein}\n\n${instruction ? "Zusätzliche Vorgabe des Nutzers: " + instruction + "\n\n" : ""}Ursprüngliche E-Mail von ${from}:\nBetreff: ${subject}\n\n${bodyText}`,
+          instructions: `Du bist der E-Mail-Assistent von Druckelite24, einer Textildruckerei & Stickerei in Ludwigshafen (B2B: Firmen, Vereine, Teams). Du schreibst im Namen von Matthias ("Mattl"). ${TONE_PROMPTS[tone] || TONE_PROMPTS["freundlich-professionell"]}
+
+${BUSINESS_KNOWLEDGE}
+
+Arbeitsschritte:
+1. Bestimme die Kategorie der E-Mail: "angebot" (Anfrage/Preis/Bestellung), "druckvorschau" (Freigabe/Design/Mockup), "allgemein" (sonstige Kundenanfrage) oder "sonstiges" (z.B. automatische Shop-Benachrichtigung, Spam, kein Kundenanliegen).
+2. Formuliere in "insight" einen kurzen Satz, was der Kunde konkret möchte bzw. was noch fehlt (z.B. Stückzahl, Logo-Format).
+3. Schreibe in "text" NUR den E-Mail-Antworttext (kein Betreff, keine Meta-Kommentare), auf Deutsch, passend zur Kategorie. Grußformel am Ende: "Viele Grüße\\nMatthias / Druckelite24".${instruction ? `\n\nZusätzliche Vorgabe des Nutzers, unbedingt berücksichtigen: ${instruction}` : ""}
+
+Antworte ausschließlich als gültiges JSON mit den Feldern category, insight, text.`,
+          input: `E-Mail von ${from}:\nBetreff: ${subject}\n\n${bodyText}`,
           reasoning: { effort: "low" },
           text: {
             format: {
@@ -337,8 +377,12 @@ export function createMailRouter({ getAccessToken, apiKey, pollIntervalMs = 8000
               strict: true,
               schema: {
                 type: "object",
-                properties: { text: { type: "string" } },
-                required: ["text"],
+                properties: {
+                  category: { type: "string", enum: ["angebot", "druckvorschau", "allgemein", "sonstiges"] },
+                  insight: { type: "string" },
+                  text: { type: "string" }
+                },
+                required: ["category", "insight", "text"],
                 additionalProperties: false
               }
             }
@@ -352,7 +396,7 @@ export function createMailRouter({ getAccessToken, apiKey, pollIntervalMs = 8000
       const parsed = JSON.parse(extractResponseText(data));
       const text = String(parsed?.text || "").trim();
       if (!text) throw new Error("Antwortvorschlag ist leer.");
-      res.json({ text });
+      res.json({ text, insight: String(parsed?.insight || "").trim(), category: parsed?.category || "allgemein" });
     } catch (e) {
       res.status(500).json({ error: e.message });
     }
