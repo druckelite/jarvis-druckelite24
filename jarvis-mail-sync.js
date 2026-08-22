@@ -103,6 +103,58 @@ export function createMailRouter({ getAccessToken, apiKey, pollIntervalMs = 8000
     return "";
   }
 
+  function extractHtmlPart(payload) {
+    if (!payload) return "";
+    if (payload.mimeType === "text/html" && payload.body?.data) {
+      return Buffer.from(payload.body.data, "base64").toString("utf-8");
+    }
+    if (payload.parts) {
+      for (const part of payload.parts) {
+        const t = extractHtmlPart(part);
+        if (t) return t;
+      }
+    }
+    return "";
+  }
+
+  function stripHtmlToText(html) {
+    if (!html) return "";
+    let text = html
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<!--[\s\S]*?-->/g, "");
+    text = text
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/(p|div|tr|table|h[1-6])>/gi, "\n")
+      .replace(/<li[^>]*>/gi, "• ");
+    text = text.replace(/<[^>]+>/g, "");
+    const entities = { "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&apos;": "'" };
+    text = text.replace(/&nbsp;|&amp;|&lt;|&gt;|&quot;|&#39;|&apos;/g, m => entities[m]);
+    text = text.replace(/&#(\d+);/g, (m, d) => String.fromCharCode(Number(d)));
+    text = text.replace(/[ \t]+/g, " ").replace(/\n[ \t]+/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+    return text;
+  }
+
+  function looksLikeBrokenPlainText(text) {
+    if (!text || !text.trim()) return true;
+    // Zählt CSS-artige Regeln (z.B. ".klasse { farbe: wert; }") - mehrere davon = kaputte "Nur-Text"-Version
+    const cssHits = (text.match(/[.#][\w-]+\s*\{[^}]*:[^;{}]*;[^}]*\}/g) || []).length;
+    if (cssHits >= 2) return true;
+    const looksLikeStyleBlock = /@media|^\s*[.#a-zA-Z0-9_-]+\s*\{/m.test(text.slice(0, 200));
+    return looksLikeStyleBlock;
+  }
+
+  function extractBodyText(payload) {
+    const plain = extractPlainText(payload);
+    if (plain && !looksLikeBrokenPlainText(plain)) return plain;
+    const html = extractHtmlPart(payload);
+    if (html) {
+      const fromHtml = stripHtmlToText(html);
+      if (fromHtml) return fromHtml;
+    }
+    return plain || "";
+  }
+
   function collectAttachments(payload, out = []) {
     if (!payload) return out;
     const isAttachmentPart = payload.filename && (payload.body?.attachmentId || payload.body?.data) &&
@@ -147,7 +199,8 @@ export function createMailRouter({ getAccessToken, apiKey, pollIntervalMs = 8000
       subject: headers.Subject || "(kein Betreff)",
       snippet: msg.snippet || "",
       date: headers.Date || "",
-      unread: (msg.labelIds || []).includes("UNREAD")
+      unread: (msg.labelIds || []).includes("UNREAD"),
+      labelIds: msg.labelIds || []
     };
   }
 
@@ -228,7 +281,7 @@ export function createMailRouter({ getAccessToken, apiKey, pollIntervalMs = 8000
     try {
       const msg = await gmailFetch(`/messages/${req.params.id}?format=full`);
       const headers = Object.fromEntries((msg.payload?.headers || []).map(h => [h.name, h.value]));
-      const bodyText = extractPlainText(msg.payload) || msg.snippet || "";
+      const bodyText = extractBodyText(msg.payload) || msg.snippet || "";
       res.json({
         from: (headers.From || "").replace(/<.*>/, "").trim() || headers.From,
         fromEmail: parseEmail(headers.From || ""),
@@ -355,7 +408,15 @@ export function createMailRouter({ getAccessToken, apiKey, pollIntervalMs = 8000
 
   router.post("/suggest", async (req, res) => {
     if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: "OPENAI_API_KEY fehlt auf dem Server." });
-    const { instruction = "", tone = "freundlich-professionell", from = "", subject = "", bodyText = "" } = req.body;
+    const { instruction = "", tone = "freundlich-professionell", template = "", from = "", subject = "", bodyText = "" } = req.body;
+    const FORCED_TEMPLATES = {
+      allgemein: "angebot: nein, druckvorschau: nein. Behandle die E-Mail als allgemeine Kundenanfrage, unabhängig davon, was sie inhaltlich enthält.",
+      angebot: "Behandle die E-Mail zwingend als Angebotsanfrage: Bedanke dich für die Anfrage/Bestellung, nenne dass die Kalkulation als Angebot folgt, frage nach fehlenden Angaben (Stückzahl, Größen, Logo-Position, Wunschtermin) falls relevant.",
+      druckvorschau: "Behandle die E-Mail zwingend als Druckvorschau-Thema: Bedanke dich, weise darauf hin dass die Druckvorschau/das Mockup anbei bzw. verlinkt ist, bitte um Freigabe oder Rückmeldung zu Änderungswünschen."
+    };
+    const forcedInstruction = FORCED_TEMPLATES[template]
+      ? `\n\nWICHTIG: Der Nutzer hat die Vorlage "${template}" manuell ausgewählt – ignoriere deine eigene Kategorie-Einschätzung für den Antworttext und setze category auf "${template}". ${FORCED_TEMPLATES[template]}`
+      : "";
     try {
       const response = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
@@ -372,7 +433,7 @@ ${BUSINESS_KNOWLEDGE}
 Arbeitsschritte:
 1. Bestimme die Kategorie der E-Mail: "angebot" (Anfrage/Preis/Bestellung), "druckvorschau" (Freigabe/Design/Mockup), "allgemein" (sonstige Kundenanfrage) oder "sonstiges" (z.B. automatische Shop-Benachrichtigung, Spam, kein Kundenanliegen).
 2. Formuliere in "insight" einen kurzen Satz, was der Kunde konkret möchte bzw. was noch fehlt (z.B. Stückzahl, Logo-Format).
-3. Schreibe in "text" NUR den E-Mail-Antworttext (kein Betreff, keine Meta-Kommentare), auf Deutsch, passend zur Kategorie. Grußformel am Ende: "Viele Grüße\\nMatthias / Druckelite24".${instruction ? `\n\nZusätzliche Vorgabe des Nutzers, unbedingt berücksichtigen: ${instruction}` : ""}
+3. Schreibe in "text" NUR den E-Mail-Antworttext (kein Betreff, keine Meta-Kommentare), auf Deutsch, passend zur Kategorie. Grußformel am Ende: "Viele Grüße\\nMatthias / Druckelite24".${instruction ? `\n\nZusätzliche Vorgabe des Nutzers, unbedingt berücksichtigen: ${instruction}` : ""}${forcedInstruction}
 
 Antworte ausschließlich als gültiges JSON mit den Feldern category, insight, text.`,
           input: `E-Mail von ${from}:\nBetreff: ${subject}\n\n${bodyText}`,
