@@ -5,6 +5,7 @@
    ========================================================= */
 
 import express from "express";
+import { createMailRouter } from "./jarvis-mail-sync.js";
 
 const app = express();
 
@@ -9899,6 +9900,20 @@ app.get(
       }
     );
   }
+);
+
+
+/* =========================================================
+   MAIL-CLIENT (Druckelite24 Mail) · JARVIS-SYNC
+   ========================================================= */
+
+app.use(
+  "/api/mail",
+  createMailRouter({
+    getAccessToken: getGmailAccessToken,
+    apiKey: process.env.MAIL_API_KEY,
+    pollIntervalMs: 8000
+  })
 );
 
 
