@@ -1,7 +1,7 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
 
-   V12.4 · SHOPIFY AGENT
+   V12.5 · MAIL INTELLIGENCE
    ========================================================= */
 
 import express from "express";
@@ -13,8 +13,10 @@ const app = express();
 const PORT =
   process.env.PORT || 3000;
 
+const JARVIS_STARTED_AT = Date.now();
+
 const JARVIS_VERSION =
-  "V12.4-SHOPIFY-AGENT";
+  "V12.5-MAIL-INTELLIGENCE";
 
 
 /* =========================================================
@@ -1055,6 +1057,28 @@ const REALTIME_TOOLS = [
           ]
         }
       },
+
+      additionalProperties:
+        false
+    }
+  },
+
+
+  {
+    type:
+      "function",
+
+    name:
+      "get_pending_email_drafts",
+
+    description:
+      "Liest alle aktuell in Gmail gespeicherten, noch nicht gesendeten Entwürfe. Nutze dieses Tool, wenn Mattl nach offenen Entwürfen fragt oder prüfen möchte, was eventuell noch gesendet werden muss.",
+
+    parameters: {
+      type:
+        "object",
+
+      properties: {},
 
       additionalProperties:
         false
@@ -7121,7 +7145,7 @@ async function getUnreadEmails() {
    im Gmail-Posteingang liegen.
    ========================================================= */
 
-async function getLatestInboxEmails() {
+async function getLatestInboxEmails(limit = 25) {
 
   const token =
     await getGmailAccessToken();
@@ -7129,7 +7153,7 @@ async function getLatestInboxEmails() {
 
   const listResponse =
     await fetch(
-      "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in%3Ainbox&maxResults=5",
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=in%3Ainbox&maxResults=${Math.max(1, Math.min(50, Number(limit) || 25))}`,
       {
         headers: {
           Authorization:
@@ -8003,6 +8027,237 @@ async function sendGmailDraft(
 }
 
 
+
+/* =========================================================
+   GMAIL · OFFENE ENTWÜRFE / ERINNERUNG
+   ========================================================= */
+
+async function getPendingGmailDrafts(
+  limit = 30
+) {
+
+  const token =
+    await getGmailAccessToken();
+
+
+  const response =
+    await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/drafts?maxResults=${Math.max(1, Math.min(100, Number(limit) || 30))}`,
+      {
+        headers: {
+          Authorization:
+            `Bearer ${token}`
+        },
+        signal:
+          timeoutSignal(
+            12000
+          )
+      }
+    );
+
+
+  const data =
+    await response.json();
+
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error?.message ||
+      "Gmail-Entwürfe konnten nicht gelesen werden."
+    );
+  }
+
+
+  const drafts =
+    [];
+
+
+  for (
+    const ref of
+    data.drafts || []
+  ) {
+
+    try {
+
+      const detailResponse =
+        await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/drafts/${encodeURIComponent(ref.id)}?format=metadata`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`
+            },
+            signal:
+              timeoutSignal(
+                10000
+              )
+          }
+        );
+
+
+      const detail =
+        await detailResponse.json();
+
+
+      if (!detailResponse.ok) {
+        continue;
+      }
+
+
+      const message =
+        detail.message || {};
+
+
+      const headers =
+        message.payload?.headers || [];
+
+
+      drafts.push({
+        draft_id:
+          detail.id,
+        message_id:
+          message.id || null,
+        thread_id:
+          message.threadId || null,
+        to:
+          getGmailHeader(
+            headers,
+            "To"
+          ) || "",
+        subject:
+          getGmailHeader(
+            headers,
+            "Subject"
+          ) || "(kein Betreff)",
+        date:
+          getGmailHeader(
+            headers,
+            "Date"
+          ) || null,
+        snippet:
+          message.snippet || ""
+      });
+
+    } catch (
+      error
+    ) {
+      console.warn(
+        "[GMAIL DRAFT DETAIL WARN]",
+        error
+      );
+    }
+  }
+
+
+  return drafts;
+}
+
+
+let lastDraftReminderAt =
+  0;
+
+
+async function getDraftReminderNotice() {
+
+  const reminderAfterMinutes =
+    Math.max(
+      5,
+      Number(
+        process.env
+          .EMAIL_DRAFT_REMINDER_MINUTES ||
+        30
+      )
+    );
+
+
+  const cooldownMinutes =
+    Math.max(
+      15,
+      Number(
+        process.env
+          .EMAIL_DRAFT_REMINDER_COOLDOWN_MINUTES ||
+        120
+      )
+    );
+
+
+  if (
+    Date.now() -
+      lastDraftReminderAt <
+      cooldownMinutes *
+        60000
+  ) {
+    return null;
+  }
+
+
+  const drafts =
+    await getPendingGmailDrafts(
+      30
+    );
+
+
+  if (
+    !drafts.length
+  ) {
+    return null;
+  }
+
+
+  /*
+    Gmail liefert bei Draft-Metadaten nicht immer ein belastbares createdAt.
+    Daher erinnert JARVIS nach der konfigurierten Schonzeit ab Serverlauf
+    bzw. nach dem letzten Hinweis an vorhandene Entwürfe.
+  */
+  const serverAgeMinutes =
+    (
+      Date.now() -
+      JARVIS_STARTED_AT
+    ) /
+    60000;
+
+
+  if (
+    serverAgeMinutes <
+      reminderAfterMinutes
+  ) {
+    return null;
+  }
+
+
+  lastDraftReminderAt =
+    Date.now();
+
+
+  const subjects =
+    drafts
+      .slice(
+        0,
+        3
+      )
+      .map(
+        draft =>
+          draft.subject
+      )
+      .filter(Boolean);
+
+
+  return {
+    count:
+      drafts.length,
+    drafts:
+      drafts.slice(
+        0,
+        10
+      ),
+    text:
+      drafts.length === 1
+        ? `Chef, in Gmail liegt noch ein Entwurf, der eventuell noch raus muss: ${subjects[0] || "ohne Betreff"}.`
+        : `Chef, in Gmail liegen noch ${drafts.length} Entwürfe, die eventuell noch raus müssen. ${subjects.length ? `Oben dabei: ${subjects.join("; ")}.` : ""}`
+  };
+}
+
+
 /* =========================================================
    WEATHER
    ========================================================= */
@@ -8584,6 +8839,31 @@ app.post(
                 email.body,
               instruction:
                 "Die vollständige Mail ist im HUD geöffnet. Wenn Mattl ausdrücklich 'lies sie vor' sagt, darfst du den Inhalt natürlich vorlesen."
+            }
+          });
+        }
+
+
+        case "get_pending_email_drafts": {
+
+          const drafts =
+            await getPendingGmailDrafts(
+              50
+            );
+
+
+          return res.json({
+            ok:
+              true,
+            drafts,
+            result: {
+              count:
+                drafts.length,
+              drafts,
+              instruction:
+                drafts.length
+                  ? "Nenne Mattl kompakt die noch vorhandenen Gmail-Entwürfe und erinnere ihn daran, dass diese eventuell noch gesendet werden müssen. Sende keinen Entwurf ohne ausdrücklichen Sende-Befehl."
+                  : "Es gibt aktuell keine offenen Gmail-Entwürfe."
             }
           });
         }
@@ -9288,7 +9568,9 @@ app.post(
           ) {
 
             const baselineEmails =
-              await getUnreadEmails();
+              await getLatestInboxEmails(
+                25
+              );
 
 
             for (
@@ -9347,8 +9629,14 @@ app.post(
             await autoMoveObviousAdvertising();
 
 
+          /*
+            ALLE Mails im Posteingang lesen — unabhängig davon,
+            ob sie bereits als gelesen markiert wurden.
+          */
           const emails =
-            await getUnreadEmails();
+            await getLatestInboxEmails(
+              25
+            );
 
 
           const fresh =
@@ -9364,6 +9652,15 @@ app.post(
             fresh.length
           ) {
 
+            /*
+              Jede neue Inbox-Mail wird vollständig geöffnet,
+              damit JARVIS sie wirklich gelesen hat und nicht
+              nur Subject/Snippet kennt.
+            */
+            const fullyRead =
+              [];
+
+
             for (
               const email of
               fresh
@@ -9372,14 +9669,60 @@ app.post(
               notifiedEmailIds.add(
                 email.id
               );
+
+
+              try {
+
+                const full =
+                  await getGmailMessageById(
+                    email.id
+                  );
+
+
+                full.possible_offer_inquiry =
+                  looksLikeOffer({
+                    subject:
+                      full.subject,
+                    snippet:
+                      full.body
+                  });
+
+
+                fullyRead.push(
+                  full
+                );
+
+              } catch (
+                readError
+              ) {
+
+                fullyRead.push(
+                  email
+                );
+              }
             }
 
 
             const offerCount =
-              fresh.filter(
+              fullyRead.filter(
                 email =>
                   email.possible_offer_inquiry
               ).length;
+
+
+            const importantPreview =
+              fullyRead
+                .slice(
+                  0,
+                  3
+                )
+                .map(
+                  email =>
+                    `${email.from}: ${email.subject}`
+                )
+                .join(
+                  "; "
+                );
 
 
             return res.json({
@@ -9393,14 +9736,18 @@ app.post(
               text:
                 `${
                   fresh.length === 1
-                    ? "Mattl, du hast eine neue ungelesene Mail."
-                    : `Mattl, du hast ${fresh.length} neue ungelesene Mails.`
+                    ? "Mattl, du hast eine neue Mail im Posteingang."
+                    : `Mattl, du hast ${fresh.length} neue Mails im Posteingang.`
                 }${
                   offerCount === 1
                     ? " Eine davon sieht nach einer Angebots- oder Preisanfrage aus."
                     : offerCount > 1
                       ? ` ${offerCount} davon sehen nach Angebots- oder Preisanfragen aus.`
                       : ""
+                }${
+                  importantPreview
+                    ? ` Kurzüberblick: ${importantPreview}.`
+                    : ""
                 }${
                   autoMovedAdvertising.length === 1
                     ? " Zusätzlich habe ich eine eindeutige Werbemail nach Bearbeitet verschoben."
@@ -9442,6 +9789,48 @@ app.post(
 
 
       /* Offene Shopify-Bestellungen werden bewusst nicht proaktiv vorgelesen. */
+
+
+      /*
+        Offene Gmail-Entwürfe: nicht nerven, aber regelmäßig daran erinnern.
+        Standard: frühestens nach 30 Minuten, dann maximal alle 120 Minuten.
+      */
+      if (
+        isGmailConfigured()
+      ) {
+
+        try {
+
+          const draftNotice =
+            await getDraftReminderNotice();
+
+
+          if (
+            draftNotice
+          ) {
+
+            return res.json({
+              ok:
+                true,
+              hasNotice:
+                true,
+              text:
+                draftNotice.text,
+              draftReminder:
+                draftNotice
+            });
+          }
+
+        } catch (
+          draftError
+        ) {
+
+          console.warn(
+            "[GMAIL DRAFT REMINDER ERROR]",
+            draftError
+          );
+        }
+      }
 
 
       return res.json({
@@ -9663,10 +10052,799 @@ app.get(
 app.use(
   "/api/mail",
   createMailRouter({
-    getAccessToken: getGmailAccessToken,
-    apiKey: process.env.MAIL_API_KEY,
-    pollIntervalMs: 8000
+    getAccessToken:
+      getGmailAccessToken,
+
+    apiKey:
+      process.env.MAIL_API_KEY,
+
+    pollIntervalMs:
+      Number(
+        process.env
+          .MAIL_POLL_INTERVAL_MS ||
+        8000
+      ),
+
+    openaiApiKey:
+      process.env.OPENAI_API_KEY,
+
+    openaiModel:
+      process.env.OPENAI_TEXT_MODEL ||
+      "gpt-5.6",
+
+    readStore:
+      async key => {
+
+        const value =
+          await readJarvisField(
+            key
+          );
+
+
+        /*
+          readJarvisField ist historisch array-orientiert.
+          Für mail_snoozed speichern wir deshalb ein Objekt als
+          erstes Element.
+        */
+        if (
+          key ===
+          "mail_snoozed"
+        ) {
+          return (
+            Array.isArray(value) &&
+            value[0] &&
+            typeof value[0] ===
+              "object"
+          )
+            ? value[0]
+            : {};
+        }
+
+
+        return value;
+      },
+
+    writeStore:
+      async (
+        key,
+        value
+      ) => {
+
+        if (
+          key ===
+          "mail_snoozed"
+        ) {
+          return writeJarvisField(
+            key,
+            [
+              value
+            ]
+          );
+        }
+
+
+        return writeJarvisField(
+          key,
+          value
+        );
+      }
   })
+);
+
+
+
+/* =========================================================
+   NOTIZEN & MANUELLE BESTELLUNGEN · MAIL STUDIO
+   ========================================================= */
+
+function boardCors(
+  req,
+  res
+) {
+
+  res.header(
+    "Access-Control-Allow-Origin",
+    "*"
+  );
+
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type, x-jarvis-key"
+  );
+
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET,POST,DELETE,OPTIONS"
+  );
+}
+
+
+function boardAuthOk(
+  req,
+  res
+) {
+
+  const providedKey =
+    req.headers[
+      "x-jarvis-key"
+    ];
+
+
+  if (
+    process.env.MAIL_API_KEY &&
+    providedKey !==
+      process.env.MAIL_API_KEY
+  ) {
+
+    res
+      .status(401)
+      .json({
+        ok:
+          false,
+        error:
+          "Ungültiger oder fehlender API-Key"
+      });
+
+
+    return false;
+  }
+
+
+  return true;
+}
+
+
+async function addBoardItem(
+  key,
+  fields
+) {
+
+  const items =
+    await readJarvisField(
+      key
+    );
+
+
+  const item = {
+    id:
+      String(
+        Date.now()
+      ) +
+      Math.random()
+        .toString(36)
+        .slice(
+          2,
+          6
+        ),
+    created_at:
+      new Date()
+        .toISOString(),
+    done:
+      false,
+    ...fields
+  };
+
+
+  items.push(
+    item
+  );
+
+
+  await writeJarvisField(
+    key,
+    items
+  );
+
+
+  return item;
+}
+
+
+async function toggleBoardItem(
+  key,
+  id
+) {
+
+  const items =
+    await readJarvisField(
+      key
+    );
+
+
+  const index =
+    items.findIndex(
+      item =>
+        String(item.id) ===
+        String(id)
+    );
+
+
+  if (
+    index === -1
+  ) {
+    throw new Error(
+      "Eintrag nicht gefunden."
+    );
+  }
+
+
+  items[index].done =
+    !items[index].done;
+
+
+  await writeJarvisField(
+    key,
+    items
+  );
+
+
+  return items[index];
+}
+
+
+async function deleteBoardItem(
+  key,
+  id
+) {
+
+  const items =
+    await readJarvisField(
+      key
+    );
+
+
+  const filtered =
+    items.filter(
+      item =>
+        String(item.id) !==
+        String(id)
+    );
+
+
+  await writeJarvisField(
+    key,
+    filtered
+  );
+
+
+  return true;
+}
+
+
+app.options(
+  [
+    "/api/notes",
+    "/api/notes/:id/toggle",
+    "/api/notes/:id",
+    "/api/manual-orders",
+    "/api/manual-orders/:id/toggle",
+    "/api/manual-orders/:id"
+  ],
+  (
+    req,
+    res
+  ) => {
+
+    boardCors(
+      req,
+      res
+    );
+
+
+    res.sendStatus(
+      204
+    );
+  }
+);
+
+
+app.get(
+  "/api/notes",
+
+  async (
+    req,
+    res
+  ) => {
+
+    boardCors(
+      req,
+      res
+    );
+
+
+    if (
+      !boardAuthOk(
+        req,
+        res
+      )
+    ) {
+      return;
+    }
+
+
+    try {
+
+      const notes =
+        await readJarvisField(
+          "notes"
+        );
+
+
+      return res.json({
+        ok:
+          true,
+        notes:
+          notes
+            .slice()
+            .reverse()
+      });
+
+    } catch (
+      error
+    ) {
+
+      return res
+        .status(500)
+        .json({
+          ok:
+            false,
+          error:
+            error.message
+        });
+    }
+  }
+);
+
+
+app.post(
+  "/api/notes",
+
+  async (
+    req,
+    res
+  ) => {
+
+    boardCors(
+      req,
+      res
+    );
+
+
+    if (
+      !boardAuthOk(
+        req,
+        res
+      )
+    ) {
+      return;
+    }
+
+
+    try {
+
+      const text =
+        String(
+          req.body?.text ||
+          ""
+        ).trim();
+
+
+      if (
+        !text
+      ) {
+        return res
+          .status(400)
+          .json({
+            ok:
+              false,
+            error:
+              "Text fehlt."
+          });
+      }
+
+
+      const item =
+        await addBoardItem(
+          "notes",
+          {
+            text
+          }
+        );
+
+
+      return res.json({
+        ok:
+          true,
+        note:
+          item
+      });
+
+    } catch (
+      error
+    ) {
+
+      return res
+        .status(500)
+        .json({
+          ok:
+            false,
+          error:
+            error.message
+        });
+    }
+  }
+);
+
+
+app.post(
+  "/api/notes/:id/toggle",
+
+  async (
+    req,
+    res
+  ) => {
+
+    boardCors(
+      req,
+      res
+    );
+
+
+    if (
+      !boardAuthOk(
+        req,
+        res
+      )
+    ) {
+      return;
+    }
+
+
+    try {
+
+      return res.json({
+        ok:
+          true,
+        note:
+          await toggleBoardItem(
+            "notes",
+            req.params.id
+          )
+      });
+
+    } catch (
+      error
+    ) {
+
+      return res
+        .status(500)
+        .json({
+          ok:
+            false,
+          error:
+            error.message
+        });
+    }
+  }
+);
+
+
+app.delete(
+  "/api/notes/:id",
+
+  async (
+    req,
+    res
+  ) => {
+
+    boardCors(
+      req,
+      res
+    );
+
+
+    if (
+      !boardAuthOk(
+        req,
+        res
+      )
+    ) {
+      return;
+    }
+
+
+    try {
+
+      await deleteBoardItem(
+        "notes",
+        req.params.id
+      );
+
+
+      return res.json({
+        ok:
+          true
+      });
+
+    } catch (
+      error
+    ) {
+
+      return res
+        .status(500)
+        .json({
+          ok:
+            false,
+          error:
+            error.message
+        });
+    }
+  }
+);
+
+
+app.get(
+  "/api/manual-orders",
+
+  async (
+    req,
+    res
+  ) => {
+
+    boardCors(
+      req,
+      res
+    );
+
+
+    if (
+      !boardAuthOk(
+        req,
+        res
+      )
+    ) {
+      return;
+    }
+
+
+    try {
+
+      const orders =
+        await readJarvisField(
+          "manual_orders"
+        );
+
+
+      return res.json({
+        ok:
+          true,
+        orders:
+          orders
+            .slice()
+            .reverse()
+      });
+
+    } catch (
+      error
+    ) {
+
+      return res
+        .status(500)
+        .json({
+          ok:
+            false,
+          error:
+            error.message
+        });
+    }
+  }
+);
+
+
+app.post(
+  "/api/manual-orders",
+
+  async (
+    req,
+    res
+  ) => {
+
+    boardCors(
+      req,
+      res
+    );
+
+
+    if (
+      !boardAuthOk(
+        req,
+        res
+      )
+    ) {
+      return;
+    }
+
+
+    try {
+
+      const text =
+        String(
+          req.body?.text ||
+          ""
+        ).trim();
+
+
+      if (
+        !text
+      ) {
+        return res
+          .status(400)
+          .json({
+            ok:
+              false,
+            error:
+              "Text fehlt."
+          });
+      }
+
+
+      const amountRaw =
+        req.body?.amount;
+
+
+      const amount =
+        amountRaw !== undefined &&
+        amountRaw !== null &&
+        amountRaw !== ""
+          ? Number(
+              amountRaw
+            )
+          : null;
+
+
+      const item =
+        await addBoardItem(
+          "manual_orders",
+          {
+            text,
+            amount:
+              Number.isFinite(
+                amount
+              )
+                ? amount
+                : null
+          }
+        );
+
+
+      return res.json({
+        ok:
+          true,
+        order:
+          item
+      });
+
+    } catch (
+      error
+    ) {
+
+      return res
+        .status(500)
+        .json({
+          ok:
+            false,
+          error:
+            error.message
+        });
+    }
+  }
+);
+
+
+app.post(
+  "/api/manual-orders/:id/toggle",
+
+  async (
+    req,
+    res
+  ) => {
+
+    boardCors(
+      req,
+      res
+    );
+
+
+    if (
+      !boardAuthOk(
+        req,
+        res
+      )
+    ) {
+      return;
+    }
+
+
+    try {
+
+      return res.json({
+        ok:
+          true,
+        order:
+          await toggleBoardItem(
+            "manual_orders",
+            req.params.id
+          )
+      });
+
+    } catch (
+      error
+    ) {
+
+      return res
+        .status(500)
+        .json({
+          ok:
+            false,
+          error:
+            error.message
+        });
+    }
+  }
+);
+
+
+app.delete(
+  "/api/manual-orders/:id",
+
+  async (
+    req,
+    res
+  ) => {
+
+    boardCors(
+      req,
+      res
+    );
+
+
+    if (
+      !boardAuthOk(
+        req,
+        res
+      )
+    ) {
+      return;
+    }
+
+
+    try {
+
+      await deleteBoardItem(
+        "manual_orders",
+        req.params.id
+      );
+
+
+      return res.json({
+        ok:
+          true
+      });
+
+    } catch (
+      error
+    ) {
+
+      return res
+        .status(500)
+        .json({
+          ok:
+            false,
+          error:
+            error.message
+        });
+    }
+  }
 );
 
 
