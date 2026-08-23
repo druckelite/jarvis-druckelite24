@@ -1,7 +1,7 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
 
-   V11.0 · SINGLE SCREEN · OPENAI REALTIME AUDIO
+   V12.0 · CLEAN CORE · OPENAI REALTIME AUDIO
    ========================================================= */
 
 import express from "express";
@@ -13,7 +13,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V11.0-SINGLE-SCREEN-OPENAI-AUDIO";
+  "V12.0-CLEAN-CORE";
 
 
 /* =========================================================
@@ -619,311 +619,111 @@ async function getJarvisBusinessPulse() {
 
 function buildJarvisInstructions() {
 
-  const hour =
-    getBerlinHour();
+  const hour = getBerlinHour();
 
-
-  let dayPart =
-    "Tag";
-
-
-  if (
-    hour >= 5 &&
-    hour < 11
-  ) {
-
-    dayPart =
-      "Morgen";
-  }
-
-  else if (
-    hour >= 11 &&
-    hour < 14
-  ) {
-
-    dayPart =
-      "Mittag";
-  }
-
-  else if (
-    hour >= 14 &&
-    hour < 18
-  ) {
-
-    dayPart =
-      "Nachmittag";
-  }
-
-  else if (
-    hour >= 18 &&
-    hour < 23
-  ) {
-
-    dayPart =
-      "Abend";
-  }
-
-  else {
-
-    dayPart =
-      "Nacht";
-  }
-
+  const dayPart =
+    hour >= 5 && hour < 11
+      ? "Morgen"
+      : hour >= 11 && hour < 18
+        ? "Tag"
+        : hour >= 18 && hour < 23
+          ? "Abend"
+          : "Nacht";
 
   return `
-Du bist JARVIS, Mattls persönlicher KI-Assistent.
+Du bist JARVIS, Mattls persönlicher KI-Assistent für Alltag und Druckelite24.
 
-Der Nutzer heißt Mattl.
-Du arbeitest primär für Mattl und sein Unternehmen Druckelite24.
+AKTUELLE TAGESZEIT: ${dayPart}
 
-Aktuelle Tageszeit:
-${dayPart}
-
-SPRACHE:
+IDENTITÄT UND SPRACHE
 - Antworte ausschließlich auf Deutsch.
-- Verwende natürliches, klares deutsches Hochdeutsch.
-- Formuliere wie ein deutscher Muttersprachler.
-- Keine englischen Begrüßungen, wenn Mattl Deutsch spricht.
-- Keine unnötigen englischen Begriffe.
-- Kurze, natürliche Sätze.
-- Keine künstliche Synchronsprecher-Sprache.
-- Keine übertriebene Betonung.
-- Keine unnötigen Wiederholungen.
+- Sprich neutrales deutsches Hochdeutsch wie ein deutscher Muttersprachler.
+- Kein englischer, amerikanischer oder internationaler Akzent.
+- Sprich Mattl deutsch aus: "Matt-l", mit klarem T.
+- Ruhig, souverän, intelligent, aufmerksam, gelegentlich trocken humorvoll.
+- Standardantworten: kurz, konkret, meistens 1 bis 3 Sätze.
+- Keine Floskeln und keine unnötigen Wiederholungen.
+- Bei Briefings/Analysen darfst du ausführlicher werden.
 
-CHARAKTER:
-- intelligent
-- aufmerksam
-- selbstständig
-- ruhig
-- souverän
-- trocken humorvoll
-- gelegentlich leicht sarkastisch
-- aber nie respektlos
-- hilfreich
-- geschäftlich kompetent
-
-Du darfst gelegentlich einen trockenen Kommentar oder ein Wortspiel machen.
-Übertreibe es aber nicht.
-
-BEISPIEL:
-Mattl: "Was steht heute an?"
-JARVIS: "Schauen wir mal. Irgendwas brennt ja meistens."
-
-ANREDE:
-- Der Nutzer heißt Mattl.
-- Im normalen Gespräch kannst du ihn gelegentlich Mattl, Meister oder Chef nennen.
-- "Daddy" nur sehr selten und ausschließlich locker-humorvoll.
-- Nicht in jeder Antwort eine Anrede verwenden.
-- Sprich Mattl natürlich aus.
-- Deutliches T, kein englischer Klang.
-- Die Startbegrüßung wird von der Browser-App erzeugt und darf besonders spektakulär, souverän und humorvoll klingen.
-
-GESPRÄCH:
-- Höre Mattl vollständig zu.
-- Unterbrich ihn nicht unnötig.
-- Kurze Denkpausen bedeuten nicht automatisch, dass der Satz beendet ist.
-- Wenn Mattl "ähm" sagt oder kurz überlegt, warte.
-- Wenn Mattl eine Aufzählung beginnt, warte bis sie inhaltlich abgeschlossen ist.
-- Wenn Mattl dich unterbricht, beende deine aktuelle Antwort sofort.
-- Fahre eine unterbrochene alte Antwort später nicht parallel fort.
+ZUHÖREN
+- Lass Mattl seinen Gedanken beenden.
+- Kurze Denkpausen, "ähm" und Aufzählungen sind nicht automatisch das Satzende.
+- Wenn Mattl dich während deiner Antwort unterbricht, stoppe sofort und höre ihm zu.
+- Fahre eine abgebrochene Antwort nicht später ungefragt fort.
 - Erzeuge niemals zwei Antworten gleichzeitig.
-- Beginne eine neue Antwort erst, wenn die vorherige beendet oder abgebrochen wurde.
-- Sobald Mattls Gedanke klar abgeschlossen ist, antworte zügig.
 
-ANTWORTSTIL:
-- Standardantworten sind kurz und konkret: meistens 1 bis 3 kurze Sätze.
-- Bei einfachen Fragen möglichst unter etwa 60 gesprochenen Wörtern bleiben.
-- Keine langen Vorträge, außer Mattl verlangt Details, Analyse, Erklärung oder ein ausführliches Briefing.
-- Wenn eine längere Antwort fachlich nötig ist, zuerst die wichtigste Aussage nennen und danach nur die relevanten Details.
-- Keine unnötige Einleitung.
-- Keine Zusammenfassung, wenn sie nicht nötig ist.
-- Keine Floskeln wie "Natürlich helfe ich dir gerne".
-- Sag direkt, was Sache ist.
-- Das ausdrücklich angeforderte Morning-/Tagesbriefing darf weiterhin ausführlich sein.
-AUSSPRACHE VON ZAHLEN, GELD UND SPORTERGEBNISSEN:
+TOOL-ROUTING — HÖCHSTE PRIORITÄT
+- Smalltalk, Hörtests, Begrüßungen, Meinungen und normale Unterhaltung brauchen KEIN Tool.
+- "Jarvis, hörst du mich?" → direkt z. B. "Ja, ich höre dich."
+- "Bist du da?" → direkt antworten.
+- "Wie geht's?" → direkt antworten.
+- "Danke" → direkt antworten.
+- "Was kannst du?" → direkt antworten.
+- Rufe ein Tool NUR auf, wenn aktuelle externe oder gespeicherte Daten wirklich nötig sind.
+- Bei Unsicherheit zwischen Smalltalk und Tool: KEIN Tool.
+- Niemals Shopify oder Business Pulse nur wegen einer allgemeinen Formulierung aufrufen.
 
-- Fußball- und Sportergebnisse niemals als Dezimalzahl formulieren.
-- Ein Ergebnis wie 0:0 immer als „null zu null“ ausgeben.
-- 1:0 = „eins zu null“.
-- 2:1 = „zwei zu eins“.
-- 3:3 = „drei zu drei“.
-- Niemals bei Sportergebnissen „null Komma null“, „zwei Komma eins“ usw. sagen.
+BUSINESS PULSE
+get_business_pulse NUR bei eindeutig geschäftlichen Gesamtfragen:
+- "Wie läuft mein Business heute?"
+- "Wie läuft Druckelite24 heute?"
+- "Gib mir einen Überblick über den Shop."
+- "Wie stehen Umsatz, Bestellungen und offene Themen?"
+Nicht verwenden für "Wie sieht's aus?", "Was ist los?", "Hörst du mich?" oder Smalltalk.
 
-EUROBETRÄGE:
-- Geldbeträge immer vollständig und natürlich für Sprachausgabe formulieren.
-- Nachkommastellen niemals verschlucken.
-- 7,69 € = „sieben Euro neunundsechzig Cent“.
-- 12,50 € = „zwölf Euro fünfzig Cent“.
-- 19,99 € = „neunzehn Euro neunundneunzig Cent“.
-- 9,05 € = „neun Euro fünf Cent“.
-- 1.249,95 € = „eintausendzweihundertneunundvierzig Euro fünfundneunzig Cent“.
-- Beträge niemals nur als Dezimalzahl vorlesen.
-- Bei Preisen mit Nachkommastellen immer Euro UND Cent vollständig nennen.
+SHOPIFY
+- Umsatz heute/gestern → get_shopify_summary
+- offene Bestellungen → get_shopify_open_orders
+- letzte 7 Tage → get_shopify_week
+Erfinde niemals Live-Zahlen.
 
-GENERELL:
-- Zahlen so formulieren, dass die OpenAI-Realtime-Stimme sie natürlich auf Deutsch ausspricht.
-- Bei gesprochenen Antworten Verständlichkeit vor mathematischer Kurzschreibweise.
+GMAIL
+- ungelesene Mails → get_unread_emails
+- ausgewählte/gesuchte Mail lesen → get_email_message
+- Antwort auf vorhandene Mail → IMMER create_email_reply_draft
+- neue unabhängige Mail → create_email_draft
+- senden NUR nach unmittelbar ausdrücklichem "senden", "abschicken" oder "versenden" → send_email_draft
+- nach Bearbeitet verschieben nur auf ausdrücklichen Wunsch → move_email_to_bearbeitet
+- Nach einem Entwurf kurz fragen, ob Mattl senden möchte.
+- Wenn Mattl eine geöffnete Mail vorlesen lassen will, lies den gelieferten Inhalt vor; erfinde nichts.
 
-GESCHÄFT:
-Du kennst Druckelite24 als Mattls Hauptunternehmen.
+WHATSAPP / SUPERCHAT
+- letzte Chats → get_whatsapp_conversations
+- ausgewählten Chat → get_whatsapp_conversation
+- Antwortentwurf → create_whatsapp_reply_draft
+- neue Nachricht → create_new_whatsapp_draft
+- Sprachnachrichten-Entwurf → create_whatsapp_voice_draft
+- senden ausschließlich nach ausdrücklichem Sende-Befehl.
+- Bei mehreren passenden Kontakten niemals raten.
 
-Wenn Mattl nach:
-- Bestellungen
-- Umsatz
-- offenen Bestellungen
-- E-Mails
-- Wetter
-- Notizen
-- Erinnerungen
-- aktuellen Informationen
-fragt, verwende die verfügbaren Tools.
-
-BUSINESS PULSE / GESAMTSTATUS:
-Wenn Mattl breit nach seinem aktuellen Business fragt, zum Beispiel:
-- „Wie läuft mein Business heute?“
-- „Wie sieht es heute aus?“
-- „Gib mir einen Überblick über den Laden.“
-- „Was ist heute wichtig?“
-→ get_business_pulse
-Dieses Tool ist für einen schnellen Gesamtstatus gedacht und sammelt mehrere vorhandene Quellen parallel.
-Nenne zuerst die 2 bis 4 wichtigsten Erkenntnisse. Danach nur relevante Details.
-Erfinde keine fehlenden Werte. Wenn eine Quelle nicht erreichbar ist, sage das nur dann, wenn es die Antwort wesentlich beeinflusst.
-
-BRIEFING:
-Wenn Mattl „Briefing“, „Morning Briefing“, „Tagesbriefing“ oder sinngleich sagt:
+BRIEFING
+Nur auf ausdrücklichen Befehl "Briefing", "Morning Briefing", "Tagesbriefing":
 → get_daily_briefing
-Das Briefing ist AUSFÜHRLICH und strukturiert. Nenne mindestens:
-- ungelesene E-Mails: Anzahl, wichtigste Absender/Betreffe und kurz, was Aufmerksamkeit braucht
-- Shopify HEUTE: Umsatz, Bestellungen und Durchschnittsbestellwert
-- Shopify GESTERN/VORTAG: Umsatz, Bestellungen und Durchschnittsbestellwert
-- aktuelles Wetter
-- zum Schluss eine kurze Prioritäten-Einschätzung für Mattl
-Formuliere Zahlen natürlich auf Deutsch. Beispiele:
-1 ungelesene Mail → „eine ungelesene Mail“
-2 ungelesene Mails → „zwei ungelesene Mails“
-1 Bestellung → „eine Bestellung“
-Nie Formulierungen wie „eins ungelesene Mail“ verwenden.
-Offene/unbearbeitete Bestellungen NICHT im Briefing erwähnen.
-Wenn einzelne Daten fehlen, sage das knapp. Erfinde nichts.
-WICHTIG: Diese ausführliche Zusammenfassung nur auf ausdrücklichen Briefing-Befehl geben. Beim normalen Start KEIN automatisches Mail-/Bestell-Briefing vorlesen.
+Nenne: wichtige ungelesene Mails, Shopify heute, Shopify gestern, Wetter und 2 bis 4 Prioritäten.
+Keine erfundenen Werte.
 
-WICHTIG:
-Erfinde niemals Live-Daten.
+NOTIZEN UND ERINNERUNGEN
+- "Merke dir", "notier" → save_note
+- Notizen abfragen → list_notes
+- Erinnerung erstellen → set_reminder
+- Erinnerungen abfragen → list_reminders
 
-Wenn aktuelle Daten benötigt werden:
-- benutze das passende Tool
-- warte auf das Tool-Ergebnis
-- antworte danach anhand der gelieferten Daten
+WETTER
+- heute/morgen → get_weather
 
-INTERNET:
-Wenn Mattl nach:
-- aktuellen Nachrichten
-- heutigen Ereignissen
-- aktuellen Preisen
-- aktuellen Öffnungszeiten
-- neuen Produkten
-- aktuellen Firmeninformationen
-- Politik
-- Sport
-- Wetter außerhalb des Wetter-Tools
-- aktuellen Softwareständen
-- aktuellen Gesetzen
-fragt, verwende search_internet.
+INTERNET
+Aktuelle Nachrichten, Politik, Sport, Preise, Öffnungszeiten, aktuelle Firmen-/Software-/Gesetzesinfos → search_internet
 
-SHOPIFY:
-Für Druckelite24 Bestell- und Umsatzfragen nutze Shopify-Tools.
+ZAHLEN FÜR SPRACHE
+- Sportergebnis 2:1 als "zwei zu eins".
+- Geld vollständig: 12,50 Euro als "zwölf Euro fünfzig Cent".
+- Verständlichkeit vor Kurzschreibweise.
 
-Beispiele:
-"Wie viel Umsatz heute?"
-→ get_shopify_summary
+SICHERHEIT
+- Senden/Veröffentlichen/Ändern bei externen Systemen nur über die vorgesehenen Tools und vorhandenen Bestätigungsregeln.
+- Erfinde keine Live-Daten, Kundeninhalte, Preise oder Zusagen.
 
-"Wie viele Bestellungen sind offen?"
-→ get_shopify_open_orders
-
-"Wie lief die Woche?"
-→ get_shopify_week
-
-E-MAIL:
-Wenn Mattl ungelesene Mails wissen möchte:
-→ get_unread_emails
-
-Wenn Mattl sagt „lies die Mail“, „lies die letzte Mail“, „was will der Kunde?“ oder nach einer Mail von einer Person fragt:
-→ get_email_message
-Nutze message_id, wenn die aktuell ausgewählte Mail bekannt ist. Sonst sender_query oder search_query.
-
-Wenn Mattl auf die aktuelle/ausgewählte Mail antworten möchte:
-→ IMMER create_email_reply_draft
-NIEMALS create_email_draft für eine Antwort auf eine vorhandene Mail verwenden.
-create_email_reply_draft erstellt einen echten Gmail-Entwurf mit Gmail-Draft-ID, sendet aber NICHT.
-
-Nur wenn Mattl ausdrücklich eine komplett neue, unabhängige E-Mail formulieren möchte:
-Wenn der Empfänger noch nicht eindeutig bekannt ist, FRAGE ZUERST kurz: „An wen soll die Mail gehen?“
-Erst wenn Empfänger und Inhalt/Anweisung bekannt sind:
-→ create_email_draft
-create_email_draft speichert ebenfalls einen ECHTEN Gmail-Entwurf mit Gmail-Draft-ID. Kein reiner HUD-Entwurf mehr.
-
-E-MAIL SENDEN:
-Eine E-Mail darf ausschließlich dann gesendet werden, wenn Mattl unmittelbar und ausdrücklich „senden“, „abschicken“ oder „versenden“ sagt.
-Dann → send_email_draft.
-Ohne diesen ausdrücklichen Sende-Befehl darf send_email_draft NIEMALS verwendet werden.
-Nach einem Entwurf fragst du kurz, ob er ihn senden möchte.
-
-E-MAIL BEARBEITET:
-Wenn Mattl sagt „verschiebe die Mail nach Bearbeitet“, „markiere sie als bearbeitet“, „die ist erledigt“ oder sinngleich:
-→ move_email_to_bearbeitet
-Nutze die aktuell ausgewählte Mail. Niemals eine andere Mail raten.
-Eindeutige Werbe-/Newsletter-Mails werden im Hintergrund nur bei sehr hoher Sicherheit automatisch nach „Bearbeitet“ verschoben. Kunden-, Bestell-, Rechnungs-, Zahlungs-, Versand-, Reklamations-, Angebots-, Sicherheits- und sonstige Geschäftsmails dürfen niemals automatisch verschoben werden.
-
-Der E-Mail-Entwurf wird im HUD angezeigt.
-
-WHATSAPP / SUPERCHAT:
-- Für die letzten WhatsApp-Chats → get_whatsapp_conversations
-- Wenn Mattl eine KOMPLETT NEUE WhatsApp schreiben möchte, z. B. „Schreib Nico eine WhatsApp …“ oder „Schreib an +49…“, → create_new_whatsapp_draft
-- create_new_whatsapp_draft sucht den Kontakt in Superchat oder akzeptiert direkt eine Telefonnummer.
-- Wenn mehrere Kontakte passen, NICHT raten, sondern Mattl nach einer genaueren Auswahl fragen.
-- Eine neue WhatsApp wird immer zuerst nur als Entwurf erstellt und NICHT gesendet.
-- Nach dem Entwurf fragst du kurz, ob Mattl senden möchte.
-- Erst wenn Mattl ausdrücklich „senden“, „abschicken“ oder „versenden“ sagt → send_new_whatsapp_draft
-- Für „Schick [Kontakt] eine Sprachnachricht …“ oder „Antworte ihm per Sprachnachricht …“ → create_whatsapp_voice_draft.
-- create_whatsapp_voice_draft erstellt erst NUR den gesprochenen Textentwurf. Noch kein Audio und kein Versand.
-- Lies Mattl den geplanten Inhalt kurz vor bzw. nenne den Text und frage nach Bestätigung.
-- Erst nach ausdrücklichem „senden“, „abschicken“ oder „versenden“ → send_whatsapp_voice_draft.
-- Die Sprachnachricht wird dann mit OpenAI Audio erzeugt, zu Superchat hochgeladen und über WhatsApp gesendet.
-- Wenn ein Chat ausgewählt ist und Mattl fragt „Was will der Kunde?“, „lies den Chat“ oder sinngleich → get_whatsapp_conversation
-- Wenn Mattl auf den ausgewählten WhatsApp-Chat antworten möchte → create_whatsapp_reply_draft
-- create_whatsapp_reply_draft erstellt nur einen Entwurf und sendet NICHT.
-- WhatsApp darf ausschließlich nach dem unmittelbaren ausdrücklichen Befehl „senden“, „abschicken“ oder „versenden“ gesendet werden.
-- Dann → send_whatsapp_draft
-- Ohne ausdrücklichen Sende-Befehl darf send_whatsapp_draft NIEMALS verwendet werden.
-
-NOTIZEN:
-Wenn Mattl sagt:
-"Merke dir..."
-"Notier..."
-"Schreib auf..."
-→ save_note
-
-Wenn er nach seinen Notizen fragt:
-→ list_notes
-
-ERINNERUNGEN:
-Wenn Mattl eine Erinnerung möchte:
-→ set_reminder
-
-Wenn er nach Erinnerungen fragt:
-→ list_reminders
-
-WETTER:
-Für heutiges oder morgiges Wetter:
-→ get_weather
-
-Sei proaktiv, aber nicht nervig.
-
-Wenn dir ein Tool einen wichtigen Sachverhalt liefert,
-weise Mattl kurz darauf hin.
-
-Du bist kein neutraler Chatbot.
-Du bist Mattls persönlicher JARVIS.
+Du bist kein neutraler Chatbot. Du bist Mattls persönlicher JARVIS.
 `;
 }
 
@@ -1222,7 +1022,7 @@ const REALTIME_TOOLS = [
       "get_business_pulse",
 
     description:
-      "Liefert einen intelligenten Gesamtstatus für Druckelite24. Ruft Shopify heute/gestern, ungelesene Gmail-Nachrichten, offene Bestellungen, Wetter und Erinnerungen parallel ab und berechnet wichtige Signale. Für breite Fragen wie 'Wie läuft mein Business heute?'.",
+      "Nur für ausdrücklich geschäftliche Gesamtfragen zu Druckelite24: Business-Status, Shop-Überblick, Umsatz/Bestellungen im Gesamtbild. Niemals für Smalltalk, Hörtests, Begrüßungen oder allgemeine Fragen.",
 
     parameters: {
       type:
@@ -1725,219 +1525,101 @@ const REALTIME_TOOLS = [
 
 
 /* =========================================================
-   REALTIME SESSION
-
-   MUSS VOR express.json STEHEN
+   REALTIME SESSION · OPENAI WEBRTC AUDIO
    ========================================================= */
 
 app.post(
   "/api/realtime-session",
-
   express.text({
-    type: [
-      "application/sdp",
-      "text/plain"
-    ],
-
-    limit:
-      "1mb"
+    type: ["application/sdp", "text/plain"],
+    limit: "1mb"
   }),
-
-  async (
-    req,
-    res
-  ) => {
-
+  async (req, res) => {
     try {
-
-      if (
-        !process.env
-          .OPENAI_API_KEY
-      ) {
-        return res
-          .status(500)
-          .send(
-            "OPENAI_API_KEY fehlt."
-          );
+      if (!process.env.OPENAI_API_KEY) {
+        return res.status(500).send("OPENAI_API_KEY fehlt.");
       }
 
+      const sdp = req.body;
 
-      const sdp =
-        req.body;
-
-
-      if (
-        typeof sdp !==
-          "string" ||
-        !sdp.startsWith(
-          "v=0"
-        )
-      ) {
-        return res
-          .status(400)
-          .send(
-            "Ungültiges SDP."
-          );
+      if (typeof sdp !== "string" || !sdp.startsWith("v=0")) {
+        return res.status(400).send("Ungültiges SDP.");
       }
-
 
       const model =
-        process.env
-          .OPENAI_REALTIME_MODEL ||
+        process.env.OPENAI_REALTIME_MODEL ||
         "gpt-realtime-2.1";
 
+      const voice =
+        process.env.OPENAI_REALTIME_VOICE ||
+        "cedar";
 
-      const sessionConfig =
-        JSON.stringify({
-
-          type:
-            "realtime",
-
-          model,
-
-          output_modalities: [
-            "audio"
-          ],
-
-          instructions:
-            buildJarvisInstructions(),
-
-          tools:
-            REALTIME_TOOLS,
-
-          tool_choice:
-            "auto",
-
-          audio: {
-
-            output: {
-              voice:
-                process.env.OPENAI_REALTIME_VOICE ||
-                "marin"
+      const sessionConfig = JSON.stringify({
+        type: "realtime",
+        model,
+        output_modalities: ["audio"],
+        instructions: buildJarvisInstructions(),
+        tools: REALTIME_TOOLS,
+        tool_choice: "auto",
+        audio: {
+          output: {
+            voice
+          },
+          input: {
+            noise_reduction: {
+              type:
+                process.env.OPENAI_NOISE_REDUCTION ||
+                "far_field"
             },
-
-            input: {
-
-              noise_reduction: {
-
-                type:
-                  process.env
-                    .OPENAI_NOISE_REDUCTION ||
-                  "far_field"
-              },
-
-              turn_detection: {
-
-                type:
-                  "semantic_vad",
-
-                eagerness:
-                  process.env.OPENAI_VAD_EAGERNESS ||
-                  "high",
-
-                create_response:
-                  true,
-
-                interrupt_response:
-                  true
-              }
+            turn_detection: {
+              type: "semantic_vad",
+              eagerness:
+                process.env.OPENAI_VAD_EAGERNESS ||
+                "medium",
+              create_response: true,
+              interrupt_response: true
             }
           }
-        });
+        }
+      });
 
-
-      const form =
-        new FormData();
-
-
-      form.set(
-        "sdp",
-        sdp
-      );
-
-
-      form.set(
-        "session",
-        sessionConfig
-      );
-
+      const form = new FormData();
+      form.set("sdp", sdp);
+      form.set("session", sessionConfig);
 
       console.log(
-        `[REALTIME] Modell=${model} Output=audio Voice=${process.env.OPENAI_REALTIME_VOICE || "marin"} Tools=${REALTIME_TOOLS.length}`
+        `[REALTIME] ${model} · audio · voice=${voice} · vad=${process.env.OPENAI_VAD_EAGERNESS || "medium"} · tools=${REALTIME_TOOLS.length}`
       );
 
+      const response = await fetch(
+        "https://api.openai.com/v1/realtime/calls",
+        {
+          method: "POST",
+          headers: {
+            Authorization:
+              `Bearer ${process.env.OPENAI_API_KEY}`
+          },
+          body: form,
+          signal: timeoutSignal(20000)
+        }
+      );
 
-      const response =
-        await fetch(
-          "https://api.openai.com/v1/realtime/calls",
-          {
+      const answer = await response.text();
 
-            method:
-              "POST",
-
-            headers: {
-
-              Authorization:
-                `Bearer ${process.env.OPENAI_API_KEY}`
-            },
-
-            body:
-              form,
-
-            signal:
-              timeoutSignal(
-                20000
-              )
-          }
-        );
-
-
-      const answer =
-        await response.text();
-
-
-      if (
-        !response.ok
-      ) {
-
+      if (!response.ok) {
         console.error(
-          "[REALTIME ERROR]",
+          "[REALTIME SESSION ERROR]",
           response.status,
           answer
         );
-
-
-        return res
-          .status(
-            response.status
-          )
-          .send(
-            answer
-          );
+        return res.status(response.status).send(answer);
       }
 
+      res.setHeader("Content-Type", "application/sdp");
+      return res.send(answer);
 
-      res.setHeader(
-        "Content-Type",
-        "application/sdp"
-      );
-
-
-      return res.send(
-        answer
-      );
-
-
-    } catch (
-      error
-    ) {
-
-      console.error(
-        "[REALTIME SESSION ERROR]",
-        error
-      );
-
-
+    } catch (error) {
+      console.error("[REALTIME SESSION ERROR]", error);
       return res
         .status(500)
         .send(
@@ -5185,79 +4867,56 @@ async function generateWhatsAppVoiceAudio(
   text
 ) {
 
-  if (
-    !process.env.OPENAI_API_KEY
-  ) {
-    throw new Error(
-      "OPENAI_API_KEY fehlt."
-    );
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error("OPENAI_API_KEY fehlt.");
   }
 
   const cleanText =
-    String(
-      text || ""
-    ).trim();
+    String(text || "").trim();
 
-  if (
-    !cleanText
-  ) {
+  if (!cleanText) {
     throw new Error(
       "Text für Sprachnachricht fehlt."
     );
   }
 
-  const response =
-    await fetch(
-      "https://api.openai.com/v1/audio/speech",
-      {
-        method:
-          "POST",
-        headers: {
-          Authorization:
-            `Bearer ${process.env.OPENAI_API_KEY}`,
-          "Content-Type":
-            "application/json",
-          "Accept":
-            "audio/mpeg"
-        },
-        body:
-          JSON.stringify({
-            model:
-              process.env.OPENAI_TTS_MODEL ||
-              "gpt-4o-mini-tts",
-            voice:
-              process.env.OPENAI_TTS_VOICE ||
-              "marin",
-            input:
-              cleanText,
-            response_format:
-              "mp3",
-            instructions:
-              "Sprich natürliches deutsches Hochdeutsch. Ruhig, souverän, klar und zügig. Keine übertriebene Betonung."
-          }),
-        signal:
-          timeoutSignal(
-            30000
-          )
-      }
-    );
+  const response = await fetch(
+    "https://api.openai.com/v1/audio/speech",
+    {
+      method: "POST",
+      headers: {
+        Authorization:
+          `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type":
+          "application/json",
+        "Accept":
+          "audio/mpeg"
+      },
+      body: JSON.stringify({
+        model:
+          process.env.OPENAI_TTS_MODEL ||
+          "gpt-4o-mini-tts",
+        voice:
+          process.env.OPENAI_TTS_VOICE ||
+          "cedar",
+        input: cleanText,
+        response_format: "mp3",
+        instructions:
+          "Sprich neutrales deutsches Hochdeutsch wie ein deutscher Muttersprachler. Ruhig, souverän, klar, natürlich und ohne englischen Akzent."
+      }),
+      signal: timeoutSignal(30000)
+    }
+  );
 
-  if (
-    !response.ok
-  ) {
-    const raw =
-      await response.text();
-
+  if (!response.ok) {
+    const raw = await response.text();
     throw new Error(
       `OpenAI TTS fehlgeschlagen (${response.status}): ${raw.slice(0, 300)}`
     );
   }
 
-  const arrayBuffer =
-    await response.arrayBuffer();
-
   return Buffer.from(
-    arrayBuffer
+    await response.arrayBuffer()
   );
 }
 
@@ -9695,104 +9354,41 @@ app.post(
    HEALTH
    ========================================================= */
 
-app.get(
-  "/health",
-
-  (
-    req,
-    res
-  ) => {
-
-    return res.json({
-
-      ok:
-        true,
-
-      version:
-        `JARVIS ${JARVIS_VERSION}`,
-
-      realtime:
-        true,
-
-      realtime_output:
-        "audio",
-
-      vad:
-        "semantic_vad",
-
-      vad_eagerness:
-        process.env.OPENAI_VAD_EAGERNESS ||
-        "high",
-
-      noise_reduction:
-        process.env
-          .OPENAI_NOISE_REDUCTION ||
-        "far_field",
-
-      realtime_model:
-        process.env
-          .OPENAI_REALTIME_MODEL ||
-        "gpt-realtime-2.1",
-
-      voice_engine:
-        "OpenAI Realtime",
-
-      realtime_voice:
-        process.env.OPENAI_REALTIME_VOICE ||
-        "marin",
-
-      tts_voice:
-        process.env.OPENAI_TTS_VOICE ||
-        "marin",
-
-      tts_model:
-        process.env.OPENAI_TTS_MODEL ||
-        "gpt-4o-mini-tts",
-
-      web_model:
-        process.env
-          .OPENAI_WEB_MODEL ||
-        "gpt-5.6",
-
-      realtime_tools:
-        REALTIME_TOOLS.map(
-          tool =>
-            tool.name
-        ),
-
-      shopify:
-        Boolean(
-
-          process.env
-            .SHOPIFY_STORE_DOMAIN &&
-
-          process.env
-            .SHOPIFY_CLIENT_ID &&
-
-          process.env
-            .SHOPIFY_CLIENT_SECRET
-        ),
-
-      gmail:
-        isGmailConfigured(),
-
-      web_search:
-        true,
-
-      notes:
-        true,
-
-      reminders:
-        true,
-
-      weather:
-        true,
-
-      email_drafts:
-        true
-    });
-  }
-);
+app.get("/health", (req, res) => {
+  res.json({
+    ok: true,
+    version: `JARVIS ${JARVIS_VERSION}`,
+    mode: "single-screen",
+    realtime: true,
+    realtime_output: "audio",
+    realtime_model:
+      process.env.OPENAI_REALTIME_MODEL ||
+      "gpt-realtime-2.1",
+    realtime_voice:
+      process.env.OPENAI_REALTIME_VOICE ||
+      "cedar",
+    vad: "semantic_vad",
+    vad_eagerness:
+      process.env.OPENAI_VAD_EAGERNESS ||
+      "medium",
+    noise_reduction:
+      process.env.OPENAI_NOISE_REDUCTION ||
+      "far_field",
+    shopify: Boolean(
+      process.env.SHOPIFY_STORE_DOMAIN &&
+      process.env.SHOPIFY_CLIENT_ID &&
+      process.env.SHOPIFY_CLIENT_SECRET
+    ),
+    gmail: isGmailConfigured(),
+    superchat: isSuperchatConfigured(),
+    web_search: true,
+    weather: true,
+    notes: true,
+    reminders: true,
+    mail_sync: true,
+    tools: REALTIME_TOOLS.map(tool => tool.name)
+  });
+});
 
 
 /* =========================================================
@@ -9878,12 +9474,12 @@ app.listen(
 
 
     console.log(
-      `Voice Engine: OpenAI Realtime · ${process.env.OPENAI_REALTIME_VOICE || "marin"}`
+      "Voice Engine: OpenAI Realtime"
     );
 
 
     console.log(
-      `VAD: semantic_vad / ${process.env.OPENAI_VAD_EAGERNESS || "high"}`
+      "VAD: semantic_vad / medium"
     );
 
 
