@@ -2,12 +2,10 @@
    DRUCKELITE24 · JARVIS
    APP.JS
 
-   V10.5 · BARGE-IN + INTRO DUCKING FIX
-   OPENAI REALTIME TEXT
-   + ELEVENLABS WEBSOCKET
-   + PCM 24 KHZ
-   + WEB AUDIO
-   + OHNE DEBUG HUD
+   V11.0 · SINGLE SCREEN · OPENAI REALTIME AUDIO
+   DIREKTES SPEECH-TO-SPEECH VIA WEBRTC
+   + BARGE-IN
+   + OHNE ELEVENLABS / TTS-PUFFER
    ========================================================= */
 
 
@@ -27,17 +25,18 @@ const logEl =
 const remoteAudio =
   document.querySelector("#remoteAudio");
 
-const JARVIS_SCREEN_ROLE =
-  window.JARVIS_SCREEN_ROLE ||
-  "single";
+/* =========================================================
+   SINGLE SCREEN · V11
+   Alte Triple-Screen-Parameter werden bewusst ignoriert.
+   ========================================================= */
 
-const JARVIS_VOICE_SCREEN =
-  JARVIS_SCREEN_ROLE === "center" ||
-  JARVIS_SCREEN_ROLE === "single";
+const JARVIS_SCREEN_ROLE = "single";
+window.JARVIS_SCREEN_ROLE = "single";
+document.body.dataset.screenRole = "single";
+document.documentElement.dataset.screenRole = "single";
 
-const JARVIS_COMMS_SCREEN =
-  JARVIS_SCREEN_ROLE === "right" ||
-  JARVIS_SCREEN_ROLE === "single";
+const JARVIS_VOICE_SCREEN = true;
+const JARVIS_COMMS_SCREEN = true;
 
 
 /* =========================================================
@@ -109,81 +108,8 @@ let responseInProgress =
 let currentResponseText =
   "";
 
-/* =========================================================
-   TTS TEXT BUFFER
-   Sammelt OpenAI-Text kurz, damit ElevenLabs keine Zahlen,
-   Abkürzungen oder Wörter in Einzelteilen bekommt.
-   ========================================================= */
-
-let ttsTextBuffer =
-  "";
-
-let ttsBufferTimer =
-  null;
-
-const TTS_BUFFER_DELAY_MS =
-  140;
-
-const TTS_BUFFER_MAX_CHARS =
-  140;
-
 const runningToolCalls =
   new Set();
-
-
-/* =========================================================
-   ELEVENLABS STATE
-   ========================================================= */
-
-let elevenSocket =
-  null;
-
-let elevenConnected =
-  false;
-
-let elevenReady =
-  false;
-
-let elevenClosing =
-  false;
-
-let elevenTokenData =
-  null;
-
-let elevenSessionId =
-  0;
-
-let elevenKeepAliveTimer =
-  null;
-
-let elevenReconnectPromise =
-  null;
-
-const pendingElevenTexts =
-  [];
-
-let pendingElevenFlush =
-  false;
-
-
-/* =========================================================
-   WEB AUDIO / PCM STATE
-   ========================================================= */
-
-let audioContext =
-  null;
-
-let nextPlaybackTime =
-  0;
-
-let audioScheduleChain =
-  Promise.resolve();
-
-const scheduledAudioSources =
-  new Set();
-
-const ELEVEN_PCM_SAMPLE_RATE =
-  24000;
 
 
 /* =========================================================
@@ -1425,419 +1351,6 @@ function fadeIntroOut() {
 
 
 /* =========================================================
-   WEB AUDIO
-   ========================================================= */
-
-async function ensureAudioContext() {
-
-  if (!audioContext) {
-
-    const AudioContextClass =
-      window.AudioContext ||
-      window.webkitAudioContext;
-
-
-    if (!AudioContextClass) {
-
-      throw new Error(
-        "Web Audio wird von diesem Browser nicht unterstützt."
-      );
-    }
-
-
-    audioContext =
-      new AudioContextClass();
-
-
-    nextPlaybackTime =
-      audioContext.currentTime;
-  }
-
-
-  if (
-    audioContext.state ===
-    "suspended"
-  ) {
-
-    await audioContext.resume();
-  }
-
-
-  return audioContext;
-}
-
-
-function base64ToUint8Array(base64) {
-
-  const binary =
-    atob(base64);
-
-
-  const bytes =
-    new Uint8Array(
-      binary.length
-    );
-
-
-  for (
-    let i = 0;
-    i < binary.length;
-    i++
-  ) {
-
-    bytes[i] =
-      binary.charCodeAt(i);
-  }
-
-
-  return bytes;
-}
-
-
-function pcm16ToFloat32(bytes) {
-
-  const sampleCount =
-    Math.floor(
-      bytes.byteLength / 2
-    );
-
-
-  const floats =
-    new Float32Array(
-      sampleCount
-    );
-
-
-  const view =
-    new DataView(
-      bytes.buffer,
-      bytes.byteOffset,
-      bytes.byteLength
-    );
-
-
-  for (
-    let i = 0;
-    i < sampleCount;
-    i++
-  ) {
-
-    const sample =
-      view.getInt16(
-        i * 2,
-        true
-      );
-
-
-    floats[i] =
-      sample < 0
-        ? sample / 32768
-        : sample / 32767;
-  }
-
-
-  return floats;
-}
-
-
-function hasPendingElevenAudio() {
-
-  if (
-    scheduledAudioSources.size > 0
-  ) {
-    return true;
-  }
-
-
-  if (
-    audioContext &&
-    nextPlaybackTime >
-      audioContext.currentTime +
-      0.03
-  ) {
-    return true;
-  }
-
-
-  return false;
-}
-
-
-async function scheduleElevenPcm(
-  base64
-) {
-
-  const ctx =
-    await ensureAudioContext();
-
-
-  const bytes =
-    base64ToUint8Array(
-      base64
-    );
-
-
-  if (
-    bytes.byteLength < 2
-  ) {
-    return;
-  }
-
-
-  const samples =
-    pcm16ToFloat32(
-      bytes
-    );
-
-
-  if (
-    samples.length === 0
-  ) {
-    return;
-  }
-
-
-  const buffer =
-    ctx.createBuffer(
-      1,
-      samples.length,
-      ELEVEN_PCM_SAMPLE_RATE
-    );
-
-
-  buffer
-    .getChannelData(0)
-    .set(samples);
-
-
-  const source =
-    ctx.createBufferSource();
-
-
-  source.buffer =
-    buffer;
-
-
-  source.connect(
-    ctx.destination
-  );
-
-
-  const startAt =
-    Math.max(
-      ctx.currentTime + 0.025,
-      nextPlaybackTime
-    );
-
-
-  nextPlaybackTime =
-    startAt +
-    buffer.duration;
-
-
-  scheduledAudioSources.add(
-    source
-  );
-
-
-  assistantSpeaking =
-    true;
-
-
-  startStopSpeechRecognition();
-
-
-  setJarvisState(
-    "speaking"
-  );
-
-
-  setLog(
-    "JARVIS spricht."
-  );
-
-
-  /*
-    Mikrofon während der Ausgabe bewusst AN lassen.
-    WebRTC-Echounterdrückung + Realtime-VAD ermöglichen dadurch
-    echtes Barge-in: Mattl kann JARVIS mitten im Satz unterbrechen.
-  */
-  setMicrophoneEnabled(
-    true
-  );
-
-
-  debugSet(
-    "dbgPlayback",
-    "✅"
-  );
-
-
-  debugSet(
-    "dbgEvent",
-    "PCM Audio spielt"
-  );
-
-
-  source.onended =
-    () => {
-
-      scheduledAudioSources.delete(
-        source
-      );
-
-
-      if (
-        scheduledAudioSources.size === 0
-      ) {
-
-        const delayMs =
-          Math.max(
-            0,
-            (
-              nextPlaybackTime -
-              ctx.currentTime
-            ) * 1000
-          );
-
-
-        setTimeout(
-          () => {
-
-            if (
-              scheduledAudioSources.size ===
-                0 &&
-              !responseInProgress
-            ) {
-
-              assistantSpeaking =
-                false;
-
-              stopStopSpeechRecognition();
-
-
-              if (
-                greetingInProgress
-              ) {
-
-                greetingInProgress =
-                  false;
-              }
-
-
-              if (
-                active &&
-                runningToolCalls.size ===
-                  0
-              ) {
-
-                setJarvisState(
-                  "listening"
-                );
-
-
-                setLog(
-                  "JARVIS hört zu."
-                );
-
-
-                setMicrophoneEnabled(
-                  true
-                );
-              }
-            }
-
-          },
-          delayMs + 80
-        );
-      }
-    };
-
-
-  source.start(
-    startAt
-  );
-}
-
-
-function enqueueElevenAudio(
-  base64
-) {
-
-  audioScheduleChain =
-    audioScheduleChain
-      .then(
-        () =>
-          scheduleElevenPcm(
-            base64
-          )
-      )
-      .catch(
-        error => {
-
-          console.error(
-            "PCM Playback Fehler:",
-            error
-          );
-
-
-          debugSet(
-            "dbgPlayback",
-            "❌"
-          );
-
-
-          debugSet(
-            "dbgEvent",
-            `PCM Fehler: ${
-              error.message ||
-              "unbekannt"
-            }`
-          );
-        }
-      );
-}
-
-
-function clearElevenAudio() {
-
-  for (
-    const source of
-    scheduledAudioSources
-  ) {
-
-    try {
-      source.stop();
-    } catch {}
-  }
-
-
-  scheduledAudioSources.clear();
-
-
-  if (audioContext) {
-
-    nextPlaybackTime =
-      audioContext.currentTime;
-  } else {
-
-    nextPlaybackTime =
-      0;
-  }
-
-
-  audioScheduleChain =
-    Promise.resolve();
-
-
-  assistantSpeaking =
-    false;
-
-  stopStopSpeechRecognition();
-}
-
-
-/* =========================================================
    VOICE STOP · JARVIS WÄHREND AUSGABE UNTERBRECHEN
    Separater Stop-Listener. Das OpenAI-Mikrofon bleibt während
    der TTS-Ausgabe weiterhin deaktiviert, damit kein Echo stört.
@@ -2185,1575 +1698,6 @@ function sendRealtimeEvent(
 
     return false;
   }
-}
-
-
-/* =========================================================
-   ELEVENLABS TOKEN
-   ========================================================= */
-
-async function fetchElevenLabsToken() {
-
-  debugSet(
-    "dbgToken",
-    "⏳"
-  );
-
-
-  const response =
-    await fetch(
-      "/api/elevenlabs-token",
-      {
-        method:
-          "GET",
-
-        cache:
-          "no-store"
-      }
-    );
-
-
-  let data;
-
-
-  try {
-
-    data =
-      await response.json();
-
-  } catch {
-
-    throw new Error(
-      "ElevenLabs Token-Antwort ist kein JSON."
-    );
-  }
-
-
-  if (
-    !response.ok ||
-    !data?.ok ||
-    !data?.token
-  ) {
-
-    debugSet(
-      "dbgToken",
-      "❌"
-    );
-
-
-    throw new Error(
-      data?.error ||
-      "ElevenLabs-Token fehlt."
-    );
-  }
-
-
-  elevenTokenData =
-    data;
-
-
-  debugSet(
-    "dbgToken",
-    "✅"
-  );
-
-
-  debugSet(
-    "dbgVoice",
-    data.voice_id ||
-    "FEHLT"
-  );
-
-
-  return data;
-}
-
-
-/* =========================================================
-   ELEVENLABS KEEP ALIVE
-   ========================================================= */
-
-function stopElevenKeepAlive() {
-
-  if (
-    elevenKeepAliveTimer
-  ) {
-
-    clearInterval(
-      elevenKeepAliveTimer
-    );
-
-
-    elevenKeepAliveTimer =
-      null;
-  }
-}
-
-
-function startElevenKeepAlive() {
-
-  stopElevenKeepAlive();
-
-
-  elevenKeepAliveTimer =
-    setInterval(
-      () => {
-
-        if (
-          elevenSocket &&
-          elevenSocket.readyState ===
-            WebSocket.OPEN &&
-          elevenReady &&
-          !responseInProgress
-        ) {
-
-          try {
-
-            elevenSocket.send(
-              JSON.stringify({
-                text: " "
-              })
-            );
-
-          } catch (error) {
-
-            console.warn(
-              "ElevenLabs Keepalive Fehler:",
-              error
-            );
-          }
-        }
-
-      },
-      120000
-    );
-}
-
-
-/* =========================================================
-   ELEVENLABS DISCONNECT
-   ========================================================= */
-
-function disconnectElevenLabs() {
-
-  stopElevenKeepAlive();
-
-
-  elevenConnected =
-    false;
-
-
-  elevenReady =
-    false;
-
-
-  elevenClosing =
-    true;
-
-
-  if (elevenSocket) {
-
-    try {
-
-      elevenSocket.close(
-        1000,
-        "JARVIS stop"
-      );
-
-    } catch {}
-
-
-    elevenSocket =
-      null;
-  }
-
-
-  elevenTokenData =
-    null;
-
-
-  setTimeout(
-    () => {
-
-      elevenClosing =
-        false;
-
-    },
-    100
-  );
-}
-
-
-/* =========================================================
-   ELEVENLABS CONNECT
-   ========================================================= */
-
-async function connectElevenLabs() {
-
-  disconnectElevenLabs();
-
-
-  debugSet(
-    "dbgEleven",
-    "❌"
-  );
-
-
-  debugSet(
-    "dbgSocket",
-    "verbinde..."
-  );
-
-
-  debugSet(
-    "dbgClose",
-    "-"
-  );
-
-
-  debugSet(
-    "dbgEvent",
-    "ElevenLabs Token wird geladen"
-  );
-
-
-  const config =
-    await fetchElevenLabsToken();
-
-
-  const token =
-    config.token;
-
-
-  const voiceId =
-    config.voice_id;
-
-
-  const modelId =
-    config.model_id ||
-    "eleven_flash_v2_5";
-
-
-  const languageCode =
-    config.language_code ||
-    "de";
-
-
-  if (!voiceId) {
-
-    throw new Error(
-      "ELEVENLABS_VOICE_ID fehlt."
-    );
-  }
-
-
-  const url =
-    new URL(
-      `wss://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream-input`
-    );
-
-
-  url.searchParams.set(
-    "model_id",
-    modelId
-  );
-
-
-  url.searchParams.set(
-    "output_format",
-    "pcm_24000"
-  );
-
-
-  url.searchParams.set(
-    "single_use_token",
-    token
-  );
-
-
-  url.searchParams.set(
-    "language_code",
-    languageCode
-  );
-
-
-  url.searchParams.set(
-    "inactivity_timeout",
-    "180"
-  );
-
-
-  elevenSessionId +=
-    1;
-
-
-  const sessionId =
-    elevenSessionId;
-
-
-  return new Promise(
-    (
-      resolve,
-      reject
-    ) => {
-
-
-      const socket =
-        new WebSocket(
-          url.toString()
-        );
-
-
-      elevenSocket =
-        socket;
-
-
-      let settled =
-        false;
-
-
-      const timeout =
-        setTimeout(
-          () => {
-
-            if (settled) {
-              return;
-            }
-
-
-            settled =
-              true;
-
-
-            debugSet(
-              "dbgSocket",
-              "TIMEOUT"
-            );
-
-
-            debugSet(
-              "dbgEvent",
-              "ElevenLabs WebSocket Timeout"
-            );
-
-
-            try {
-              socket.close();
-            } catch {}
-
-
-            reject(
-              new Error(
-                "ElevenLabs WebSocket Timeout."
-              )
-            );
-
-          },
-          12000
-        );
-
-
-      socket.onopen =
-        () => {
-
-          if (
-            sessionId !==
-            elevenSessionId
-          ) {
-            return;
-          }
-
-
-          clearTimeout(
-            timeout
-          );
-
-
-          elevenConnected =
-            true;
-
-
-          elevenReady =
-            true;
-
-
-          debugSet(
-            "dbgEleven",
-            "✅"
-          );
-
-
-          debugSet(
-            "dbgSocket",
-            "OPEN"
-          );
-
-
-          debugSet(
-            "dbgEvent",
-            "ElevenLabs verbunden"
-          );
-
-
-          try {
-
-            socket.send(
-              JSON.stringify({
-
-                text:
-                  " ",
-
-                voice_settings: {
-
-                  stability:
-                    0.52,
-
-                  similarity_boost:
-                    0.82,
-
-                  style:
-                    0.18,
-
-                  use_speaker_boost:
-                    true
-                },
-
-                generation_config: {
-
-                  chunk_length_schedule: [
-                  50,
-  70,
-  100,
-  140
-                  ]
-                }
-              })
-            );
-
-          } catch (error) {
-
-            console.error(
-              "ElevenLabs Init Fehler:",
-              error
-            );
-
-
-            debugSet(
-              "dbgEvent",
-              "ElevenLabs Init Sendefehler"
-            );
-          }
-
-
-          startElevenKeepAlive();
-
-
-          console.log(
-            "ElevenLabs WebSocket verbunden."
-          );
-
-
-          if (!settled) {
-
-            settled =
-              true;
-
-            resolve();
-          }
-        };
-
-
-      socket.onmessage =
-        event => {
-
-
-          if (
-            sessionId !==
-            elevenSessionId
-          ) {
-            return;
-          }
-
-
-          const data =
-            safeJsonParse(
-              event.data
-            );
-
-
-          if (!data) {
-
-            debugSet(
-              "dbgEvent",
-              "ElevenLabs Nachricht kein JSON"
-            );
-
-            return;
-          }
-
-
-          if (data.audio) {
-
-            debugSet(
-              "dbgAudio",
-              "✅"
-            );
-
-
-            debugSet(
-              "dbgEvent",
-              "ElevenLabs PCM Audio kommt"
-            );
-
-
-            enqueueElevenAudio(
-              data.audio
-            );
-          }
-
-
-          if (
-            data.isFinal ||
-            data.is_final
-          ) {
-
-            debugSet(
-              "dbgEvent",
-              "ElevenLabs Generation fertig"
-            );
-
-
-            console.log(
-              "ElevenLabs Generation fertig."
-            );
-          }
-
-
-          if (data.error) {
-
-            const errorText =
-              typeof data.error ===
-                "string"
-                ? data.error
-                : JSON.stringify(
-                    data.error
-                  );
-
-
-            console.error(
-              "ElevenLabs Serverfehler:",
-              data.error
-            );
-
-
-            debugSet(
-              "dbgEvent",
-              `ELEVEN FEHLER: ${errorText}`
-            );
-          }
-        };
-
-
-      socket.onerror =
-        error => {
-
-          console.error(
-            "ElevenLabs WebSocket Fehler:",
-            error
-          );
-
-
-          debugSet(
-            "dbgEleven",
-            "❌"
-          );
-
-
-          debugSet(
-            "dbgSocket",
-            "ERROR"
-          );
-
-
-          debugSet(
-            "dbgEvent",
-            "ElevenLabs WebSocket Fehler"
-          );
-
-
-          if (!settled) {
-
-            settled =
-              true;
-
-
-            clearTimeout(
-              timeout
-            );
-
-
-            reject(
-              new Error(
-                "ElevenLabs-Verbindung fehlgeschlagen."
-              )
-            );
-          }
-        };
-
-
-      socket.onclose =
-        event => {
-
-          if (
-            sessionId !==
-            elevenSessionId
-          ) {
-            return;
-          }
-
-
-          elevenConnected =
-            false;
-
-
-          elevenReady =
-            false;
-
-
-          stopElevenKeepAlive();
-
-
-          debugSet(
-            "dbgEleven",
-            "❌"
-          );
-
-
-          debugSet(
-            "dbgSocket",
-            "CLOSED"
-          );
-
-
-          debugSet(
-            "dbgClose",
-            `${event.code}${
-              event.reason
-                ? ` · ${event.reason}`
-                : ""
-            }`
-          );
-
-
-          console.log(
-            "ElevenLabs WebSocket geschlossen.",
-            event.code,
-            event.reason
-          );
-
-
-          if (!elevenClosing) {
-
-            debugSet(
-              "dbgEvent",
-              `ElevenLabs geschlossen: ${
-                event.code
-              } ${
-                event.reason || ""
-              }`
-            );
-          }
-
-
-          if (!settled) {
-
-            settled =
-              true;
-
-
-            clearTimeout(
-              timeout
-            );
-
-
-            reject(
-              new Error(
-                `ElevenLabs geschlossen: ${
-                  event.code
-                } ${
-                  event.reason ||
-                  ""
-                }`
-              )
-            );
-          }
-        };
-    }
-  );
-}
-
-
-/* =========================================================
-   DEUTSCHE ZAHLEN FÜR SPRACHAUSGABE
-   ========================================================= */
-
-function germanNumberUnder100(
-  number
-) {
-
-  const n =
-    Math.max(
-      0,
-      Math.floor(
-        Number(number) || 0
-      )
-    );
-
-  const ones = [
-    "null",
-    "eins",
-    "zwei",
-    "drei",
-    "vier",
-    "fünf",
-    "sechs",
-    "sieben",
-    "acht",
-    "neun"
-  ];
-
-  const special = {
-    10: "zehn",
-    11: "elf",
-    12: "zwölf",
-    13: "dreizehn",
-    14: "vierzehn",
-    15: "fünfzehn",
-    16: "sechzehn",
-    17: "siebzehn",
-    18: "achtzehn",
-    19: "neunzehn"
-  };
-
-  const tens = {
-    20: "zwanzig",
-    30: "dreißig",
-    40: "vierzig",
-    50: "fünfzig",
-    60: "sechzig",
-    70: "siebzig",
-    80: "achtzig",
-    90: "neunzig"
-  };
-
-  if (n < 10) {
-    return ones[n];
-  }
-
-  if (special[n]) {
-    return special[n];
-  }
-
-  const ten =
-    Math.floor(
-      n / 10
-    ) * 10;
-
-  const one =
-    n % 10;
-
-  if (one === 0) {
-    return tens[ten];
-  }
-
-  const oneWord =
-    one === 1
-      ? "ein"
-      : ones[one];
-
-  return `${oneWord}und${tens[ten]}`;
-}
-
-
-function germanIntegerToWords(
-  number
-) {
-
-  let n =
-    Math.floor(
-      Math.abs(
-        Number(number) || 0
-      )
-    );
-
-  if (n === 0) {
-    return "null";
-  }
-
-  const parts =
-    [];
-
-  const appendUnder1000 =
-    value => {
-
-      let x =
-        value;
-
-      let result =
-        "";
-
-      if (x >= 100) {
-
-        const hundreds =
-          Math.floor(
-            x / 100
-          );
-
-        result +=
-          hundreds === 1
-            ? "einhundert"
-            : `${germanNumberUnder100(hundreds)}hundert`;
-
-        x %=
-          100;
-      }
-
-      if (x > 0) {
-        result +=
-          germanNumberUnder100(
-            x
-          );
-      }
-
-      return result;
-    };
-
-
-  const billions =
-    Math.floor(
-      n / 1000000000
-    );
-
-  if (billions > 0) {
-
-    parts.push(
-      billions === 1
-        ? "eine Milliarde"
-        : `${germanIntegerToWords(billions)} Milliarden`
-    );
-
-    n %=
-      1000000000;
-  }
-
-
-  const millions =
-    Math.floor(
-      n / 1000000
-    );
-
-  if (millions > 0) {
-
-    parts.push(
-      millions === 1
-        ? "eine Million"
-        : `${germanIntegerToWords(millions)} Millionen`
-    );
-
-    n %=
-      1000000;
-  }
-
-
-  const thousands =
-    Math.floor(
-      n / 1000
-    );
-
-  if (thousands > 0) {
-
-    parts.push(
-      thousands === 1
-        ? "eintausend"
-        : `${appendUnder1000(thousands)}tausend`
-    );
-
-    n %=
-      1000;
-  }
-
-
-  if (n > 0) {
-    parts.push(
-      appendUnder1000(
-        n
-      )
-    );
-  }
-
-
-  return parts
-    .join(" ")
-    .trim();
-}
-
-
-function parseGermanInteger(
-  value
-) {
-
-  const cleaned =
-    String(
-      value || ""
-    )
-      .replace(
-        /\./g,
-        ""
-      )
-      .replace(
-        /\s/g,
-        ""
-      );
-
-  const number =
-    Number(cleaned);
-
-  return Number.isFinite(number)
-    ? Math.floor(number)
-    : 0;
-}
-
-
-function digitStringToGerman(
-  value
-) {
-
-  const digitWords = {
-    "0": "null",
-    "1": "eins",
-    "2": "zwei",
-    "3": "drei",
-    "4": "vier",
-    "5": "fünf",
-    "6": "sechs",
-    "7": "sieben",
-    "8": "acht",
-    "9": "neun"
-  };
-
-  return String(value)
-    .split("")
-    .map(
-      char =>
-        digitWords[char] ||
-        char
-    )
-    .join(" ");
-}
-
-
-function normalizeTextForSpeech(
-  text
-) {
-
-  let value =
-    String(
-      text || ""
-    );
-
-
-  /*
-    EUROBETRÄGE
-    7,69 €   -> sieben Euro neunundsechzig Cent
-    12,50 €  -> zwölf Euro fünfzig Cent
-    1.249,05 € -> eintausendzweihundertneunundvierzig Euro fünf Cent
-  */
-
-  value =
-    value.replace(
-      /(\d{1,3}(?:\.\d{3})*|\d+),(\d{2})\s*(?:€|EUR)(?!\w)/gi,
-      (
-        match,
-        euroValue,
-        centValue
-      ) => {
-
-        const euro =
-          parseGermanInteger(
-            euroValue
-          );
-
-        const cent =
-          Number(
-            centValue
-          );
-
-        const euroWord =
-          euro === 1
-            ? "ein Euro"
-            : `${germanIntegerToWords(euro)} Euro`;
-
-        const centWord =
-          cent === 0
-            ? ""
-            : cent === 1
-              ? " ein Cent"
-              : ` ${germanIntegerToWords(cent)} Cent`;
-
-        return `${euroWord}${centWord}`;
-      }
-    );
-
-
-  /*
-    Ganze Eurobeträge
-  */
-
-  value =
-    value.replace(
-      /(\d{1,3}(?:\.\d{3})*|\d+)\s*(?:€|EUR)(?!\w)/gi,
-      (
-        match,
-        euroValue
-      ) => {
-
-        const euro =
-          parseGermanInteger(
-            euroValue
-          );
-
-        return euro === 1
-          ? "ein Euro"
-          : `${germanIntegerToWords(euro)} Euro`;
-      }
-    );
-
-
-  /*
-    DATUM
-    17.08.2026 -> siebzehnter August zweitausendsechsundzwanzig
-    am 17.08.2026 -> am siebzehnten August zweitausendsechsundzwanzig
-  */
-
-  const germanMonths = {
-
-    1: "Januar",
-    2: "Februar",
-    3: "März",
-    4: "April",
-    5: "Mai",
-    6: "Juni",
-    7: "Juli",
-    8: "August",
-    9: "September",
-    10: "Oktober",
-    11: "November",
-    12: "Dezember"
-  };
-
-
-  const germanOrdinalNominative = {
-
-    1:"erster",2:"zweiter",3:"dritter",4:"vierter",5:"fünfter",
-    6:"sechster",7:"siebter",8:"achter",9:"neunter",10:"zehnter",
-    11:"elfter",12:"zwölfter",13:"dreizehnter",14:"vierzehnter",
-    15:"fünfzehnter",16:"sechzehnter",17:"siebzehnter",
-    18:"achtzehnter",19:"neunzehnter",20:"zwanzigster",
-    21:"einundzwanzigster",22:"zweiundzwanzigster",
-    23:"dreiundzwanzigster",24:"vierundzwanzigster",
-    25:"fünfundzwanzigster",26:"sechsundzwanzigster",
-    27:"siebenundzwanzigster",28:"achtundzwanzigster",
-    29:"neunundzwanzigster",30:"dreißigster",
-    31:"einunddreißigster"
-  };
-
-
-  const germanOrdinalDative = {
-
-    1:"ersten",2:"zweiten",3:"dritten",4:"vierten",5:"fünften",
-    6:"sechsten",7:"siebten",8:"achten",9:"neunten",10:"zehnten",
-    11:"elften",12:"zwölften",13:"dreizehnten",14:"vierzehnten",
-    15:"fünfzehnten",16:"sechzehnten",17:"siebzehnten",
-    18:"achtzehnten",19:"neunzehnten",20:"zwanzigsten",
-    21:"einundzwanzigsten",22:"zweiundzwanzigsten",
-    23:"dreiundzwanzigsten",24:"vierundzwanzigsten",
-    25:"fünfundzwanzigsten",26:"sechsundzwanzigsten",
-    27:"siebenundzwanzigsten",28:"achtundzwanzigsten",
-    29:"neunundzwanzigsten",30:"dreißigsten",
-    31:"einunddreißigsten"
-  };
-
-
-  value =
-    value.replace(
-      /\bam\s+(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/gi,
-      (
-        match,
-        day,
-        month,
-        year
-      ) => {
-
-        const d =
-          Number(day);
-
-        const m =
-          Number(month);
-
-
-        return `am ${germanOrdinalDative[d] || germanIntegerToWords(d)} ${germanMonths[m] || germanIntegerToWords(m)} ${germanIntegerToWords(year)}`;
-      }
-    );
-
-
-  value =
-    value.replace(
-      /\b(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})\b/g,
-      (
-        match,
-        day,
-        month,
-        year
-      ) => {
-
-        const d =
-          Number(day);
-
-        const m =
-          Number(month);
-
-
-        return `${germanOrdinalNominative[d] || germanIntegerToWords(d)} ${germanMonths[m] || germanIntegerToWords(m)} ${germanIntegerToWords(year)}`;
-      }
-    );
-
-
-  /*
-    UHRZEIT
-    Muss vor Sportergebnissen laufen, sonst wird 23:10 als 23 zu 10 gelesen.
-  */
-
-  value =
-    value.replace(
-      /\b(\d{1,2}):(\d{2})\s*Uhr\b/gi,
-      (
-        match,
-        hour,
-        minute
-      ) => {
-
-        return `${germanIntegerToWords(hour)} Uhr${Number(minute) === 0 ? "" : ` ${germanIntegerToWords(minute)}`}`;
-      }
-    );
-
-
-  value =
-    value.replace(
-      /\bum\s+(\d{1,2}):(\d{2})\b/gi,
-      (
-        match,
-        hour,
-        minute
-      ) => {
-
-        return `um ${germanIntegerToWords(hour)} Uhr${Number(minute) === 0 ? "" : ` ${germanIntegerToWords(minute)}`}`;
-      }
-    );
-
-
-  /*
-    SPORTERGEBNISSE
-    0:0 -> null zu null
-    2:1 -> zwei zu eins
-  */
-
-  value =
-    value.replace(
-      /\b(\d{1,3})\s*:\s*(\d{1,3})\b/g,
-      (
-        match,
-        left,
-        right
-      ) =>
-        `${germanIntegerToWords(left)} zu ${germanIntegerToWords(right)}`
-    );
-
-
-  /*
-    PROZENT
-    12,5 % -> zwölf Komma fünf Prozent
-    45 %   -> fünfundvierzig Prozent
-  */
-
-  value =
-    value.replace(
-      /\b(\d+),(\d+)\s*%/g,
-      (
-        match,
-        whole,
-        decimal
-      ) =>
-        `${germanIntegerToWords(whole)} Komma ${digitStringToGerman(decimal)} Prozent`
-    );
-
-
-  value =
-    value.replace(
-      /\b(\d+)\s*%/g,
-      (
-        match,
-        whole
-      ) =>
-        `${germanIntegerToWords(whole)} Prozent`
-    );
-
-
-  return value;
-}
-
-
-/* =========================================================
-   TTS TEXT BUFFER
-   ========================================================= */
-
-function clearTtsTextBuffer() {
-
-  if (
-    ttsBufferTimer
-  ) {
-
-    clearTimeout(
-      ttsBufferTimer
-    );
-
-    ttsBufferTimer =
-      null;
-  }
-
-  ttsTextBuffer =
-    "";
-}
-
-
-function flushTtsTextBuffer() {
-
-  if (
-    ttsBufferTimer
-  ) {
-
-    clearTimeout(
-      ttsBufferTimer
-    );
-
-    ttsBufferTimer =
-      null;
-  }
-
-
-  const buffered =
-    ttsTextBuffer;
-
-  ttsTextBuffer =
-    "";
-
-
-  const clean =
-    normalizeTextForSpeech(
-      buffered
-    ).trim();
-
-
-  if (!clean) {
-    return;
-  }
-
-
-  sendTextToElevenLabs(
-    `${clean} `
-  );
-}
-
-
-function bufferTextForElevenLabs(
-  delta
-) {
-
-  const text =
-    String(
-      delta || ""
-    );
-
-
-  if (!text) {
-    return;
-  }
-
-
-  ttsTextBuffer +=
-    text;
-
-
-  if (
-    ttsBufferTimer
-  ) {
-
-    clearTimeout(
-      ttsBufferTimer
-    );
-  }
-
-
-  /*
-    Erst an sinnvollen Grenzen senden.
-    Dadurch bekommt ElevenLabs z.B. "12,50 €"
-    als Einheit und nicht "12" / "," / "50" / "€".
-  */
-
-  const hasNaturalBreak =
-    /(?:[.!?;]\s*|\n+)$/.test(
-      ttsTextBuffer
-    );
-
-  const isLongEnough =
-    ttsTextBuffer.length >=
-      TTS_BUFFER_MAX_CHARS;
-
-
-  if (
-    hasNaturalBreak ||
-    isLongEnough
-  ) {
-
-    flushTtsTextBuffer();
-    return;
-  }
-
-
-  ttsBufferTimer =
-    setTimeout(
-      () => {
-
-        flushTtsTextBuffer();
-
-      },
-      TTS_BUFFER_DELAY_MS
-    );
-}
-
-
-/* =========================================================
-   ELEVENLABS TEXT SEND
-   ========================================================= */
-
-function sendTextToElevenLabs(
-  text
-) {
-
-  const clean =
-    String(
-      text || ""
-    );
-
-
-  if (!clean) {
-    return;
-  }
-
-
-  if (
-    !elevenSocket ||
-    elevenSocket.readyState !==
-      WebSocket.OPEN ||
-    !elevenReady
-  ) {
-
-    if (
-      active &&
-      elevenReconnectPromise
-    ) {
-      pendingElevenTexts.push(
-        clean
-      );
-
-      debugSet(
-        "dbgEvent",
-        "ElevenLabs verbindet neu · Text gepuffert"
-      );
-
-      return;
-    }
-
-
-    console.warn(
-      "ElevenLabs nicht bereit."
-    );
-
-
-    debugSet(
-      "dbgEvent",
-      "ElevenLabs nicht bereit für Text"
-    );
-
-
-    return;
-  }
-
-
-  try {
-
-    elevenSocket.send(
-      JSON.stringify({
-
-        text:
-          clean,
-
-        try_trigger_generation:
-          true
-      })
-    );
-
-  } catch (error) {
-
-    console.error(
-      "ElevenLabs Text Sendefehler:",
-      error
-    );
-
-
-    debugSet(
-      "dbgEvent",
-      "ElevenLabs Text Sendefehler"
-    );
-  }
-}
-
-
-/* =========================================================
-   ELEVENLABS FLUSH
-   ========================================================= */
-
-function flushElevenLabs() {
-
-  if (
-    !elevenSocket ||
-    elevenSocket.readyState !==
-      WebSocket.OPEN ||
-    !elevenReady
-  ) {
-
-    if (
-      active &&
-      elevenReconnectPromise
-    ) {
-      pendingElevenFlush =
-        true;
-    }
-
-    return;
-  }
-
-
-  try {
-
-    /*
-      WICHTIG:
-      KEIN text:"" mehr.
-      Leerer Text würde den Socket beenden.
-
-      Leerzeichen + flush:true erzeugt den Rest
-      der Sprache, ohne die Verbindung zu schließen.
-    */
-
-    elevenSocket.send(
-      JSON.stringify({
-
-        text:
-          " ",
-
-        flush:
-          true
-      })
-    );
-
-
-    debugSet(
-      "dbgEvent",
-      "ElevenLabs Flush gesendet"
-    );
-
-  } catch (error) {
-
-    console.warn(
-      "ElevenLabs Flush Fehler:",
-      error
-    );
-
-
-    debugSet(
-      "dbgEvent",
-      "ElevenLabs Flush Fehler"
-    );
-  }
-}
-
-
-/* =========================================================
-   DIRECT ELEVENLABS SPEECH
-   ========================================================= */
-
-function speakTextWithElevenLabs(
-  text
-) {
-
-  const clean =
-    String(
-      text || ""
-    ).trim();
-
-
-  if (!clean) {
-    return false;
-  }
-
-
-  if (
-    !elevenReady ||
-    !elevenSocket ||
-    elevenSocket.readyState !==
-      WebSocket.OPEN
-  ) {
-
-    debugSet(
-      "dbgEvent",
-      "Direkte Sprache: ElevenLabs nicht verbunden"
-    );
-
-    return false;
-  }
-
-
-  responseInProgress =
-    true;
-
-
-  setMicrophoneEnabled(
-    false
-  );
-
-
-  sendTextToElevenLabs(
-    `${normalizeTextForSpeech(clean)} `
-  );
-
-
-  flushElevenLabs();
-
-
-  responseInProgress =
-    false;
-
-
-  return true;
 }
 
 
@@ -4193,7 +2137,7 @@ async function executeRealtimeTool(
     response: {
 
       output_modalities: [
-        "text"
+        "audio"
       ]
     }
   });
@@ -4347,9 +2291,6 @@ function handleRealtimeEvent(
         true;
 
 
-      clearTtsTextBuffer();
-
-
       currentResponseText =
         "";
 
@@ -4372,68 +2313,70 @@ function handleRealtimeEvent(
       break;
 
 
-    case "response.output_text.delta":
+    case "response.output_audio.delta":
+
+      if (!assistantSpeaking) {
+        assistantSpeaking = true;
+
+        setJarvisState(
+          "speaking"
+        );
+
+        setLog(
+          "JARVIS spricht."
+        );
+
+        /*
+          Mikrofon bleibt aktiv. OpenAI Realtime übernimmt Echo-
+          Unterdrückung und interrupt_response für echtes Barge-in.
+        */
+        setMicrophoneEnabled(
+          true
+        );
+
+        if (
+          greetingInProgress
+        ) {
+          duckIntro();
+        }
+      }
+
+      break;
+
+
+    case "response.output_audio_transcript.delta":
 
       if (event.delta) {
-
-        const delta =
-          String(
-            event.delta
-          );
-
-
         currentResponseText +=
-          delta;
+          String(event.delta);
+      }
+
+      break;
 
 
-        debugSet(
-          "dbgText",
-          "✅"
-        );
+    case "response.output_audio_transcript.done":
 
-
-        debugSet(
-          "dbgEvent",
-          "OpenAI Text → ElevenLabs"
-        );
-
-
-        bufferTextForElevenLabs(
-          delta
+      if (event.transcript) {
+        console.log(
+          "JARVIS:",
+          event.transcript
         );
       }
 
       break;
 
 
-    case "response.output_text.done":
+    case "response.output_audio.done":
 
-      if (event.text) {
+      assistantSpeaking =
+        false;
 
-        console.log(
-          "JARVIS:",
-          event.text
-        );
+      if (
+        greetingInProgress
+      ) {
+        greetingInProgress =
+          false;
       }
-
-
-      flushTtsTextBuffer();
-
-
-      setTimeout(
-        () => {
-
-          flushElevenLabs();
-
-        },
-        60
-      );
-
-
-      debugSet(
-        "dbgEvent",
-        "OpenAI Text fertig · TTS-Puffer geleert"
-      );
 
       break;
 
@@ -4484,49 +2427,39 @@ function handleRealtimeEvent(
 
 
       if (
-        !hasPendingElevenAudio()
+        greetingInProgress
       ) {
+        greetingInProgress =
+          false;
+      }
 
-        if (
-          greetingInProgress
-        ) {
+      if (active) {
 
-          greetingInProgress =
-            false;
-        }
+        setTimeout(
+          () => {
 
+            if (
+              active &&
+              !assistantSpeaking &&
+              !responseInProgress
+            ) {
 
-        if (active) {
+              setJarvisState(
+                "listening"
+              );
 
-          setTimeout(
-            () => {
+              setLog(
+                "JARVIS hört zu."
+              );
 
-              if (
-                active &&
-                !assistantSpeaking &&
-                !responseInProgress &&
-                !hasPendingElevenAudio()
-              ) {
+              setMicrophoneEnabled(
+                true
+              );
+            }
 
-                setJarvisState(
-                  "listening"
-                );
-
-
-                setLog(
-                  "JARVIS hört zu."
-                );
-
-
-                setMicrophoneEnabled(
-                  true
-                );
-              }
-
-            },
-            350
-          );
-        }
+          },
+          120
+        );
       }
 
       break;
@@ -4624,6 +2557,34 @@ async function connectRealtime() {
 
   peerConnection =
     pc;
+
+
+  pc.ontrack =
+    event => {
+
+      const stream =
+        event.streams?.[0];
+
+      if (
+        remoteAudio &&
+        stream
+      ) {
+        remoteAudio.srcObject =
+          stream;
+
+        remoteAudio.autoplay =
+          true;
+
+        remoteAudio.play()
+          .catch(
+            error =>
+              console.warn(
+                "Realtime Audio Autoplay:",
+                error
+              )
+          );
+      }
+    };
 
 
   if (!micStream) {
@@ -4929,12 +2890,6 @@ function cancelCurrentResponse() {
     "";
 
 
-  clearTtsTextBuffer();
-
-
-  clearElevenAudio();
-
-
   assistantSpeaking =
     false;
 
@@ -4983,8 +2938,8 @@ function requestExactSpeech(
       "open"
   ) {
 
-    speakTextWithElevenLabs(
-      clean
+    console.warn(
+      "Realtime Audio ist noch nicht verbunden."
     );
 
     return;
@@ -5007,7 +2962,7 @@ function requestExactSpeech(
     response: {
 
       output_modalities: [
-        "text"
+        "audio"
       ],
 
       instructions:
@@ -5086,8 +3041,7 @@ function isBusyForProactiveSpeech() {
     assistantSpeaking ||
     responseInProgress ||
     userTurnInProgress ||
-    runningToolCalls.size > 0 ||
-    hasPendingElevenAudio()
+    runningToolCalls.size > 0
   );
 }
 
@@ -5194,8 +3148,7 @@ function speakProactiveMessage(
     assistantSpeaking ||
     responseInProgress ||
     userTurnInProgress ||
-    runningToolCalls.size > 0 ||
-    hasPendingElevenAudio()
+    runningToolCalls.size > 0
   ) {
 
     return false;
@@ -5337,9 +3290,9 @@ function ensureGmailMailModal() {
 
       if (
         active &&
-        elevenReady
+        realtimeConnected
       ) {
-        speakTextWithElevenLabs(
+        requestExactSpeech(
           `E-Mail von ${getSenderDisplayName(currentSelectedEmail.from)}. Betreff: ${currentSelectedEmail.subject}. ${currentSelectedEmail.body}`
         );
       }
@@ -6548,116 +4501,6 @@ function stopBackgroundChecks() {
 
 
 /* =========================================================
-   ELEVENLABS · SAUBERER NEUSTART NACH UNTERBRECHUNG
-   Verhindert, dass bereits erzeugte alte Audiopakete nach einem
-   Barge-in wieder anfangen zu sprechen.
-   ========================================================= */
-
-function reconnectElevenLabsAfterInterruption() {
-
-  if (
-    !active ||
-    elevenReconnectPromise
-  ) {
-    return;
-  }
-
-
-  /*
-    Alte Socket-Callbacks sofort ungültig machen, noch bevor
-    der Socket vollständig geschlossen wurde.
-  */
-  elevenSessionId +=
-    1;
-
-
-  stopElevenKeepAlive();
-
-
-  const staleSocket =
-    elevenSocket;
-
-
-  elevenSocket =
-    null;
-
-  elevenConnected =
-    false;
-
-  elevenReady =
-    false;
-
-  elevenTokenData =
-    null;
-
-
-  if (staleSocket) {
-    try {
-      staleSocket.close(
-        1000,
-        "Barge-in"
-      );
-    } catch {}
-  }
-
-
-  elevenReconnectPromise =
-    connectElevenLabs()
-      .then(
-        () => {
-
-          const queued =
-            pendingElevenTexts.splice(
-              0,
-              pendingElevenTexts.length
-            );
-
-
-          for (
-            const text of queued
-          ) {
-            sendTextToElevenLabs(
-              text
-            );
-          }
-
-
-          if (
-            pendingElevenFlush
-          ) {
-            pendingElevenFlush =
-              false;
-
-            flushElevenLabs();
-          }
-        }
-      )
-      .catch(
-        error => {
-
-          console.warn(
-            "ElevenLabs Reconnect nach Unterbrechung fehlgeschlagen:",
-            error
-          );
-
-          pendingElevenTexts.length =
-            0;
-
-          pendingElevenFlush =
-            false;
-        }
-      )
-      .finally(
-        () => {
-
-          elevenReconnectPromise =
-            null;
-        }
-      );
-}
-
-
-/* =========================================================
    INTERRUPTION
    ========================================================= */
 
@@ -6692,9 +4535,6 @@ function handleUserInterruption() {
   cancelCurrentResponse();
 
 
-  clearElevenAudio();
-
-
   /*
     Falls die Unterbrechung während der Startbegrüßung kommt,
     darf die Intro-Musik nicht weiterlaufen.
@@ -6709,13 +4549,6 @@ function handleUserInterruption() {
   greetingInProgress =
     false;
 
-
-  /*
-    ElevenLabs kann nach dem Abbruch noch alte Audiopakete senden.
-    Deshalb wird nur die TTS-Verbindung sauber neu aufgebaut;
-    OpenAI/Reatime und der Rest von JARVIS bleiben online.
-  */
-  reconnectElevenLabsAfterInterruption();
 
 
   setMicrophoneEnabled(
@@ -6768,54 +4601,6 @@ async function startJarvis() {
 
 
   debugSet(
-    "dbgEleven",
-    "❌"
-  );
-
-
-  debugSet(
-    "dbgToken",
-    "❌"
-  );
-
-
-  debugSet(
-    "dbgVoice",
-    "-"
-  );
-
-
-  debugSet(
-    "dbgSocket",
-    "-"
-  );
-
-
-  debugSet(
-    "dbgText",
-    "❌"
-  );
-
-
-  debugSet(
-    "dbgAudio",
-    "❌"
-  );
-
-
-  debugSet(
-    "dbgPlayback",
-    "❌"
-  );
-
-
-  debugSet(
-    "dbgClose",
-    "-"
-  );
-
-
-  debugSet(
     "dbgEvent",
     "JARVIS startet"
   );
@@ -6843,39 +4628,11 @@ async function startJarvis() {
 
   try {
 
-    /*
-      AudioContext sofort im echten Button-Klick
-      aktivieren.
-    */
-
-    await ensureAudioContext();
-
-
-    debugSet(
-      "dbgPlayback",
-      "bereit"
-    );
-
-
     const introPromise =
       startIntro();
 
 
     await createMicrophoneStream();
-
-
-    setLog(
-      "ElevenLabs wird verbunden …"
-    );
-
-
-    debugSet(
-      "dbgEvent",
-      "ElevenLabs wird verbunden"
-    );
-
-
-    await connectElevenLabs();
 
 
     setLog(
@@ -6955,9 +4712,6 @@ async function startJarvis() {
       false;
 
 
-    disconnectElevenLabs();
-
-
     disconnectRealtime();
 
 
@@ -6965,9 +4719,6 @@ async function startJarvis() {
 
 
     stopIntro();
-
-
-    clearElevenAudio();
 
 
     setButtonActive(
@@ -7034,15 +4785,6 @@ async function stopJarvis(
   );
 
 
-  clearTtsTextBuffer();
-
-
-  clearElevenAudio();
-
-
-  disconnectElevenLabs();
-
-
   disconnectRealtime();
 
 
@@ -7053,16 +4795,6 @@ async function stopJarvis(
 
 
   runningToolCalls.clear();
-
-
-  pendingElevenTexts.length =
-    0;
-
-  pendingElevenFlush =
-    false;
-
-  elevenReconnectPromise =
-    null;
 
 
   if (updateUi) {
@@ -7147,16 +4879,7 @@ window.addEventListener(
     }
 
 
-    stopElevenKeepAlive();
-
-
-    clearElevenAudio();
-
-
-    disconnectElevenLabs();
-
-
-    disconnectRealtime();
+      disconnectRealtime();
 
 
     stopMicrophone();
@@ -7165,12 +4888,6 @@ window.addEventListener(
     stopIntro();
 
 
-    if (audioContext) {
-
-      try {
-        audioContext.close();
-      } catch {}
-    }
   }
 );
 
@@ -7231,42 +4948,17 @@ console.log(
 
 
 console.log(
-  "JARVIS APP V10.6 · TRIPLE SCREEN + VOICEFIX"
+  "JARVIS APP V11.0 · SINGLE SCREEN · OPENAI REALTIME AUDIO"
 );
 
 
 console.log(
-  "OpenAI Realtime: TEXT"
+  "OpenAI Realtime: AUDIO / WebRTC"
 );
 
 
 console.log(
-  "Voice Engine: ElevenLabs"
-);
-
-
-console.log(
-  "ElevenLabs Audio: PCM 24000 Hz"
-);
-
-
-console.log(
-  "Playback: Web Audio API"
-);
-
-
-console.log(
-  "WebSocket Auth: single_use_token"
-);
-
-
-console.log(
-  "Flush: true"
-);
-
-
-console.log(
-  "Inactivity Timeout: 180 Sekunden"
+  "Voice Engine: OpenAI Realtime"
 );
 
 
@@ -7416,106 +5108,3 @@ document.addEventListener(
 
 
 
-
-/* =========================================================
-   JARVIS V10.8 · WINDOWS WAKE-WORD AUTOSTART
-   Wird nur aktiv, wenn die URL ?autostart=1 enthält.
-   Normale Button-Nutzung bleibt unverändert.
-   ========================================================= */
-
-function sendJarvisStartupCommand(text) {
-  const clean = String(text || "").trim();
-
-  if (!clean || !dataChannel || dataChannel.readyState !== "open") {
-    return false;
-  }
-
-  sendRealtimeEvent({
-    type: "conversation.item.create",
-    item: {
-      type: "message",
-      role: "user",
-      content: [
-        {
-          type: "input_text",
-          text: clean
-        }
-      ]
-    }
-  });
-
-  responseInProgress = true;
-
-  sendRealtimeEvent({
-    type: "response.create",
-    response: {
-      output_modalities: ["text"]
-    }
-  });
-
-  return true;
-}
-
-function queueJarvisStartupCommand(mode) {
-  const commands = {
-    briefing: "Gib mir jetzt mein ausführliches Morning- beziehungsweise Tagesbriefing.",
-    shop: "Prüfe jetzt Druckelite24. Wie läuft mein Business heute? Nutze die verfügbaren Live-Daten und nenne mir die wichtigsten Auffälligkeiten.",
-    mail: "Prüfe jetzt meine ungelesenen E-Mails und nenne mir nur die wichtigsten.",
-    orders: "Prüfe jetzt meine offenen Shopify-Bestellungen und sage mir kurz, was auffällig ist."
-  };
-
-  const command = commands[String(mode || "").toLowerCase()];
-  if (!command) return;
-
-  const startedAt = Date.now();
-
-  const trySend = () => {
-    if (!active) return;
-
-    const busy =
-      greetingInProgress ||
-      assistantSpeaking ||
-      responseInProgress ||
-      runningToolCalls.size > 0 ||
-      hasPendingElevenAudio();
-
-    if (!busy && sendJarvisStartupCommand(command)) {
-      setLog("Startbefehl wird ausgeführt …");
-      return;
-    }
-
-    if (Date.now() - startedAt < 30000) {
-      setTimeout(trySend, 450);
-    }
-  };
-
-  setTimeout(trySend, 700);
-}
-
-(function enableWakeWordAutostart() {
-  const params = new URLSearchParams(window.location.search);
-  const autostart = params.get("autostart") === "1";
-  const startupMode = params.get("startup") || "";
-
-  if (!autostart || !JARVIS_VOICE_SCREEN) {
-    return;
-  }
-
-  window.addEventListener(
-    "load",
-    () => {
-      setTimeout(async () => {
-        if (active || starting || stopping) return;
-
-        try {
-          await startJarvis();
-          queueJarvisStartupCommand(startupMode);
-        } catch (error) {
-          console.error("Wake-Word Autostart fehlgeschlagen:", error);
-          setLog("Sprachstart blockiert. Einmalige Browser-/Mikrofonfreigabe prüfen.");
-        }
-      }, 500);
-    },
-    { once: true }
-  );
-})();
