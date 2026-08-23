@@ -1,959 +1,191 @@
 <!doctype html>
 <html lang="de">
 <head>
-  <meta charset="utf-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1, viewport-fit=cover"
-  />
-  <meta name="theme-color" content="#060608" />
-  <meta
-    name="description"
-    content="Druckelite24 JARVIS Business Voice Assistant"
-  />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#060608">
   <title>Druckelite24 · JARVIS</title>
-  <link rel="stylesheet" href="styles.css?v=10.6-triple" />
+  <link rel="stylesheet" href="/styles.css?v=12">
 </head>
-<body>
-  <script>
-    (function(){
-      const allowed = new Set(["left", "center", "right", "single"]);
-      const requested = new URLSearchParams(location.search).get("screen") || "single";
-      const role = allowed.has(requested) ? requested : "single";
-      window.JARVIS_SCREEN_ROLE = role;
-      document.body.dataset.screenRole = role;
-      document.documentElement.dataset.screenRole = role;
-    })();
-  </script>
+<body data-jarvis-state="offline">
 
-  <!-- ===================================================
-       BOOT-OVERLAY
-       =================================================== -->
-  <div class="boot-overlay" id="bootOverlay">
-    <img
-      class="boot-logo"
-      src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252"
-      alt="Druckelite24"
-    />
-    <div class="boot-lines" id="bootLines"></div>
-    <div class="boot-bar">
-      <div class="boot-bar-fill" id="bootBarFill"></div>
-    </div>
+  <div class="boot" id="boot">
+    <img class="boot-logo" src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252" alt="Druckelite24">
+    <div class="boot-title">JARVIS OS</div>
+    <div class="boot-status" id="bootStatus">CORE INITIALISIEREN</div>
+    <div class="boot-line"><i id="bootProgress"></i></div>
   </div>
 
-
-  <div class="hud">
-
-    <!-- =================================================
-         TOPBAR
-         ================================================= -->
+  <div class="app-shell">
     <header class="topbar">
-      <div class="brand-block">
-        <img
-          class="brand-logo"
-          src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252"
-          alt="Druckelite24"
-        />
-      </div>
+      <img class="brand-logo" src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252" alt="Druckelite24">
       <div class="top-center">
-        <div class="top-title">JARVIS OS</div>
-        <div class="top-sub">V5 · BUSINESS VOICE ASSISTANT</div>
+        <strong>JARVIS OS</strong>
+        <span>V12 · BUSINESS COMMAND CENTER</span>
       </div>
       <div class="top-right">
-        <div class="top-datetime">
-          <div class="top-date"><span id="hudDay">--</span>. <span id="hudMonth">—</span></div>
-          <div class="top-clock" id="hudBigTime">--:--:--</div>
+        <div class="clock">
+          <b id="clockTime">--:--</b>
+          <span id="clockDate">--.--.----</span>
         </div>
-        <div class="status-pill" id="status">Offline</div>
+        <div class="status-pill" id="status">OFFLINE</div>
       </div>
     </header>
 
+    <main class="dashboard">
 
-    <!-- Lauf-Ticker mit Live-Werten -->
-    <div class="ticker" aria-hidden="true">
-      <div class="ticker-track">
-        <span class="tick-group" id="tickA">DRUCKELITE24 · JARVIS V5 · SYSTEM ONLINE</span>
-        <span class="tick-group" id="tickB">DRUCKELITE24 · JARVIS V5 · SYSTEM ONLINE</span>
-      </div>
-    </div>
-
-
-    <!-- =================================================
-         3-SPALTEN-COCKPIT
-         ================================================= -->
-    
-    <section class="mobile-core-launch">
-      <div>
-        <span>JARVIS CORE</span>
-        <b id="mobileCoreTitle">JARVIS STARTEN</b>
-        <small id="mobileCoreState">STANDBY</small>
-      </div>
-      <button id="toggleMobile" class="mobile-core-button" type="button" aria-label="JARVIS starten oder stoppen"></button>
-    </section>
-
-<main class="cockpit cockpit-clean">
-
-      <!-- LINKS: SHOPIFY + MAIL -->
-      <section class="zone zone-left">
-
-        <section class="panel shop-panel-clean modern-shopify">
-          <div class="panel-head modern-head">
-            <div class="head-brand">
-              <div class="brand-icon shopify-icon">S</div>
-              <div>
-                <span>SHOPIFY LIVE</span>
-                <small>STORE PERFORMANCE</small>
-              </div>
+      <section class="left-stack">
+        <article class="panel shop-panel">
+          <div class="panel-head">
+            <div>
+              <b>SHOPIFY LIVE</b>
+              <span>DRUCKELITE24</span>
             </div>
-            <span class="live-chip"><i></i> LIVE</span>
+            <i class="live-dot" id="shopDot"></i>
           </div>
-
-          <div class="modern-shop-grid">
-            <article class="shop-main-card">
-              <div class="shop-main-copy">
-                <span>UMSATZ HEUTE</span>
-                <b id="statRevenue">—</b>
-                <em>↗ Live Entwicklung</em>
-              </div>
-              <svg class="shop-main-chart" viewBox="0 0 460 145" preserveAspectRatio="none" aria-hidden="true">
-                <defs>
-                  <linearGradient id="shopModernFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="#ff2f9c" stop-opacity=".40"/>
-                    <stop offset="100%" stop-color="#e70779" stop-opacity="0"/>
-                  </linearGradient>
-                  <filter id="shopModernGlow">
-                    <feGaussianBlur stdDeviation="2.1" result="blur"/>
-                    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                  </filter>
-                </defs>
-                <path fill="url(#shopModernFill)" class="modern-area" d="M0,116 L28,110 L56,114 L84,97 L112,102 L140,88 L168,92 L196,73 L224,79 L252,60 L280,67 L308,48 L336,57 L364,38 L392,46 L420,28 L446,34 L460,15 L460,145 L0,145 Z"/>
-                <path class="modern-line" filter="url(#shopModernGlow)" d="M0,116 L28,110 L56,114 L84,97 L112,102 L140,88 L168,92 L196,73 L224,79 L252,60 L280,67 L308,48 L336,57 L364,38 L392,46 L420,28 L446,34 L460,15"/>
-                <circle cx="196" cy="73" r="3" class="modern-point"/>
-                <circle cx="336" cy="57" r="3" class="modern-point"/>
-                <circle cx="460" cy="15" r="4" class="modern-point"/>
-              </svg>
-              <div class="shop-chart-scan"></div>
-              <canvas class="week-chart live-week-chart" id="weekChart" width="460" height="145"></canvas>
-            </article>
-
-            <div class="shop-kpi-column">
-              <article class="modern-kpi kpi-orders">
-                <div class="kpi-icon">▥</div>
-                <div class="kpi-copy">
-                  <span>BESTELLUNGEN</span>
-                  <b id="statOrders">—</b>
-                  <em>↗ Live</em>
-                </div>
-                <div class="mini-bars">
-                  <i style="--h:28%"></i><i style="--h:42%"></i><i style="--h:36%"></i><i style="--h:54%"></i>
-                  <i style="--h:48%"></i><i style="--h:68%"></i><i style="--h:62%"></i><i style="--h:80%"></i>
-                  <i style="--h:72%"></i><i style="--h:92%"></i>
-                </div>
-              </article>
-
-              <article class="modern-kpi kpi-aov">
-                <div class="kpi-icon">€</div>
-                <div class="kpi-copy">
-                  <span>Ø BESTELLWERT</span>
-                  <b id="statAov">—</b>
-                  <em>Aktuell</em>
-                </div>
-                <svg class="mini-spark" viewBox="0 0 170 45" preserveAspectRatio="none" aria-hidden="true">
-                  <path d="M0,35 L20,31 L40,33 L60,25 L80,28 L100,20 L120,23 L140,15 L160,20 L170,8"/>
-                </svg>
-              </article>
-
-              <article class="modern-kpi kpi-yesterday">
-                <div class="kpi-icon">↔</div>
-                <div class="kpi-copy">
-                  <span>GESTERN</span>
-                  <b id="statYesterday">—</b>
-                  <em>Vergleich</em>
-                </div>
-              </article>
+          <div class="shop-main">
+            <div>
+              <span>UMSATZ HEUTE</span>
+              <strong id="statRevenue">—</strong>
+            </div>
+            <div class="kpis">
+              <div><span>BESTELLUNGEN</span><b id="statOrders">—</b></div>
+              <div><span>Ø BESTELLWERT</span><b id="statAov">—</b></div>
+              <div><span>GESTERN</span><b id="statYesterday">—</b></div>
+              <div><span>OFFEN</span><b id="statOpenOrders">—</b></div>
             </div>
           </div>
+          <div class="panel-foot" id="shopUpdated">WARTE AUF LIVE-DATEN</div>
+        </article>
 
-          <div class="modern-shop-footer">
-            <span id="shopUpdated">WARTE AUF DATEN …</span>
-            <span class="api-status"><i id="shopDot" class="panel-dot"></i> SHOPIFY API</span>
+        <article class="panel mail-panel">
+          <div class="panel-head">
+            <div>
+              <b>GMAIL</b>
+              <span>POSTEINGANG · LETZTE 5</span>
+            </div>
+            <button class="ghost-btn" id="refreshMailBtn" type="button">AKTUALISIEREN</button>
           </div>
-        </section>
-
-        <section class="panel mail-panel-clean modern-mail">
-          <div class="panel-head modern-head">
-            <div class="head-brand">
-              <div class="brand-icon gmail-icon brand-logo-icon"><img src="https://upload.wikimedia.org/wikipedia/commons/7/7e/Gmail_icon_%282020%29.svg" alt="Gmail" /></div>
-              <div>
-                <span>GMAIL · LETZTE 5</span>
-                <small>POSTEINGANG</small>
-              </div>
-            </div>
-            <span class="mail-chip">5</span>
+          <div class="mail-list" id="inboxList">
+            <div class="empty-state">Gmail wird geladen …</div>
           </div>
-
-          <div class="message-list modern-message-list" id="inboxList">
-            <div class="message-row modern-message-row">
-              <div class="sender-avatar">TS</div>
-              <div class="msg-copy"><b>Mail-System vorbereitet</b><span>Die letzte echte Mail erscheint hier.</span></div>
-              <time>—</time>
-            </div>
-            <div class="message-row modern-message-row">
-              <div class="sender-avatar">MK</div>
-              <div class="msg-copy"><b>Gelesen + ungelesen</b><span>Alles im Posteingang wird berücksichtigt.</span></div>
-              <time>—</time>
-            </div>
-            <div class="message-row modern-message-row">
-              <div class="sender-avatar">JP</div>
-              <div class="msg-copy"><b>Mail-Kontext</b><span>Antworten und Entwürfe direkt über JARVIS.</span></div>
-              <time>—</time>
-            </div>
-            <div class="message-row modern-message-row important-mail">
-              <div class="sender-avatar">AC</div>
-              <div class="msg-copy"><b>Kundenanfrage</b><span>Wichtige Kundenmails werden hervorgehoben.</span></div>
-              <time>—</time>
-            </div>
-            <div class="message-row modern-message-row">
-              <div class="sender-avatar">LH</div>
-              <div class="msg-copy"><b>5-Minuten-Prüfung</b><span>Automatische Prüfung wird angeschlossen.</span></div>
-              <time>—</time>
-            </div>
-          </div>
-        </section>
-
+        </article>
       </section>
 
-
-      <!-- ORIGINALER KERN – FUNKTION UND KLICK BLEIBEN EXAKT -->
-      <section class="stage">
-        <div class="stage-title">
-          <div class="eyebrow">DEIN PERSÖNLICHER ASSISTENT</div>
+      <section class="core-column">
+        <div class="core-copy">
+          <span>DEIN PERSÖNLICHER ASSISTENT</span>
           <h1>JARVIS</h1>
         </div>
 
-        <div class="voice-panel" id="voicePanel">
-          <button
-            id="toggle"
-            class="voice-button"
-            type="button"
-            aria-label="JARVIS starten oder stoppen"
-          >
-            <span class="reactor-arc arc-one"></span>
-            <span class="reactor-arc arc-two"></span>
-            <span class="reactor-arc arc-three"></span>
-            <span class="reactor-ticks ticks-outer"></span>
-            <span class="reactor-ticks ticks-inner"></span>
-            <span class="voice-ring ring-one"></span>
-            <span class="voice-ring ring-two"></span>
-            <span class="voice-core">
-              <canvas id="coreCanvas" aria-hidden="true"></canvas>
-            </span>
-          </button>
-          <div class="voice-log" id="log">Bereit.</div>
+        <button id="toggle" class="core-button" type="button" aria-label="JARVIS starten oder stoppen">
+          <span class="ring r1"></span>
+          <span class="ring r2"></span>
+          <span class="ring r3"></span>
+          <span class="core-glow">
+            <canvas id="coreCanvas"></canvas>
+          </span>
+        </button>
+
+        <div class="voice-state">
+          <strong id="log">Bereit.</strong>
+          <span>CORE: <b id="coreState">STANDBY</b></span>
         </div>
 
-        <div class="stage-foot">
-          <div class="core-state">CORE: <span id="hudState">STANDBY</span></div>
-          <div class="core-loc">LUDWIGSHAFEN AM RHEIN · DE</div>
+        <div class="quick-actions">
+          <button data-command="Wie läuft mein Business heute?">BUSINESS</button>
+          <button data-command="Welche wichtigen ungelesenen Mails habe ich?">MAILS</button>
+          <button data-command="Wie viele Bestellungen sind offen?">AUFTRÄGE</button>
+          <button data-command="Gib mir mein Tagesbriefing.">BRIEFING</button>
         </div>
       </section>
 
-
-      <!-- RECHTS: WHATSAPP + WETTER/NEWS -->
-      <section class="zone zone-right">
-
-        <section class="panel whatsapp-panel-clean modern-whatsapp">
-          <div class="panel-head modern-head wa-modern-head">
-            <div class="head-brand">
-              <div class="brand-icon whatsapp-icon brand-logo-icon"><img src="https://upload.wikimedia.org/wikipedia/commons/6/6b/WhatsApp.svg" alt="WhatsApp" /></div>
-              <div>
-                <span>WHATSAPP BUSINESS</span>
-                <small>LETZTE 5 CHATS</small>
-              </div>
-            </div>
-            <span class="wa-state">● BEREIT</span>
-          </div>
-
-          <div class="message-list modern-message-list wa-modern-list">
-            <div class="message-row modern-message-row">
-              <div class="sender-avatar wa-avatar">01</div>
-              <div class="msg-copy"><b>Neue Kundenanfrage</b><span>Platzhalter bis zur Live-Verknüpfung.</span></div>
-              <time>—</time>
-            </div>
-            <div class="message-row modern-message-row">
-              <div class="sender-avatar wa-avatar">02</div>
-              <div class="msg-copy"><b>Angebot & Rückfrage</b><span>Letzte Nachricht erscheint hier.</span></div>
-              <time>—</time>
-            </div>
-            <div class="message-row modern-message-row">
-              <div class="sender-avatar wa-avatar">03</div>
-              <div class="msg-copy"><b>Produktfrage</b><span>Textilien, Druck und Veredelung.</span></div>
-              <time>—</time>
-            </div>
-            <div class="message-row modern-message-row">
-              <div class="sender-avatar wa-avatar">04</div>
-              <div class="msg-copy"><b>Bestellstatus</b><span>Statusfragen direkt im Cockpit.</span></div>
-              <time>—</time>
-            </div>
-            <div class="message-row modern-message-row">
-              <div class="sender-avatar wa-avatar">05</div>
-              <div class="msg-copy"><b>Offener Chat</b><span>Wichtige Unterhaltung.</span></div>
-              <time>—</time>
-            </div>
-          </div>
-        </section>
-
-        <div class="right-bottom-grid">
-
-          <section class="panel weather-panel-clean modern-weather">
-            <div class="panel-head modern-head">
-              <div class="head-brand">
-                <div class="brand-icon weather-icon">☁</div>
-                <div>
-                  <span>WETTER</span>
-                  <small>LUDWIGSHAFEN</small>
-                </div>
-              </div>
-              <span class="panel-dot" id="wxDot"></span>
-            </div>
-            <div class="weather-modern-main">
-              <div class="weather-emoji">🌤️</div>
-              <div>
-                <div class="wx-temp" id="wxTemp">—°</div>
-                <div class="wx-desc" id="wxDesc">…</div>
-              </div>
-            </div>
-            <div class="wx-grid modern-wx-grid">
-              <div class="wx-cell"><span id="wxMax">—°</span><label>MAX</label></div>
-              <div class="wx-cell"><span id="wxMin">—°</span><label>MIN</label></div>
-              <div class="wx-cell"><span id="wxRain">—%</span><label>REGEN</label></div>
-              <div class="wx-cell"><span id="wxWind">—</span><label>WIND</label></div>
-            </div>
-          </section>
-
-          <section class="panel news-panel-clean modern-news">
-            <div class="panel-head modern-head">
-              <div class="head-brand">
-                <div class="brand-icon news-icon">N</div>
-                <div>
-                  <span>NACHRICHTEN</span>
-                  <small>LUDWIGSHAFEN & REGION</small>
-                </div>
-              </div>
-              <span class="panel-dot ok"></span>
-            </div>
-            <div class="news-modern-list">
-              <div class="news-modern-item">
-                <div class="news-thumb thumb-city"></div>
-                <div><b>Ludwigshafen aktuell</b><span>Lokale Meldungen und Entwicklungen.</span><small>HEUTE</small></div>
-              </div>
-              <div class="news-modern-item">
-                <div class="news-thumb thumb-business"></div>
-                <div><b>Wirtschaft & Unternehmen</b><span>Relevantes für Firmen und Selbstständige.</span><small>AKTUELL</small></div>
-              </div>
-              <div class="news-modern-item">
-                <div class="news-thumb thumb-traffic"></div>
-                <div><b>Verkehr & Region</b><span>Hinweise aus Ludwigshafen und Umgebung.</span><small>REGION</small></div>
-              </div>
-            </div>
-          </section>
-
-        </div>
-
-        <section class="panel system-strip">
-          <div class="sys-lines compact-sys">
-            <div class="sys-line"><span>SHOPIFY</span><b id="sysShop">…</b></div>
-            <div class="sys-line"><span>WETTER</span><b id="sysWx">…</b></div>
-            <div class="sys-line"><span>MAIL</span><b class="pending">READY</b></div>
-            <div class="sys-line"><span>WHATSAPP</span><b class="pending">READY</b></div>
-          </div>
-          <div class="hidden-gauge-wrap">
-            <div class="gauge" id="gaugeTrend" style="--val:0"><span id="gaugeTrendLabel">TREND</span></div>
-          </div>
-        </section>
-
-      </section>
-
-      <section class="panel" id="draftPanel" style="display: none;">
+      <section class="right-stack">
+        <article class="panel whatsapp-panel">
           <div class="panel-head">
-            <span>ENTWURF</span>
-            <span class="panel-dot ok"></span>
+            <div>
+              <b>WHATSAPP</b>
+              <span>SUPERCHAT · LETZTE 5</span>
+            </div>
+            <i class="live-dot wa" id="waDot"></i>
           </div>
-          <div
-            id="draftSubject"
-            style="color: var(--text); font-family: var(--font-body); font-size: 0.85rem; font-weight: 600; letter-spacing: normal; text-transform: none;"
-          ></div>
-          <div
-            id="draftBody"
-            style="white-space: pre-wrap; font-size: 0.8rem; line-height: 1.5; max-height: 220px; overflow-y: auto; color: var(--text-dim); font-family: var(--font-body); letter-spacing: normal; text-transform: none;"
-          ></div>
-          <button
-            id="draftCopyBtn"
-            class="command-chip"
-            type="button"
-            style="cursor: pointer; align-self: flex-start; border: 1px solid var(--panel-border); background: var(--panel);"
-          >
-            Text kopieren
-          </button>
-        </section>
+          <div class="wa-list" id="whatsappList">
+            <div class="empty-state">Superchat wird geladen …</div>
+          </div>
+        </article>
+
+        <div class="mini-grid">
+          <article class="panel weather-panel">
+            <div class="panel-head">
+              <div><b>WETTER</b><span>LUDWIGSHAFEN</span></div>
+              <i class="live-dot" id="wxDot"></i>
+            </div>
+            <div class="weather-main">
+              <strong id="wxTemp">—°</strong>
+              <span id="wxDesc">…</span>
+            </div>
+            <div class="weather-cells">
+              <div><b id="wxMax">—°</b><span>MAX</span></div>
+              <div><b id="wxMin">—°</b><span>MIN</span></div>
+              <div><b id="wxRain">—%</b><span>REGEN</span></div>
+              <div><b id="wxWind">—</b><span>WIND</span></div>
+            </div>
+          </article>
+
+          <article class="panel system-panel">
+            <div class="panel-head">
+              <div><b>SYSTEM</b><span>CONNECTORS</span></div>
+            </div>
+            <div class="system-list">
+              <div><span>OPENAI</span><b id="sysOpenAI">READY</b></div>
+              <div><span>SHOPIFY</span><b id="sysShop">…</b></div>
+              <div><span>GMAIL</span><b id="sysMail">…</b></div>
+              <div><span>SUPERCHAT</span><b id="sysWa">…</b></div>
+            </div>
+          </article>
+        </div>
+      </section>
 
     </main>
-
-
-    <!-- =================================================
-         COMMAND-LEISTE
-         ================================================= -->
-    <footer class="command-bar">
-      <div class="command-chip">„Wie viele Bestellungen habe ich heute?"</div>
-      <div class="command-chip">„Wie hoch ist mein Umsatz?"</div>
-      <div class="command-chip">„Wie wird das Wetter morgen?"</div>
-      <div class="command-chip">„Was hältst du von meiner Idee?"</div>
-    </footer>
-
   </div>
+
+  <section class="modal" id="mailModal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <span>GMAIL · AKTUELLE MAIL</span>
+          <h2 id="mailSubject">E-Mail</h2>
+        </div>
+        <button id="mailClose" type="button">×</button>
+      </div>
+      <div class="mail-meta">
+        <div><span>VON</span><b id="mailFrom">—</b></div>
+        <div><span>DATUM</span><b id="mailDate">—</b></div>
+      </div>
+      <div class="mail-body" id="mailBody"></div>
+      <div class="modal-actions">
+        <button id="mailRead" type="button">VORLESEN</button>
+        <button id="mailReply" type="button">JARVIS ANTWORTEN</button>
+        <button id="mailDone" type="button">BEARBEITET</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="draft-panel" id="draftPanel" hidden>
+    <div class="panel-head">
+      <div><b>ENTWURF</b><span id="draftTarget">NICHT GESENDET</span></div>
+      <button class="ghost-btn" id="draftClose" type="button">SCHLIESSEN</button>
+    </div>
+    <strong id="draftSubject"></strong>
+    <div id="draftBody"></div>
+    <div class="draft-actions">
+      <button id="draftCopy" type="button">KOPIEREN</button>
+      <button id="draftSend" type="button">SENDEN</button>
+    </div>
+  </section>
 
   <audio id="remoteAudio" autoplay playsinline></audio>
 
-  <script>
-    (function(){
-      const role = window.JARVIS_SCREEN_ROLE || "single";
-      const labels = {
-        left: ["BUSINESS WALL", "MONITOR LINKS · BUSINESS"],
-        center: ["JARVIS COMMAND CENTER", "MONITOR MITTE · VOICE CORE"],
-        right: ["COMMS & INFO", "MONITOR RECHTS · KOMMUNIKATION"],
-        single: ["JARVIS OS", "V10.6 · BUSINESS VOICE ASSISTANT"]
-      };
-      const label = labels[role] || labels.single;
-      const topTitle = document.querySelector(".top-title");
-      const topSub = document.querySelector(".top-sub");
-      if (topTitle) topTitle.textContent = label[0];
-      if (topSub) topSub.textContent = label[1];
-      if (role === "right") {
-        const mail = document.querySelector(".modern-mail");
-        const right = document.querySelector(".zone-right");
-        if (mail && right) right.insertBefore(mail, right.firstChild);
-      }
-      if (role !== "single") document.title = "JARVIS · " + label[0];
-    })();
-  </script>
-
-
-  <!-- ===================================================
-       HUD-SCRIPT: Boot, Uhr, Live-Daten, Welle, Datenstrom
-       Voice-Logik bleibt komplett in app.js.
-       =================================================== -->
-  <script>
-    (function () {
-
-      /* ---------- Boot-Sequenz ---------- */
-      var overlay = document.getElementById("bootOverlay");
-      var linesEl = document.getElementById("bootLines");
-      var barFill = document.getElementById("bootBarFill");
-
-      var bootLines = [
-        "DRUCKELITE24 OS · KERN WIRD GELADEN",
-        "SPRACHMODUL ......... OK",
-        "SHOPIFY-BRÜCKE ...... OK",
-        "WETTERDIENST ........ OK",
-        "AUDIO-SYSTEM ........ OK",
-        "JARVIS V5 BEREIT."
-      ];
-
-      var li = 0;
-      function nextLine() {
-        if (!linesEl) return;
-        if (li < bootLines.length) {
-          var d = document.createElement("div");
-          d.textContent = "> " + bootLines[li];
-          linesEl.appendChild(d);
-          li++;
-          if (barFill) barFill.style.width = Math.round((li / bootLines.length) * 100) + "%";
-          setTimeout(nextLine, 240);
-        } else {
-          setTimeout(function () {
-            if (overlay) {
-              overlay.classList.add("boot-done");
-              setTimeout(function () { overlay.remove(); }, 700);
-            }
-          }, 420);
-        }
-      }
-      setTimeout(nextLine, 350);
-
-
-      /* ---------- Uhr ---------- */
-      var clockEl = document.getElementById("hudClock");
-      var dayEl = document.getElementById("hudDay");
-      var monthEl = document.getElementById("hudMonth");
-      var bigTimeEl = document.getElementById("hudBigTime");
-
-      var monthNames = [
-        "JANUAR", "FEBRUAR", "MÄRZ", "APRIL", "MAI", "JUNI",
-        "JULI", "AUGUST", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DEZEMBER"
-      ];
-
-      function tick() {
-        var now = new Date();
-        var time = now.toLocaleTimeString("de-DE", { timeZone: "Europe/Berlin" });
-
-        if (clockEl) clockEl.textContent = time;
-        if (bigTimeEl) bigTimeEl.textContent = time;
-
-        var parts = new Intl.DateTimeFormat("de-DE", {
-          timeZone: "Europe/Berlin", day: "numeric", month: "numeric"
-        }).formatToParts(now);
-
-        var d = parts.find(function (p) { return p.type === "day"; });
-        var m = parts.find(function (p) { return p.type === "month"; });
-
-        if (dayEl && d) dayEl.textContent = d.value;
-        if (monthEl && m) monthEl.textContent = monthNames[Number(m.value) - 1] || "";
-      }
-      tick();
-      setInterval(tick, 1000);
-
-
-      /* ---------- CORE-Status folgt JARVIS ---------- */
-      var stateEl = document.getElementById("hudState");
-      var stateNames = {
-        offline: "STANDBY", connecting: "BOOT", listening: "LISTENING",
-        hearing: "INPUT", thinking: "PROCESSING", speaking: "OUTPUT"
-      };
-      new MutationObserver(function () {
-        var s = document.body.dataset.jarvisState || "offline";
-        if (stateEl) stateEl.textContent = stateNames[s] || "STANDBY";
-      }).observe(document.body, { attributes: true, attributeFilter: ["data-jarvis-state"] });
-
-
-      /* ---------- Ticker mit Live-Werten füllen ---------- */
-      var hudVals = { revenue: null, orders: null, temp: null, wx: null };
-
-      function updateTicker() {
-        var parts = ["<b>DRUCKELITE24</b> · JARVIS V5 ONLINE"];
-
-        if (hudVals.orders !== null) {
-          parts.push("BESTELLUNGEN HEUTE <b>" + hudVals.orders + "</b>");
-        }
-        if (hudVals.revenue !== null) {
-          parts.push("UMSATZ <b>" + hudVals.revenue + "</b>");
-        }
-        if (hudVals.temp !== null) {
-          parts.push("LUDWIGSHAFEN <b>" + hudVals.temp + "</b> " + (hudVals.wx || ""));
-        }
-
-        var html = parts.join(" &nbsp;·&nbsp; ") + " &nbsp;·&nbsp; ";
-        var a = document.getElementById("tickA");
-        var b = document.getElementById("tickB");
-        if (a) a.innerHTML = html;
-        if (b) b.innerHTML = html;
-      }
-
-
-      /* ---------- 7-TAGE-CHART ---------- */
-      function drawWeekChart(days) {
-        var canvas = document.getElementById("weekChart");
-        if (!canvas || !canvas.getContext || !days || !days.length) return;
-
-        var dpr = window.devicePixelRatio || 1;
-        var cw = canvas.clientWidth || 260;
-        canvas.width = cw * dpr;
-        canvas.height = 70 * dpr;
-
-        var ctx = canvas.getContext("2d");
-        ctx.scale(dpr, dpr);
-
-        var w = cw, h = 70, pad = 2, labelH = 12;
-        var chartH = h - labelH;
-        var max = Math.max.apply(null, days.map(function (d) { return d.revenue; }));
-        if (max <= 0) max = 1;
-
-        var barW = (w - pad * 2) / days.length;
-
-        days.forEach(function (d, i) {
-          var bh = Math.max(2, (d.revenue / max) * (chartH - 6));
-          var x = pad + i * barW + barW * 0.18;
-          var y = chartH - bh;
-          var isToday = i === days.length - 1;
-
-          ctx.fillStyle = isToday ? "#e70779" : "rgba(231, 7, 121, 0.32)";
-          if (isToday) {
-            ctx.shadowColor = "#e70779";
-            ctx.shadowBlur = 8;
-          } else {
-            ctx.shadowBlur = 0;
-          }
-          ctx.fillRect(x, y, barW * 0.64, bh);
-
-          ctx.shadowBlur = 0;
-          ctx.fillStyle = isToday ? "#f5f5f7" : "#5c5c62";
-          ctx.font = "8px ui-monospace, monospace";
-          ctx.textAlign = "center";
-          ctx.fillText(d.label, pad + i * barW + barW / 2, h - 2);
-        });
-      }
-
-      async function loadWeek() {
-        try {
-          var r = await fetch("/api/shopify-week", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: "{}"
-          });
-          var d = await r.json();
-          if (!r.ok || d.error) throw new Error(d.error || "Fehler");
-          drawWeekChart(d.days);
-        } catch (e) {
-          /* Chart bleibt leer, kein Drama */
-        }
-      }
-
-      var jarvisScreenRole = window.JARVIS_SCREEN_ROLE || "single";
-      var showBusinessScreen = jarvisScreenRole === "left" || jarvisScreenRole === "single";
-      var showInfoScreen = jarvisScreenRole === "right" || jarvisScreenRole === "single";
-
-      if (showBusinessScreen) {
-        loadWeek();
-        setInterval(loadWeek, 15 * 60 * 1000);
-      }
-
-
-      /* ---------- ECHTE SHOPIFY-DATEN ---------- */
-      var euro = function (n) {
-        return Number(n).toLocaleString("de-DE", {
-          style: "currency", currency: "EUR", maximumFractionDigits: 0
-        });
-      };
-
-      function setText(id, text) {
-        var el = document.getElementById(id);
-        if (el) el.textContent = text;
-      }
-
-      function setDot(id, ok) {
-        var el = document.getElementById(id);
-        if (el) el.classList.toggle("ok", !!ok);
-      }
-
-      async function loadShop() {
-        try {
-          var r = await fetch("/api/shopify-summary", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ period: "today" })
-          });
-          var d = await r.json();
-          if (!r.ok || d.error) throw new Error(d.error || "Fehler");
-
-          setText("statOrders", d.orders);
-          setText("statRevenue", euro(d.revenue));
-          setText("statAov", euro(d.average_order_value));
-          setText("shopUpdated",
-            "AKTUALISIERT " + new Date().toLocaleTimeString("de-DE", {
-              timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit"
-            }) + " UHR");
-          setText("sysShop", "ONLINE");
-          setDot("shopDot", true);
-
-          hudVals.orders = d.orders;
-          hudVals.revenue = euro(d.revenue);
-          updateTicker();
-
-          // Gestern nachladen
-          var r2 = await fetch("/api/shopify-summary", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ period: "yesterday" })
-          });
-          var d2 = await r2.json();
-          if (r2.ok && !d2.error) {
-            setText("statYesterday", d2.orders + " · " + euro(d2.revenue));
-
-            // Trend-Gauge: heute vs. gestern (echt berechnet)
-            var pct = d2.revenue > 0
-              ? Math.round((d.revenue / d2.revenue) * 100)
-              : (d.revenue > 0 ? 100 : 0);
-
-            var gauge = document.getElementById("gaugeTrend");
-            var gaugeLabel = document.getElementById("gaugeTrendLabel");
-            if (gauge) gauge.style.setProperty("--val", Math.min(100, pct));
-            if (gaugeLabel) gaugeLabel.textContent = pct + "%";
-          }
-        } catch (e) {
-          setText("shopUpdated", "SHOP-DATEN NICHT ERREICHBAR");
-          setText("sysShop", "OFFLINE");
-          setDot("shopDot", false);
-        }
-      }
-
-      if (showBusinessScreen) {
-        loadShop();
-        setInterval(loadShop, 5 * 60 * 1000); // alle 5 Minuten
-      }
-
-
-      /* ---------- ECHTES WETTER ---------- */
-      var wxCodes = {
-        0: "KLAR", 1: "MEIST KLAR", 2: "TEILS BEWÖLKT", 3: "BEDECKT",
-        45: "NEBEL", 48: "NEBEL", 51: "NIESELN", 53: "NIESELN", 55: "NIESELN",
-        61: "REGEN", 63: "REGEN", 65: "STARKREGEN", 66: "EISREGEN", 67: "EISREGEN",
-        71: "SCHNEE", 73: "SCHNEE", 75: "SCHNEE", 77: "SCHNEE",
-        80: "SCHAUER", 81: "SCHAUER", 82: "SCHAUER",
-        85: "SCHNEE", 86: "SCHNEE", 95: "GEWITTER", 96: "GEWITTER", 99: "GEWITTER"
-      };
-
-      async function loadWeather() {
-        try {
-          var r = await fetch("/api/weather", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ location: "Ludwigshafen", day: "today" })
-          });
-          var d = await r.json();
-          if (!r.ok || d.error) throw new Error(d.error || "Fehler");
-
-          if (d.current && typeof d.current.temperature_2m === "number") {
-            setText("wxTemp", Math.round(d.current.temperature_2m) + "°");
-            setText("wxWind", Math.round(d.current.wind_speed_10m || 0));
-            hudVals.temp = Math.round(d.current.temperature_2m) + "°";
-          }
-          var f = d.forecast || {};
-          setText("wxDesc", wxCodes[f.weather_code] || "—");
-          hudVals.wx = wxCodes[f.weather_code] || "";
-          updateTicker();
-          if (typeof f.max_temperature === "number")
-            setText("wxMax", Math.round(f.max_temperature) + "°");
-          if (typeof f.min_temperature === "number")
-            setText("wxMin", Math.round(f.min_temperature) + "°");
-          if (typeof f.precipitation_probability === "number")
-            setText("wxRain", f.precipitation_probability + "%");
-
-          setText("sysWx", "ONLINE");
-          setDot("wxDot", true);
-        } catch (e) {
-          setText("wxDesc", "NICHT ERREICHBAR");
-          setText("sysWx", "OFFLINE");
-          setDot("wxDot", false);
-        }
-      }
-
-      if (showInfoScreen) {
-        loadWeather();
-        setInterval(loadWeather, 15 * 60 * 1000); // alle 15 Minuten
-      }
-
-
-      /* ---------- WELLENFORM (Canvas) ---------- */
-      var canvas = document.getElementById("waveCanvas");
-      var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-      if (canvas && canvas.getContext && !reduceMotion) {
-        var ctx = canvas.getContext("2d");
-        var t = 0;
-
-        function amplitudeForState() {
-          var s = document.body.dataset.jarvisState || "offline";
-          if (s === "speaking") return 18;
-          if (s === "hearing") return 14;
-          if (s === "thinking") return 8;
-          if (s === "listening") return 5;
-          if (s === "connecting") return 10;
-          return 2.5;
-        }
-
-        function drawWave() {
-          var w = canvas.width, h = canvas.height, mid = h / 2;
-          ctx.clearRect(0, 0, w, h);
-          ctx.beginPath();
-          var amp = amplitudeForState();
-          for (var x = 0; x <= w; x += 2) {
-            var y = mid
-              + Math.sin(x * 0.05 + t) * amp * Math.sin(x * 0.011 + t * 0.7)
-              + Math.sin(x * 0.13 + t * 1.7) * amp * 0.35;
-            if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-          }
-          ctx.strokeStyle = getComputedStyle(document.body)
-            .getPropertyValue("--reactor-color").trim() || "#e70779";
-          ctx.lineWidth = 1.6;
-          ctx.shadowColor = ctx.strokeStyle;
-          ctx.shadowBlur = 6;
-          ctx.stroke();
-          t += 0.09;
-          requestAnimationFrame(drawWave);
-        }
-        drawWave();
-      }
-
-
-      /* ---------- 3D-PARTIKELKUGEL IM KERN ---------- */
-      var coreCanvas = document.getElementById("coreCanvas");
-
-      if (coreCanvas && coreCanvas.getContext && !reduceMotion) {
-        var cctx = coreCanvas.getContext("2d");
-
-        // Punkte gleichmäßig auf einer Kugel verteilen
-        var COUNT = 320;
-        var pts = [];
-        var golden = Math.PI * (3 - Math.sqrt(5));
-
-        for (var pi = 0; pi < COUNT; pi++) {
-          var py = 1 - (pi / (COUNT - 1)) * 2;
-          var pr = Math.sqrt(1 - py * py);
-          var pth = golden * pi;
-          pts.push([Math.cos(pth) * pr, py, Math.sin(pth) * pr]);
-        }
-
-        // Nachbar-Paare einmalig berechnen (für das Netz)
-        var pairs = [];
-        for (var a = 0; a < COUNT; a++) {
-          for (var b = a + 1; b < COUNT; b++) {
-            var ddx = pts[a][0] - pts[b][0];
-            var ddy = pts[a][1] - pts[b][1];
-            var ddz = pts[a][2] - pts[b][2];
-            if (ddx * ddx + ddy * ddy + ddz * ddz < 0.06) {
-              pairs.push([a, b]);
-            }
-          }
-        }
-
-        var rot = 0;
-
-        function sphereSpeed() {
-          var s = document.body.dataset.jarvisState || "offline";
-          if (s === "speaking") return 0.022;
-          if (s === "hearing") return 0.014;
-          if (s === "thinking") return 0.011;
-          if (s === "connecting") return 0.018;
-          if (s === "listening") return 0.006;
-          return 0.0025;
-        }
-
-        function projected(p, cosR, sinR, cosT, sinT) {
-          // Rotation um die Y-Achse
-          var x = p[0] * cosR - p[2] * sinR;
-          var z = p[0] * sinR + p[2] * cosR;
-          // Leichte Neigung um die X-Achse
-          var y = p[1] * cosT - z * sinT;
-          var z2 = p[1] * sinT + z * cosT;
-          return [x, y, z2];
-        }
-
-        function drawSphere() {
-          var dpr = window.devicePixelRatio || 1;
-          var size = coreCanvas.clientWidth || 100;
-
-          if (coreCanvas.width !== size * dpr) {
-            coreCanvas.width = size * dpr;
-            coreCanvas.height = size * dpr;
-          }
-
-          var w = coreCanvas.width;
-          var cx = w / 2, cy = w / 2;
-          var R = w * 0.36;
-
-          cctx.clearRect(0, 0, w, w);
-
-          rot += sphereSpeed();
-          var cosR = Math.cos(rot), sinR = Math.sin(rot);
-          var tilt = 0.42;
-          var cosT = Math.cos(tilt), sinT = Math.sin(tilt);
-
-          var color = getComputedStyle(document.body)
-            .getPropertyValue("--reactor-color").trim() || "#e70779";
-
-          // Projizierte Punkte einmal pro Frame berechnen
-          var proj = [];
-          for (var i = 0; i < COUNT; i++) {
-            proj.push(projected(pts[i], cosR, sinR, cosT, sinT));
-          }
-
-          // Netz-Linien (Tiefe steuert Transparenz)
-          cctx.strokeStyle = color;
-          cctx.lineWidth = Math.max(0.6, 0.55 * dpr);
-
-          for (var li = 0; li < pairs.length; li++) {
-            var pa = proj[pairs[li][0]];
-            var pb = proj[pairs[li][1]];
-            var depth = (pa[2] + pb[2]) / 2;
-            var alpha = 0.06 + (depth + 1) * 0.14;
-
-            cctx.globalAlpha = alpha;
-            cctx.beginPath();
-            cctx.moveTo(cx + pa[0] * R, cy + pa[1] * R);
-            cctx.lineTo(cx + pb[0] * R, cy + pb[1] * R);
-            cctx.stroke();
-          }
-
-          // Punkte
-          cctx.fillStyle = color;
-          for (var di = 0; di < COUNT; di++) {
-            var pp = proj[di];
-            var depthA = 0.15 + (pp[2] + 1) * 0.42;
-            var dotR = (0.8 + (pp[2] + 1) * 0.8) * dpr;
-
-            cctx.globalAlpha = depthA;
-            cctx.beginPath();
-            cctx.arc(cx + pp[0] * R, cy + pp[1] * R, dotR, 0, Math.PI * 2);
-            cctx.fill();
-          }
-
-          cctx.globalAlpha = 1;
-          requestAnimationFrame(drawSphere);
-        }
-
-        drawSphere();
-      }
-
-
-      /* ---------- Parallax ---------- */
-      var panel = document.getElementById("voicePanel");
-      if (panel && !reduceMotion) {
-        document.addEventListener("mousemove", function (e) {
-          var x = (e.clientX / window.innerWidth - 0.5) * 12;
-          var y = (e.clientY / window.innerHeight - 0.5) * 9;
-          panel.style.transform = "translate(" + x + "px, " + y + "px)";
-        });
-      }
-
-
-    })();
-  </script>
-
-  
-  <script>
-    (function(){
-      const originalCore = document.getElementById("toggle");
-      const mobileCore = document.getElementById("toggleMobile");
-      const mobileTitle = document.getElementById("mobileCoreTitle");
-      const mobileState = document.getElementById("mobileCoreState");
-
-      if (originalCore && mobileCore) {
-        mobileCore.addEventListener("click", function(){ originalCore.click(); });
-      }
-
-      const labels = {
-        offline:["JARVIS STARTEN","STANDBY"],
-        connecting:["VERBINDUNG","BOOT"],
-        listening:["JARVIS HÖRT ZU","ZUHÖREN"],
-        hearing:["SPRACHE ERKANNT","INPUT"],
-        thinking:["JARVIS ANALYSIERT","DENKEN"],
-        speaking:["JARVIS ANTWORTET","SPRECHEN"]
-      };
-
-      function syncMobile(){
-        const s = document.body.dataset.jarvisState || "offline";
-        const p = labels[s] || labels.offline;
-        if (mobileTitle) mobileTitle.textContent = p[0];
-        if (mobileState) mobileState.textContent = p[1];
-      }
-
-      syncMobile();
-      new MutationObserver(syncMobile).observe(document.body, {
-        attributes:true,
-        attributeFilter:["data-jarvis-state"]
-      });
-    })();
-  </script>
-
-<script src="app.js?v=10.6-triple"></script>
+  <script src="/app.js?v=12"></script>
 </body>
 </html>
