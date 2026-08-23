@@ -1,3 +1,4 @@
+/* JARVIS V12.1 · SOUNDTRACK FAILSAFE FIX */
 const $ = selector => document.querySelector(selector);
 
 const state = {
@@ -164,9 +165,15 @@ function stopIntro() {
     clearInterval(state.introFade);
     state.introFade = null;
   }
-  if (state.intro) {
-    try { state.intro.pause(); } catch {}
-    state.intro = null;
+
+  const audio = state.intro;
+  state.intro = null;
+
+  if (audio) {
+    try { audio.pause(); } catch {}
+    try { audio.currentTime = 0; } catch {}
+    try { audio.src = ""; } catch {}
+    try { audio.load(); } catch {}
   }
 }
 
@@ -186,35 +193,87 @@ async function playIntro() {
 
 function duckAndFadeIntro() {
   const audio = state.intro;
-  if (!audio || audio.paused) return;
 
-  const startVolume = audio.volume;
-  const started = performance.now();
+  if (!audio || audio.paused) {
+    return;
+  }
+
+  if (state.introFade) {
+    clearInterval(state.introFade);
+    state.introFade = null;
+  }
+
+  const startVolume = Math.max(0, Number(audio.volume) || 0.055);
+  const duckStart = performance.now();
 
   state.introFade = setInterval(() => {
-    if (!state.intro) {
+    const current = state.intro;
+
+    if (!current || current !== audio) {
       clearInterval(state.introFade);
       state.introFade = null;
       return;
     }
 
-    const p = Math.min(1, (performance.now() - started) / 900);
-    state.intro.volume =
-      Math.max(0.006, startVolume * (1 - p * 0.9));
+    const progress =
+      Math.min(
+        1,
+        (performance.now() - duckStart) / 450
+      );
 
-    if (p >= 1) {
+    audio.volume =
+      Math.max(
+        0.003,
+        startVolume -
+          (startVolume - 0.003) * progress
+      );
+
+    if (progress >= 1) {
       clearInterval(state.introFade);
       state.introFade = null;
 
       const fadeStart = performance.now();
+
       state.introFade = setInterval(() => {
-        if (!state.intro) return;
-        const q = Math.min(1, (performance.now() - fadeStart) / 3200);
-        state.intro.volume = 0.006 * (1 - q);
-        if (q >= 1) stopIntro();
-      }, 60);
+        const currentFade = state.intro;
+
+        if (!currentFade || currentFade !== audio) {
+          clearInterval(state.introFade);
+          state.introFade = null;
+          return;
+        }
+
+        const fadeProgress =
+          Math.min(
+            1,
+            (performance.now() - fadeStart) / 1800
+          );
+
+        audio.volume =
+          Math.max(
+            0,
+            0.003 * (1 - fadeProgress)
+          );
+
+        if (fadeProgress >= 1) {
+          clearInterval(state.introFade);
+          state.introFade = null;
+          stopIntro();
+        }
+      }, 40);
     }
-  }, 40);
+  }, 30);
+
+  /*
+    Harte Sicherung:
+    Selbst wenn ein Browser Timer/Audio-Event verschluckt,
+    darf der Soundtrack nicht dauerhaft weiterlaufen.
+  */
+  setTimeout(() => {
+    if (state.intro === audio) {
+      stopIntro();
+    }
+  }, 3200);
 }
 
 /* ---------- Realtime transport ---------- */
@@ -303,6 +362,10 @@ function handleRealtimeEvent(event) {
       if (hasTool) {
         setState("thinking", "Live-Daten werden geladen …");
         return;
+      }
+
+      if (state.greeting) {
+        stopIntro();
       }
 
       state.greeting = false;
@@ -480,6 +543,15 @@ async function startJarvis() {
     state.greeting = true;
     await sleep(320);
     requestSpeech(greetingText());
+
+    /*
+      Fade-out nicht von einem Realtime-Delta abhängig machen.
+      Die Musik wird direkt nach Start der Begrüßung geduckt.
+    */
+    setTimeout(
+      duckAndFadeIntro,
+      260
+    );
 
   } catch (error) {
     console.error(error);
