@@ -1,11 +1,12 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
 
-   V12.3 · JARVIS PERSONALITY PLUS
+   V12.4 · SHOPIFY AGENT
    ========================================================= */
 
 import express from "express";
 import { createMailRouter } from "./jarvis-mail-sync.js";
+import { createShopifyAgent } from "./shopify-agent.js";
 
 const app = express();
 
@@ -13,7 +14,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V12.3-PERSONALITY-PLUS";
+  "V12.4-SHOPIFY-AGENT";
 
 
 /* =========================================================
@@ -801,6 +802,22 @@ get_business_pulse NUR bei eindeutig geschäftlichen Gesamtfragen:
 - "Wie stehen Umsatz, Bestellungen und offene Themen?"
 Nicht verwenden für "Wie sieht's aus?", "Was ist los?", "Hörst du mich?" oder Smalltalk.
 
+SHOPIFY ADMIN AGENT
+- Für detaillierte Produkt-, Kunden-, Datei-, Lager- oder Bestellfragen nutze shopify_admin.
+- Produkt suchen → action=product_search.
+- Niedrige Bestände → action=low_stock.
+- Dateien ohne Alt-Text → action=files_missing_alt.
+- Kunden suchen → action=customer_search.
+- Bestellung vollständig öffnen → action=order_get.
+- Produktdaten/SEO/Status ändern → action=product_update.
+- Alt-Text ändern → action=file_alt_update.
+- Tags → action=product_tags_add oder product_tags_remove.
+- Bestellnotiz → action=order_note_update.
+- Schreibaktionen werden nur vorbereitet. Erkläre Mattl danach exakt, was geändert würde, und frage nach Freigabe.
+- Erst nach ausdrücklicher Freigabe → action=confirm_write.
+- Keine Produktlöschung, Bestellstornierung, Refunds, Zahlungen oder andere irreversible Aktionen eigenständig durchführen.
+- Wenn Shopify wegen fehlender App-Berechtigung ablehnt, sage das klar.
+
 SHOPIFY
 - Umsatz heute/gestern → get_shopify_summary
 - offene Bestellungen → get_shopify_open_orders
@@ -1160,6 +1177,69 @@ const REALTIME_TOOLS = [
       properties: {},
       additionalProperties:
         false
+    }
+  },
+
+
+  {
+    type:
+      "function",
+
+    name:
+      "shopify_admin",
+
+    description:
+      "Zentraler Shopify-Agent für Produkt-, Kunden-, Datei-, Lager- und Bestellverwaltung. Reads laufen direkt. Writes werden zuerst vorbereitet und benötigen danach ausdrückliche Freigabe.",
+
+    parameters: {
+      type:
+        "object",
+
+      properties: {
+        action: {
+          type:
+            "string",
+          enum: [
+            "product_search",
+            "low_stock",
+            "files_missing_alt",
+            "customer_search",
+            "order_get",
+            "product_update",
+            "file_alt_update",
+            "product_tags_add",
+            "product_tags_remove",
+            "order_note_update",
+            "pending_write",
+            "confirm_write"
+          ]
+        },
+        query: { type: "string" },
+        limit: { type: "integer" },
+        threshold: { type: "integer" },
+        product_id: { type: "string" },
+        title: { type: "string" },
+        description_html: { type: "string" },
+        vendor: { type: "string" },
+        product_type: { type: "string" },
+        status: { type: "string" },
+        seo_title: { type: "string" },
+        seo_description: { type: "string" },
+        file_id: { type: "string" },
+        alt: { type: "string" },
+        resource_id: { type: "string" },
+        tags: {
+          type: "array",
+          items: { type: "string" }
+        },
+        order_name: { type: "string" },
+        order_id: { type: "string" },
+        note: { type: "string" },
+        confirmation_text: { type: "string" }
+      },
+
+      required: ["action"],
+      additionalProperties: false
     }
   },
 
@@ -2111,6 +2191,15 @@ async function getShopifyAccessToken() {
 
   return data.access_token;
 }
+
+
+
+const shopifyAgent =
+  createShopifyAgent({
+    getAccessToken: getShopifyAccessToken,
+    getStoreDomain: () => process.env.SHOPIFY_STORE_DOMAIN,
+    getApiVersion: () => process.env.SHOPIFY_API_VERSION || "2026-07"
+  });
 
 
 /* =========================================================
@@ -8590,6 +8679,28 @@ app.post(
                 "Bearbeitet",
               instruction:
                 "Die ausgewählte Mail wurde nach Bearbeitet verschoben. Bestätige das Mattl kurz."
+            }
+          });
+        }
+
+
+        case "shopify_admin": {
+
+          const shopifyResult =
+            await shopifyAgent.run(
+              args.action,
+              args
+            );
+
+          return res.json({
+            ok: true,
+            shopify: shopifyResult,
+            result: {
+              ...shopifyResult,
+              instruction:
+                shopifyResult?.requires_confirmation
+                  ? "Die Shopify-Änderung ist nur vorbereitet. Erkläre Mattl kurz, was geändert würde, und frage nach ausdrücklicher Freigabe. Noch nichts wurde verändert."
+                  : "Antworte anhand dieser Shopify-Live-Daten. Erfinde nichts."
             }
           });
         }
