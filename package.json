@@ -1,10 +1,11 @@
 {
   "name": "jarvis-druckelite24",
-  "version": "0.1.0",
+  "version": "12.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "check": "node --check server.js && node --check app.js && node --check jarvis-mail-sync.js"
   },
   "engines": {
     "node": ">=20"
