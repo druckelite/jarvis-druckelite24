@@ -1,55 +1,49 @@
+/* =========================================================
+   JARVIS V12.5 · GMAIL / MAIL STUDIO ROUTER
+
+   - liest ALLE Mails im Posteingang, unabhängig vom UNREAD-Status
+   - echte Gmail-Entwürfe
+   - Reply-Drafts im richtigen Thread
+   - Suche / Labels / Archiv / Papierkorb / Anhänge
+   - SSE-Sync mit serverseitigem Polling
+   - persistentes lokales Snooze über JARVIS-Storage Hooks
+   ========================================================= */
+
 import express from "express";
 
 function timeoutSignal(ms) {
-  try {
-    return AbortSignal.timeout(ms);
-  } catch {
-    return undefined;
-  }
+  try { return AbortSignal.timeout(ms); } catch { return undefined; }
+}
+
+function clean(value) {
+  return String(value ?? "").trim();
+}
+
+function decodeBase64Url(value) {
+  if (!value) return Buffer.alloc(0);
+  const normalized = String(value).replace(/-/g, "+").replace(/_/g, "/");
+  const padding = "=".repeat((4 - normalized.length % 4) % 4);
+  return Buffer.from(normalized + padding, "base64");
 }
 
 function encodeBase64Url(value) {
-  return Buffer.from(String(value || ""), "utf8")
+  return Buffer.from(String(value ?? ""), "utf8")
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
 }
 
-function decodeBase64Url(value) {
-  if (!value) return "";
-  const normalized =
-    String(value)
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
-  const padding =
-    "=".repeat((4 - normalized.length % 4) % 4);
-  return Buffer.from(
-    normalized + padding,
-    "base64"
-  ).toString("utf8");
-}
-
-function getHeader(headers, name) {
+function header(headers, name) {
   return (headers || []).find(
-    h =>
-      String(h?.name || "").toLowerCase() ===
-      String(name || "").toLowerCase()
+    h => clean(h?.name).toLowerCase() === clean(name).toLowerCase()
   )?.value || "";
 }
 
-function collectBodies(part, result) {
-  if (!part) return;
-  const mime = String(part.mimeType || "").toLowerCase();
-  const data = part.body?.data;
-  if (data) {
-    const decoded = decodeBase64Url(data);
-    if (mime === "text/plain") result.plain.push(decoded);
-    if (mime === "text/html") result.html.push(decoded);
-  }
-  for (const child of part.parts || []) {
-    collectBodies(child, result);
-  }
+function extractEmailAddress(value) {
+  const text = clean(value);
+  const angle = text.match(/<([^>]+)>/);
+  return clean(angle?.[1] || text);
 }
 
 function stripHtml(value) {
@@ -58,37 +52,117 @@ function stripHtml(value) {
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/p>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/[ \t]+\n/g, "\n")
     .replace(/\n{3,}/g, "\n\n")
     .replace(/[ \t]{2,}/g, " ")
     .trim();
 }
 
+function collectParts(part, result) {
+  if (!part) return;
+
+  const mime = clean(part.mimeType).toLowerCase();
+  const filename = clean(part.filename);
+  const body = part.body || {};
+
+  if (body.data) {
+    const buffer = decodeBase64Url(body.data);
+
+    if (mime === "text/plain") {
+      result.plain.push(buffer.toString("utf8"));
+    } else if (mime === "text/html") {
+      result.html.push(buffer.toString("utf8"));
+    } else if (filename) {
+      result.attachments.push({
+        filename,
+        mimeType: mime || "application/octet-stream",
+        size: body.size || buffer.length,
+        inlineDataBase64: buffer.toString("base64"),
+        attachmentId: body.attachmentId || null
+      });
+    }
+  } else if (filename && body.attachmentId) {
+    result.attachments.push({
+      filename,
+      mimeType: mime || "application/octet-stream",
+      size: body.size || 0,
+      attachmentId: body.attachmentId
+    });
+  }
+
+  for (const child of part.parts || []) {
+    collectParts(child, result);
+  }
+}
+
+function ensureReplySubject(subject) {
+  const value = clean(subject);
+  return /^re:/i.test(value) ? value : `Re: ${value || "Ihre Nachricht"}`;
+}
+
+function folderQuery(folder) {
+  switch (clean(folder).toUpperCase()) {
+    case "SENT": return "in:sent";
+    case "DRAFT": return "in:drafts";
+    case "TRASH": return "in:trash";
+    case "SPAM": return "in:spam";
+    case "INBOX":
+    default:
+      // ABSICHTLICH KEIN is:unread
+      return "in:inbox";
+  }
+}
+
 export function createMailRouter({
   getAccessToken,
-  apiKey,
-  pollIntervalMs = 8000
+  apiKey = "",
+  pollIntervalMs = 8000,
+  openaiApiKey = "",
+  openaiModel = "gpt-5.6",
+  readStore = null,
+  writeStore = null
 }) {
   const router = express.Router();
+  const sseClients = new Set();
+  let lastInboxFingerprint = "";
+  let pollTimer = null;
 
-  router.use(express.json({ limit: "2mb" }));
-
-  router.use((req, res, next) => {
-    if (
-      apiKey &&
-      req.headers["x-jarvis-key"] !== apiKey
-    ) {
-      return res
-        .status(401)
-        .json({
-          ok: false,
-          error: "Ungültiger oder fehlender API-Key."
-        });
-    }
+  function cors(req, res, next) {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Content-Type, x-jarvis-key");
+    res.header("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+    if (req.method === "OPTIONS") return res.sendStatus(204);
     next();
-  });
+  }
+
+  function auth(req, res, next) {
+    if (!apiKey) return next();
+
+    const provided =
+      req.headers["x-jarvis-key"] ||
+      req.query?.key ||
+      "";
+
+    if (provided !== apiKey) {
+      return res.status(401).json({
+        ok: false,
+        error: "Ungültiger oder fehlender API-Key"
+      });
+    }
+
+    next();
+  }
+
+  router.use(cors);
+  router.use(auth);
 
   async function gmail(path, options = {}) {
     const token = await getAccessToken();
@@ -98,22 +172,16 @@ export function createMailRouter({
         ...options,
         headers: {
           Authorization: `Bearer ${token}`,
-          ...(options.body
-            ? { "Content-Type": "application/json" }
-            : {}),
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
           ...(options.headers || {})
         },
-        signal: timeoutSignal(15000)
+        signal: timeoutSignal(options.timeoutMs || 15000)
       }
     );
 
     const raw = await response.text();
     let data = {};
-    try {
-      data = raw ? JSON.parse(raw) : {};
-    } catch {
-      data = { raw };
-    }
+    try { data = raw ? JSON.parse(raw) : {}; } catch { data = { raw }; }
 
     if (!response.ok) {
       throw new Error(
@@ -121,238 +189,636 @@ export function createMailRouter({
         `Gmail Fehler ${response.status}`
       );
     }
+
     return data;
   }
 
-  async function readMessage(id) {
+  async function listRefs(q, maxResults = 50) {
+    const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    url.searchParams.set("q", q);
+    url.searchParams.set("maxResults", String(Math.max(1, Math.min(100, maxResults))));
+
+    const token = await getAccessToken();
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: timeoutSignal(15000)
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.error?.message || "Gmail-Liste konnte nicht geladen werden.");
+    }
+
+    return data.messages || [];
+  }
+
+  async function getMetadata(id) {
     const data = await gmail(
-      `/messages/${encodeURIComponent(id)}?format=full`
+      `/messages/${encodeURIComponent(id)}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date`,
+      {}
     );
 
     const headers = data.payload?.headers || [];
-    const bodies = { plain: [], html: [] };
-    collectBodies(data.payload, bodies);
-
-    const body =
-      bodies.plain.join("\n\n").trim() ||
-      stripHtml(bodies.html.join("\n\n")) ||
-      data.snippet ||
-      "";
 
     return {
       id: data.id,
-      threadId: data.threadId,
-      labelIds: data.labelIds || [],
-      unread:
-        (data.labelIds || []).includes("UNREAD"),
-      from: getHeader(headers, "From"),
-      to: getHeader(headers, "To"),
-      subject:
-        getHeader(headers, "Subject") ||
-        "(kein Betreff)",
-      date: getHeader(headers, "Date"),
+      threadId: data.threadId || null,
+      from: header(headers, "From") || "unbekannt",
+      fromEmail: extractEmailAddress(header(headers, "From")),
+      to: header(headers, "To") || "",
+      subject: header(headers, "Subject") || "(kein Betreff)",
+      date: header(headers, "Date") || (data.internalDate ? new Date(Number(data.internalDate)).toISOString() : null),
+      internalDate: data.internalDate || null,
       snippet: data.snippet || "",
-      body: body.slice(0, 50000)
+      unread: Array.isArray(data.labelIds) && data.labelIds.includes("UNREAD"),
+      labelIds: data.labelIds || []
     };
+  }
+
+  async function getFullMessage(id) {
+    const data = await gmail(`/messages/${encodeURIComponent(id)}?format=full`);
+    const headers = data.payload?.headers || [];
+    const parts = { plain: [], html: [], attachments: [] };
+
+    collectParts(data.payload, parts);
+
+    let bodyText = parts.plain.filter(Boolean).join("\n\n").trim();
+
+    if (!bodyText && parts.html.length) {
+      bodyText = stripHtml(parts.html.join("\n\n"));
+    }
+
+    if (!bodyText) {
+      bodyText = clean(data.snippet);
+    }
+
+    return {
+      id: data.id,
+      threadId: data.threadId || null,
+      from: header(headers, "From") || "unbekannt",
+      fromEmail: extractEmailAddress(header(headers, "From")),
+      replyTo: header(headers, "Reply-To") || "",
+      to: header(headers, "To") || "",
+      subject: header(headers, "Subject") || "(kein Betreff)",
+      date: header(headers, "Date") || null,
+      messageIdHeader: header(headers, "Message-ID") || header(headers, "Message-Id") || "",
+      references: header(headers, "References") || "",
+      snippet: data.snippet || "",
+      unread: Array.isArray(data.labelIds) && data.labelIds.includes("UNREAD"),
+      labelIds: data.labelIds || [],
+      bodyText: bodyText.slice(0, 50000),
+      attachments: parts.attachments
+    };
+  }
+
+  async function createRawDraft({ to, subject, body, threadId, inReplyTo, references }) {
+    const headers = [
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      "MIME-Version: 1.0",
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: 8bit"
+    ];
+
+    if (inReplyTo) {
+      headers.push(`In-Reply-To: ${inReplyTo}`);
+      headers.push(`References: ${clean(`${references || ""} ${inReplyTo}`)}`);
+    }
+
+    const raw = encodeBase64Url(`${headers.join("\r\n")}\r\n\r\n${body}`);
+
+    const payload = {
+      message: {
+        raw,
+        ...(threadId ? { threadId } : {})
+      }
+    };
+
+    const draft = await gmail("/drafts", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+
+    return {
+      draftId: draft.id,
+      messageId: draft.message?.id || null,
+      threadId: draft.message?.threadId || threadId || null,
+      to,
+      subject,
+      body,
+      createdAt: new Date().toISOString(),
+      sent: false
+    };
+  }
+
+  async function createReplyDraft(messageId, body) {
+    const original = await getFullMessage(messageId);
+    const to = extractEmailAddress(original.replyTo || original.from);
+
+    if (!to) throw new Error("Empfänger der Antwort konnte nicht ermittelt werden.");
+
+    return createRawDraft({
+      to,
+      subject: ensureReplySubject(original.subject),
+      body: clean(body),
+      threadId: original.threadId,
+      inReplyTo: original.messageIdHeader,
+      references: original.references
+    });
+  }
+
+  async function listDrafts(limit = 30) {
+    const data = await gmail(`/drafts?maxResults=${Math.max(1, Math.min(100, Number(limit) || 30))}`);
+    const drafts = [];
+
+    for (const ref of data.drafts || []) {
+      try {
+        const draft = await gmail(`/drafts/${encodeURIComponent(ref.id)}?format=metadata`);
+        const msg = draft.message || {};
+        const headers = msg.payload?.headers || [];
+
+        drafts.push({
+          draftId: draft.id,
+          messageId: msg.id || null,
+          threadId: msg.threadId || null,
+          to: header(headers, "To") || "",
+          subject: header(headers, "Subject") || "(kein Betreff)",
+          date: header(headers, "Date") || null,
+          snippet: msg.snippet || ""
+        });
+      } catch {}
+    }
+
+    return drafts;
+  }
+
+  async function getSnoozed() {
+    if (typeof readStore !== "function") return {};
+    try {
+      const value = await readStore("mail_snoozed");
+      if (value && typeof value === "object" && !Array.isArray(value)) return value;
+    } catch {}
+    return {};
+  }
+
+  async function setSnoozed(value) {
+    if (typeof writeStore !== "function") return;
+    await writeStore("mail_snoozed", value);
+  }
+
+  async function unsnoozeDue() {
+    const snoozed = await getSnoozed();
+    const now = Date.now();
+    let changed = false;
+
+    for (const [id, entry] of Object.entries(snoozed)) {
+      if (new Date(entry.until).getTime() <= now) {
+        try {
+          await gmail(`/messages/${encodeURIComponent(id)}/modify`, {
+            method: "POST",
+            body: JSON.stringify({
+              addLabelIds: ["INBOX"],
+              removeLabelIds: []
+            })
+          });
+          emit("unsnoozed", {
+            messageId: id,
+            subject: entry.meta?.subject || ""
+          });
+        } catch {}
+
+        delete snoozed[id];
+        changed = true;
+      }
+    }
+
+    if (changed) await setSnoozed(snoozed);
+  }
+
+  function emit(event, payload) {
+    const text = `event: ${event}\ndata: ${JSON.stringify(payload || {})}\n\n`;
+    for (const client of [...sseClients]) {
+      try { client.write(text); } catch { sseClients.delete(client); }
+    }
+  }
+
+  async function pollInbox() {
+    try {
+      await unsnoozeDue();
+      const refs = await listRefs("in:inbox", 20);
+      const fingerprint = refs.map(x => x.id).join("|");
+
+      if (lastInboxFingerprint && fingerprint !== lastInboxFingerprint) {
+        emit("sync", { changed: true, at: new Date().toISOString() });
+      }
+
+      lastInboxFingerprint = fingerprint;
+    } catch (error) {
+      console.warn("[MAIL ROUTER POLL]", error.message);
+    }
+  }
+
+  function ensurePoller() {
+    if (pollTimer) return;
+    pollTimer = setInterval(pollInbox, Math.max(5000, Number(pollIntervalMs) || 8000));
+    pollTimer.unref?.();
+    pollInbox();
   }
 
   router.get("/status", async (req, res) => {
     try {
-      await getAccessToken();
-      res.json({
-        ok: true,
-        poll_interval_ms: pollIntervalMs
-      });
+      const profile = await gmail("/profile");
+      res.json({ ok: true, emailAddress: profile.emailAddress || "" });
     } catch (error) {
-      res.status(503).json({
-        ok: false,
-        error: error.message
-      });
+      res.status(500).json({ ok: false, error: error.message });
     }
   });
 
-  router.get("/inbox", async (req, res) => {
+  router.get("/list", async (req, res) => {
     try {
-      const max =
-        Math.max(
-          1,
-          Math.min(50, Number(req.query.limit) || 20)
-        );
+      const q = folderQuery(req.query.folder);
+      const refs = await listRefs(q, 50);
+      const messages = [];
 
-      const q =
-        String(req.query.q || "in:inbox").trim();
+      for (const ref of refs) {
+        try { messages.push(await getMetadata(ref.id)); } catch {}
+      }
 
-      const list = await gmail(
-        `/messages?q=${encodeURIComponent(q)}&maxResults=${max}`
-      );
-
-      const messages =
-        await Promise.all(
-          (list.messages || []).map(
-            item => readMessage(item.id)
-          )
-        );
-
-      res.json({ ok: true, messages });
+      res.json(messages);
     } catch (error) {
-      res.status(500).json({
-        ok: false,
-        error: error.message
-      });
+      res.status(500).json({ error: error.message });
     }
   });
 
   router.get("/message/:id", async (req, res) => {
     try {
+      res.json(await getFullMessage(req.params.id));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.get("/attachment/:messageId/:attachmentId", async (req, res) => {
+    try {
+      const data = await gmail(
+        `/messages/${encodeURIComponent(req.params.messageId)}/attachments/${encodeURIComponent(req.params.attachmentId)}`
+      );
+
       res.json({
-        ok: true,
-        message: await readMessage(req.params.id)
+        dataBase64: decodeBase64Url(data.data || "").toString("base64"),
+        size: data.size || 0
       });
     } catch (error) {
-      res.status(500).json({
-        ok: false,
-        error: error.message
-      });
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.get("/search", async (req, res) => {
+    try {
+      const q = clean(req.query.q);
+      if (!q) return res.json([]);
+
+      // Suche absichtlich in ALLEN Mails, nicht nur unread.
+      const refs = await listRefs(q, 50);
+      const messages = [];
+
+      for (const ref of refs) {
+        try { messages.push(await getMetadata(ref.id)); } catch {}
+      }
+
+      res.json(messages);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
     }
   });
 
   router.get("/labels", async (req, res) => {
     try {
       const data = await gmail("/labels");
-      res.json({
-        ok: true,
-        labels: data.labels || []
-      });
+      res.json(data.labels || []);
     } catch (error) {
-      res.status(500).json({
-        ok: false,
-        error: error.message
-      });
+      res.status(500).json({ error: error.message });
     }
   });
 
-  router.post("/modify", async (req, res) => {
+  router.post("/label/create", async (req, res) => {
     try {
-      const id = String(req.body?.messageId || "").trim();
-      if (!id) {
-        return res.status(400).json({
-          ok: false,
-          error: "messageId fehlt."
-        });
-      }
-      const data = await gmail(
-        `/messages/${encodeURIComponent(id)}/modify`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            addLabelIds:
-              Array.isArray(req.body?.addLabelIds)
-                ? req.body.addLabelIds
-                : [],
-            removeLabelIds:
-              Array.isArray(req.body?.removeLabelIds)
-                ? req.body.removeLabelIds
-                : []
-          })
-        }
-      );
-      res.json({ ok: true, message: data });
-    } catch (error) {
-      res.status(500).json({
-        ok: false,
-        error: error.message
+      const name = clean(req.body?.name);
+      if (!name) return res.status(400).json({ error: "Label-Name fehlt." });
+
+      const label = await gmail("/labels", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          labelListVisibility: "labelShow",
+          messageListVisibility: "show"
+        })
       });
+
+      res.json(label);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post("/label", async (req, res) => {
+    try {
+      const id = clean(req.body?.messageId);
+      if (!id) return res.status(400).json({ error: "messageId fehlt." });
+
+      const result = await gmail(`/messages/${encodeURIComponent(id)}/modify`, {
+        method: "POST",
+        body: JSON.stringify({
+          addLabelIds: Array.isArray(req.body?.add) ? req.body.add : [],
+          removeLabelIds: Array.isArray(req.body?.remove) ? req.body.remove : []
+        })
+      });
+
+      res.json(result);
+      emit("sync", { changed: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post("/archive", async (req, res) => {
+    try {
+      const id = clean(req.body?.messageId);
+      const result = await gmail(`/messages/${encodeURIComponent(id)}/modify`, {
+        method: "POST",
+        body: JSON.stringify({ removeLabelIds: ["INBOX"] })
+      });
+      res.json(result);
+      emit("sync", { changed: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post("/mark-unread", async (req, res) => {
+    try {
+      const id = clean(req.body?.messageId);
+      const result = await gmail(`/messages/${encodeURIComponent(id)}/modify`, {
+        method: "POST",
+        body: JSON.stringify({ addLabelIds: ["UNREAD"] })
+      });
+      res.json(result);
+      emit("sync", { changed: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post("/trash", async (req, res) => {
+    try {
+      const id = clean(req.body?.messageId);
+      const result = await gmail(`/messages/${encodeURIComponent(id)}/trash`, {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      res.json(result);
+      emit("sync", { changed: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post("/snooze", async (req, res) => {
+    try {
+      const id = clean(req.body?.messageId);
+      const hours = Math.max(0.1, Number(req.body?.hours) || 24);
+
+      if (!id) return res.status(400).json({ error: "messageId fehlt." });
+
+      const snoozed = await getSnoozed();
+
+      snoozed[id] = {
+        until: new Date(Date.now() + hours * 3600000).toISOString(),
+        meta: {
+          subject: clean(req.body?.subject),
+          from: clean(req.body?.from)
+        }
+      };
+
+      await setSnoozed(snoozed);
+
+      await gmail(`/messages/${encodeURIComponent(id)}/modify`, {
+        method: "POST",
+        body: JSON.stringify({ removeLabelIds: ["INBOX"] })
+      });
+
+      res.json({ ok: true, ...snoozed[id] });
+      emit("sync", { changed: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.get("/snoozed", async (req, res) => {
+    try {
+      await unsnoozeDue();
+      res.json(await getSnoozed());
+    } catch (error) {
+      res.status(500).json({ error: error.message });
     }
   });
 
   router.post("/draft", async (req, res) => {
     try {
-      const to = String(req.body?.to || "").trim();
-      const subject = String(req.body?.subject || "").trim();
-      const body = String(req.body?.body || "").trim();
+      const to = clean(req.body?.to);
+      const subject = clean(req.body?.subject);
+      const body = clean(req.body?.body);
+
       if (!to || !body) {
-        return res.status(400).json({
-          ok: false,
-          error: "Empfänger und Inhalt sind erforderlich."
-        });
+        return res.status(400).json({ error: "Empfänger und Text erforderlich." });
       }
 
-      const raw = encodeBase64Url(
-        [
-          `To: ${to}`,
-          `Subject: ${subject}`,
-          "MIME-Version: 1.0",
-          'Content-Type: text/plain; charset="UTF-8"',
-          "Content-Transfer-Encoding: 8bit",
-          "",
-          body
-        ].join("\r\n")
-      );
-
-      const draft = await gmail(
-        "/drafts",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            message: { raw }
-          })
-        }
-      );
-
-      res.json({
-        ok: true,
-        draft
+      const draft = await createRawDraft({
+        to,
+        subject: subject || "(kein Betreff)",
+        body
       });
+
+      res.json({ ok: true, draft });
+      emit("sync", { changed: true, draftCreated: true });
     } catch (error) {
-      res.status(500).json({
-        ok: false,
-        error: error.message
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  router.post("/reply-draft", async (req, res) => {
+    try {
+      const messageId = clean(req.body?.messageId);
+      const body = clean(req.body?.body);
+
+      if (!messageId || !body) {
+        return res.status(400).json({ error: "Mail und Antworttext erforderlich." });
+      }
+
+      const draft = await createReplyDraft(messageId, body);
+
+      res.json({ ok: true, draft });
+      emit("sync", { changed: true, draftCreated: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Nur für explizit bestätigtes Senden aus dem Mail Studio.
+  router.post("/send-draft", async (req, res) => {
+    try {
+      const draftId = clean(req.body?.draftId);
+      const confirmation = clean(req.body?.confirmation_text);
+
+      if (!draftId) return res.status(400).json({ error: "draftId fehlt." });
+
+      if (!/\b(senden|abschicken|versenden|ja|ok|okay)\b/i.test(confirmation)) {
+        return res.status(400).json({ error: "Ausdrückliche Sendebestätigung fehlt." });
+      }
+
+      const sent = await gmail("/drafts/send", {
+        method: "POST",
+        body: JSON.stringify({ id: draftId })
       });
+
+      res.json({ ok: true, sent });
+      emit("sync", { changed: true, draftSent: true });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
     }
   });
 
   router.get("/drafts", async (req, res) => {
     try {
-      const data = await gmail("/drafts?maxResults=30");
-      res.json({
-        ok: true,
-        drafts: data.drafts || []
-      });
+      res.json({ ok: true, drafts: await listDrafts(50) });
     } catch (error) {
-      res.status(500).json({
-        ok: false,
-        error: error.message
-      });
+      res.status(500).json({ error: error.message });
     }
   });
 
-  router.post("/send-draft", async (req, res) => {
+  router.post("/suggest", async (req, res) => {
     try {
-      const id = String(req.body?.draftId || "").trim();
-      if (!id) {
-        return res.status(400).json({
-          ok: false,
-          error: "draftId fehlt."
-        });
+      if (!openaiApiKey) {
+        return res.status(503).json({ error: "OPENAI_API_KEY fehlt." });
       }
-      const data = await gmail(
-        "/drafts/send",
-        {
-          method: "POST",
-          body: JSON.stringify({ id })
+
+      const tone = clean(req.body?.tone) || "freundlich-professionell";
+      const template = clean(req.body?.template) || "auto";
+      const instruction = clean(req.body?.instruction);
+
+      const prompt = `
+Du bist der interne E-Mail-Assistent von Druckelite24.
+
+Kundenmail:
+Absender: ${clean(req.body?.from)}
+Betreff: ${clean(req.body?.subject)}
+Inhalt:
+${clean(req.body?.bodyText)}
+
+Gewünschter Ton: ${tone}
+Vorlage: ${template}
+Zusatzanweisung von Mattl: ${instruction || "keine"}
+
+WICHTIG:
+- professionelles natürliches Deutsch
+- keine erfundenen Preise, Liefertermine, Zusagen oder Fakten
+- keine internen JARVIS-Kommentare
+- kein Sarkasmus gegenüber Kunden
+- wenn Informationen fehlen, neutral formulieren oder passend nachfragen
+- Lieferzeit nur nennen, wenn es zur Mail passt
+- Entwurf wird NICHT automatisch gesendet
+
+Antworte als JSON:
+{
+  "text": "...",
+  "insight": "...",
+  "category": "..."
+}
+`;
+
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${openaiApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: openaiModel,
+          input: prompt,
+          reasoning: { effort: "low" },
+          text: {
+            format: {
+              type: "json_schema",
+              name: "mail_suggestion",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  text: { type: "string" },
+                  insight: { type: "string" },
+                  category: { type: "string" }
+                },
+                required: ["text", "insight", "category"],
+                additionalProperties: false
+              }
+            }
+          },
+          store: false
+        }),
+        signal: timeoutSignal(30000)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error?.message || "KI-Vorschlag fehlgeschlagen.");
+      }
+
+      let outputText = clean(data.output_text);
+
+      if (!outputText) {
+        const pieces = [];
+        for (const item of data.output || []) {
+          if (item?.type !== "message") continue;
+          for (const content of item.content || []) {
+            if (content?.type === "output_text" && content?.text) {
+              pieces.push(content.text);
+            }
+          }
         }
-      );
-      res.json({
-        ok: true,
-        sent: data
-      });
+        outputText = pieces.join("\n");
+      }
+
+      res.json(JSON.parse(outputText));
     } catch (error) {
-      res.status(500).json({
-        ok: false,
-        error: error.message
-      });
+      res.status(500).json({ error: error.message });
     }
   });
+
+  router.get("/stream", (req, res) => {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "Access-Control-Allow-Origin": "*"
+    });
+
+    res.write(`event: hello\ndata: ${JSON.stringify({ ok: true })}\n\n`);
+    sseClients.add(res);
+    ensurePoller();
+
+    const heartbeat = setInterval(() => {
+      try { res.write(`event: ping\ndata: {}\n\n`); } catch {}
+    }, 25000);
+
+    req.on("close", () => {
+      clearInterval(heartbeat);
+      sseClients.delete(res);
+    });
+  });
+
+  ensurePoller();
 
   return router;
 }
