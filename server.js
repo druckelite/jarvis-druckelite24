@@ -1,7 +1,7 @@
 /* =========================================================
    DRUCKELITE24 · JARVIS SERVER
 
-   V10.1 · OPENAI REALTIME TEXT + ELEVENLABS STREAMING
+   V11.0 · SINGLE SCREEN · OPENAI REALTIME AUDIO
    ========================================================= */
 
 import express from "express";
@@ -13,7 +13,7 @@ const PORT =
   process.env.PORT || 3000;
 
 const JARVIS_VERSION =
-  "V10.7-SMART-BUSINESS-PULSE";
+  "V11.0-SINGLE-SCREEN-OPENAI-AUDIO";
 
 
 /* =========================================================
@@ -761,7 +761,7 @@ EUROBETRÄGE:
 - Bei Preisen mit Nachkommastellen immer Euro UND Cent vollständig nennen.
 
 GENERELL:
-- Zahlen so formulieren, dass ElevenLabs sie natürlich auf Deutsch ausspricht.
+- Zahlen so formulieren, dass die OpenAI-Realtime-Stimme sie natürlich auf Deutsch ausspricht.
 - Bei gesprochenen Antworten Verständlichkeit vor mathematischer Kurzschreibweise.
 
 GESCHÄFT:
@@ -888,7 +888,7 @@ WHATSAPP / SUPERCHAT:
 - create_whatsapp_voice_draft erstellt erst NUR den gesprochenen Textentwurf. Noch kein Audio und kein Versand.
 - Lies Mattl den geplanten Inhalt kurz vor bzw. nenne den Text und frage nach Bestätigung.
 - Erst nach ausdrücklichem „senden“, „abschicken“ oder „versenden“ → send_whatsapp_voice_draft.
-- Die Sprachnachricht wird dann mit ElevenLabs in JARVIS' hinterlegter Stimme erzeugt, zu Superchat hochgeladen und über WhatsApp gesendet.
+- Die Sprachnachricht wird dann mit OpenAI Audio erzeugt, zu Superchat hochgeladen und über WhatsApp gesendet.
 - Wenn ein Chat ausgewählt ist und Mattl fragt „Was will der Kunde?“, „lies den Chat“ oder sinngleich → get_whatsapp_conversation
 - Wenn Mattl auf den ausgewählten WhatsApp-Chat antworten möchte → create_whatsapp_reply_draft
 - create_whatsapp_reply_draft erstellt nur einen Entwurf und sendet NICHT.
@@ -1469,7 +1469,7 @@ const REALTIME_TOOLS = [
       "send_whatsapp_voice_draft",
 
     description:
-      "Erzeugt den zuletzt bestätigten WhatsApp-Sprachnachrichten-Entwurf mit ElevenLabs als Audio und sendet ihn über Superchat. Nur nach ausdrücklichem Sende-Befehl verwenden.",
+      "Erzeugt den zuletzt bestätigten WhatsApp-Sprachnachrichten-Entwurf mit OpenAI Audio und sendet ihn über Superchat. Nur nach ausdrücklichem Sende-Befehl verwenden.",
 
     parameters: {
       type:
@@ -1796,7 +1796,7 @@ app.post(
           model,
 
           output_modalities: [
-            "text"
+            "audio"
           ],
 
           instructions:
@@ -1809,6 +1809,12 @@ app.post(
             "auto",
 
           audio: {
+
+            output: {
+              voice:
+                process.env.OPENAI_REALTIME_VOICE ||
+                "marin"
+            },
 
             input: {
 
@@ -1826,7 +1832,8 @@ app.post(
                   "semantic_vad",
 
                 eagerness:
-                  "low",
+                  process.env.OPENAI_VAD_EAGERNESS ||
+                  "high",
 
                 create_response:
                   true,
@@ -1856,7 +1863,7 @@ app.post(
 
 
       console.log(
-        `[REALTIME] Modell=${model} Output=text ElevenLabs=extern Tools=${REALTIME_TOOLS.length}`
+        `[REALTIME] Modell=${model} Output=audio Voice=${process.env.OPENAI_REALTIME_VOICE || "marin"} Tools=${REALTIME_TOOLS.length}`
       );
 
 
@@ -1955,169 +1962,6 @@ app.use(
 
 
 /* =========================================================
-   ELEVENLABS · SINGLE-USE TOKEN FOR BROWSER WEBSOCKET
-   ========================================================= */
-
-app.get(
-  "/api/elevenlabs-token",
-
-  async (
-    req,
-    res
-  ) => {
-
-    try {
-
-      const apiKey =
-        process.env
-          .ELEVENLABS_API_KEY;
-
-
-      const voiceId =
-        process.env
-          .ELEVENLABS_VOICE_ID ||
-        "Vje4UYe2YPbNqyQwJGra";
-
-
-      const modelId =
-        process.env
-          .ELEVENLABS_MODEL ||
-        "eleven_flash_v2_5";
-
-
-      if (
-        !apiKey
-      ) {
-
-        return res
-          .status(500)
-          .json({
-
-            ok:
-              false,
-
-            error:
-              "ELEVENLABS_API_KEY fehlt."
-          });
-      }
-
-
-      if (
-        !voiceId
-      ) {
-
-        return res
-          .status(500)
-          .json({
-
-            ok:
-              false,
-
-            error:
-              "ELEVENLABS_VOICE_ID fehlt."
-          });
-      }
-
-
-      const response =
-        await fetch(
-          "https://api.elevenlabs.io/v1/single-use-token/tts_websocket",
-          {
-
-            method:
-              "POST",
-
-            headers: {
-
-              "xi-api-key":
-                apiKey
-            },
-
-            signal:
-              timeoutSignal(
-                10000
-              )
-          }
-        );
-
-
-      const data =
-        await response.json();
-
-
-      if (
-        !response.ok ||
-        !data?.token
-      ) {
-
-        console.error(
-          "[ELEVENLABS TOKEN ERROR]",
-          response.status,
-          data
-        );
-
-
-        return res
-          .status(
-            response.status ||
-            500
-          )
-          .json({
-
-            ok:
-              false,
-
-            error:
-              data?.detail?.message ||
-              data?.detail ||
-              "ElevenLabs-Token konnte nicht erstellt werden."
-          });
-      }
-
-
-      return res.json({
-
-        ok:
-          true,
-
-        token:
-          data.token,
-
-        voice_id:
-          voiceId,
-
-        model_id:
-          modelId,
-
-        language_code:
-          "de"
-      });
-
-
-    } catch (
-      error
-    ) {
-
-      console.error(
-        "[ELEVENLABS TOKEN ERROR]",
-        error
-      );
-
-
-      return res
-        .status(500)
-        .json({
-
-          ok:
-            false,
-
-          error:
-            error.message ||
-            "ElevenLabs-Verbindung fehlgeschlagen."
-        });
-    }
-  }
-);/* =========================================================
    OPENAI RESPONSE HELPER
    ========================================================= */
 
@@ -5341,25 +5185,11 @@ async function generateWhatsAppVoiceAudio(
   text
 ) {
 
-  const apiKey =
-    process.env
-      .ELEVENLABS_API_KEY;
-
-  const voiceId =
-    process.env
-      .ELEVENLABS_VOICE_ID ||
-    "Vje4UYe2YPbNqyQwJGra";
-
-  const modelId =
-    process.env
-      .ELEVENLABS_MODEL ||
-    "eleven_flash_v2_5";
-
   if (
-    !apiKey
+    !process.env.OPENAI_API_KEY
   ) {
     throw new Error(
-      "ELEVENLABS_API_KEY fehlt."
+      "OPENAI_API_KEY fehlt."
     );
   }
 
@@ -5378,13 +5208,13 @@ async function generateWhatsAppVoiceAudio(
 
   const response =
     await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`,
+      "https://api.openai.com/v1/audio/speech",
       {
         method:
           "POST",
         headers: {
-          "xi-api-key":
-            apiKey,
+          Authorization:
+            `Bearer ${process.env.OPENAI_API_KEY}`,
           "Content-Type":
             "application/json",
           "Accept":
@@ -5392,10 +5222,18 @@ async function generateWhatsAppVoiceAudio(
         },
         body:
           JSON.stringify({
-            text:
+            model:
+              process.env.OPENAI_TTS_MODEL ||
+              "gpt-4o-mini-tts",
+            voice:
+              process.env.OPENAI_TTS_VOICE ||
+              "marin",
+            input:
               cleanText,
-            model_id:
-              modelId
+            response_format:
+              "mp3",
+            instructions:
+              "Sprich natürliches deutsches Hochdeutsch. Ruhig, souverän, klar und zügig. Keine übertriebene Betonung."
           }),
         signal:
           timeoutSignal(
@@ -5411,7 +5249,7 @@ async function generateWhatsAppVoiceAudio(
       await response.text();
 
     throw new Error(
-      `ElevenLabs TTS fehlgeschlagen (${response.status}): ${raw.slice(0, 300)}`
+      `OpenAI TTS fehlgeschlagen (${response.status}): ${raw.slice(0, 300)}`
     );
   }
 
@@ -5422,7 +5260,6 @@ async function generateWhatsAppVoiceAudio(
     arrayBuffer
   );
 }
-
 
 async function uploadSuperchatAudioFile(
   audioBuffer
@@ -9878,13 +9715,14 @@ app.get(
         true,
 
       realtime_output:
-        "text",
+        "audio",
 
       vad:
         "semantic_vad",
 
       vad_eagerness:
-        "low",
+        process.env.OPENAI_VAD_EAGERNESS ||
+        "high",
 
       noise_reduction:
         process.env
@@ -9897,29 +9735,19 @@ app.get(
         "gpt-realtime-2.1",
 
       voice_engine:
-        "ElevenLabs",
+        "OpenAI Realtime",
 
-      elevenlabs:
-        Boolean(
-          process.env
-            .ELEVENLABS_API_KEY
-        ),
+      realtime_voice:
+        process.env.OPENAI_REALTIME_VOICE ||
+        "marin",
 
-      elevenlabs_voice_id:
-        process.env
-          .ELEVENLABS_VOICE_ID ||
-        "Vje4UYe2YPbNqyQwJGra",
+      tts_voice:
+        process.env.OPENAI_TTS_VOICE ||
+        "marin",
 
-      elevenlabs_model:
-        process.env
-          .ELEVENLABS_MODEL ||
-        "eleven_flash_v2_5",
-
-      elevenlabs_websocket_auth:
-        "single_use_token",
-
-      elevenlabs_inactivity_timeout:
-        180,
+      tts_model:
+        process.env.OPENAI_TTS_MODEL ||
+        "gpt-4o-mini-tts",
 
       web_model:
         process.env
@@ -9980,7 +9808,7 @@ app.get(
   ) => {
 
     return res.sendFile(
-      "launcher.html",
+      "index.html",
       {
 
         root:
@@ -10045,55 +9873,17 @@ app.listen(
 
 
     console.log(
-      "Realtime Output: TEXT"
+      "Realtime Output: AUDIO"
     );
 
 
     console.log(
-      "Voice Engine: ElevenLabs"
+      `Voice Engine: OpenAI Realtime · ${process.env.OPENAI_REALTIME_VOICE || "marin"}`
     );
 
 
     console.log(
-      `ElevenLabs Voice ID: ${
-        process.env
-          .ELEVENLABS_VOICE_ID ||
-        "Vje4UYe2YPbNqyQwJGra"
-      }`
-    );
-
-
-    console.log(
-      `ElevenLabs Modell: ${
-        process.env
-          .ELEVENLABS_MODEL ||
-        "eleven_flash_v2_5"
-      }`
-    );
-
-
-    console.log(
-      `ElevenLabs: ${
-        process.env
-          .ELEVENLABS_API_KEY
-          ? "verbunden"
-          : "nicht verbunden"
-      }`
-    );
-
-
-    console.log(
-      "ElevenLabs WebSocket Auth: single_use_token"
-    );
-
-
-    console.log(
-      "ElevenLabs Inactivity Timeout: 180 Sekunden"
-    );
-
-
-    console.log(
-      "VAD: semantic_vad / low"
+      `VAD: semantic_vad / ${process.env.OPENAI_VAD_EAGERNESS || "high"}`
     );
 
 
