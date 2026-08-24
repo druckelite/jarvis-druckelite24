@@ -75,6 +75,14 @@ function collectParts(part, result) {
   const filename = clean(part.filename);
   const body = part.body || {};
 
+  // Eingebettete Signatur-/Logo-Bilder (Outlook: "image001.png" etc.) sind KEINE
+  // echten Anhänge — sie werden per Content-ID im HTML-Body referenziert (cid:...)
+  // oder explizit als "inline" markiert. Ohne diesen Filter verschwinden echte
+  // Kunden-Anhänge (PDF, JPG von Bestellungen) optisch zwischen Signatur-Grafiken.
+  const disposition = header(part.headers, "Content-Disposition");
+  const contentId = header(part.headers, "Content-ID") || header(part.headers, "Content-Id");
+  const isInlineAsset = /inline/i.test(disposition) || !!contentId;
+
   if (body.data) {
     const buffer = decodeBase64Url(body.data);
 
@@ -82,7 +90,7 @@ function collectParts(part, result) {
       result.plain.push(buffer.toString("utf8"));
     } else if (mime === "text/html") {
       result.html.push(buffer.toString("utf8"));
-    } else if (filename) {
+    } else if (filename && !isInlineAsset) {
       result.attachments.push({
         filename,
         mimeType: mime || "application/octet-stream",
@@ -91,7 +99,7 @@ function collectParts(part, result) {
         attachmentId: body.attachmentId || null
       });
     }
-  } else if (filename && body.attachmentId) {
+  } else if (filename && body.attachmentId && !isInlineAsset) {
     result.attachments.push({
       filename,
       mimeType: mime || "application/octet-stream",
@@ -103,6 +111,47 @@ function collectParts(part, result) {
   for (const child of part.parts || []) {
     collectParts(child, result);
   }
+}
+
+// Trennt die eigentliche Kundennachricht vom zitierten Verlauf darunter
+// (">"-Zitate, "Am ... schrieb ...:", Outlook-Block "Von:/Gesendet:/Betreff:").
+// Macht die Vorschau übersichtlich, ohne Infos zu verlieren — der Verlauf bleibt
+// als separates Feld erhalten und wird im Mail Studio nur eingeklappt angezeigt.
+function splitQuotedContent(text) {
+  const original = String(text || "");
+  const lines = original.split("\n");
+
+  const strongMarkers = [
+    /^Am .+ schrieb .+:$/i,
+    /^On .+ wrote:$/i,
+    /^-{2,}\s*Urspr(ü|u)ngliche Nachricht\s*-{2,}/i,
+    /^-{2,}\s*Original Message\s*-{2,}/i
+  ];
+
+  let cutIndex = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    if (line.startsWith(">")) { cutIndex = i; break; }
+    if (strongMarkers.some(re => re.test(line))) { cutIndex = i; break; }
+
+    // Outlook-Weiterleitungs-/Antwortblock: "Von:" nur als Trenner werten, wenn
+    // in den nächsten Zeilen auch "Betreff:"/"Subject:" folgt (sonst zu unsicher).
+    if (/^(Von|From):\s/i.test(line)) {
+      const windowLines = lines.slice(i, i + 6).map(l => l.trim());
+      if (windowLines.some(l => /^(Betreff|Subject):\s/i.test(l))) { cutIndex = i; break; }
+    }
+  }
+
+  if (cutIndex <= 0) return { main: original.trim(), quoted: "" };
+
+  const main = lines.slice(0, cutIndex).join("\n").trim();
+  const quoted = lines.slice(cutIndex).join("\n").trim();
+
+  if (!main) return { main: original.trim(), quoted: "" };
+
+  return { main, quoted };
 }
 
 function ensureReplySubject(subject) {
@@ -370,6 +419,8 @@ export function createMailRouter({
       bodyText = clean(data.snippet);
     }
 
+    const { main, quoted } = splitQuotedContent(bodyText);
+
     return {
       id: data.id,
       threadId: data.threadId || null,
@@ -384,7 +435,8 @@ export function createMailRouter({
       snippet: data.snippet || "",
       unread: Array.isArray(data.labelIds) && data.labelIds.includes("UNREAD"),
       labelIds: data.labelIds || [],
-      bodyText: bodyText.slice(0, 50000),
+      bodyText: main.slice(0, 50000),
+      quotedText: quoted.slice(0, 20000),
       attachments: parts.attachments
     };
   }
