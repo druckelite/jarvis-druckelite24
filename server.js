@@ -1872,7 +1872,7 @@ app.post(
 app.use(
   express.json({
     limit:
-      "2mb"
+      "40mb"
   })
 );
 
