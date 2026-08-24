@@ -76,12 +76,17 @@ function collectParts(part, result) {
   const body = part.body || {};
 
   // Eingebettete Signatur-/Logo-Bilder (Outlook: "image001.png" etc.) sind KEINE
-  // echten Anhänge — sie werden per Content-ID im HTML-Body referenziert (cid:...)
-  // oder explizit als "inline" markiert. Ohne diesen Filter verschwinden echte
-  // Kunden-Anhänge (PDF, JPG von Bestellungen) optisch zwischen Signatur-Grafiken.
+  // echten Anhänge. Wichtig: manche Mailprogramme (u. a. Exchange) hängen eine
+  // Content-ID auch an ECHTE Anhänge — Content-ID allein darf sie also nie
+  // ausschließen. Ausschluss nur bei explizitem "Content-Disposition: inline"
+  // ODER bei Bildern ohne jede Disposition-Angabe, aber mit Content-ID (typisches
+  // Signatur-Logo-Muster). Ein "attachment"-Disposition gewinnt in jedem Fall.
   const disposition = header(part.headers, "Content-Disposition");
   const contentId = header(part.headers, "Content-ID") || header(part.headers, "Content-Id");
-  const isInlineAsset = /inline/i.test(disposition) || !!contentId;
+  const isExplicitAttachment = /attachment/i.test(disposition);
+  const isExplicitInline = /inline/i.test(disposition);
+  const looksLikeEmbeddedLogo = !disposition && !!contentId && mime.startsWith("image/");
+  const isInlineAsset = !isExplicitAttachment && (isExplicitInline || looksLikeEmbeddedLogo);
 
   if (body.data) {
     const buffer = decodeBase64Url(body.data);
