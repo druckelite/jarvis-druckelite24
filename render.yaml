@@ -1,0 +1,40 @@
+﻿# render.yaml — Render deployment configuration
+# https://render.com/docs/render-yaml
+
+services:
+  - type: web
+    name: jarvis-druckelite24
+    runtime: node
+    region: frankfurt
+    plan: starter          # IMPORTANT: must be paid plan — free tier cold-starts kill latency
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 20.18.0
+      # Secrets below — set these manually in Render dashboard, do NOT put real values here
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_REALTIME_MODEL
+        value: gpt-realtime-2.1
+      - key: OPENAI_VOICE
+        value: alloy
+      - key: SHOPIFY_STORE_DOMAIN
+        sync: false
+      - key: SHOPIFY_ADMIN_TOKEN
+        sync: false
+      - key: SHOPIFY_API_VERSION
+        value: 2025-07
+      - key: JARVIS_LANGUAGE
+        value: de-DE
+      - key: JARVIS_WAKE_WORD
+        value: hey jarvis
+      - key: JARVIS_VAD_SILENCE_MS
+        value: "600"
+      - key: JARVIS_CACHE_TTL_MS
+        value: "60000"
+      - key: LOG_LEVEL
+        value: info
+    healthCheckPath: /api/health
