@@ -1,16 +1,28 @@
 {
   "name": "jarvis-druckelite24",
-  "version": "12.0.0",
+  "version": "13.0.0",
   "private": true,
   "type": "module",
-  "scripts": {
-    "start": "node server.js",
-    "check": "node --check server.js && node --check app.js && node --check jarvis-mail-sync.js"
-  },
   "engines": {
     "node": ">=20"
   },
+  "scripts": {
+    "dev": "concurrently \"node server/index.js\" \"vite web\"",
+    "build": "vite build web",
+    "start": "node server/index.js",
+    "check": "node --check server/index.js server/config.js server/logger.js server/routes/health.js server/routes/realtime.js server/routes/shopify.js server/integrations/shopify/client.js server/integrations/shopify/queries.js server/integrations/shopify/cache.js"
+  },
   "dependencies": {
-    "express": "^5.1.0"
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "pino": "^9.5.0",
+    "pino-http": "^10.3.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
   }
 }

@@ -1,0 +1,40 @@
+/* web/src/styles/tokens.css
+   Brand design tokens — defined ONCE here, referenced everywhere else.
+   CONFIRM exact hex values with client before final handover.
+*/
+:root {
+  /* Brand colours — CONFIRM exact values with client */
+  --brand-magenta: #E6007E;   /* CONFIRM: placeholder */
+  --brand-black:   #000000;
+  --brand-white:   #FFFFFF;
+
+  /* Derived palette */
+  --color-bg:           #0a0a0a;
+  --color-surface:      #111111;
+  --color-surface-2:    #1a1a1a;
+  --color-border:       #2a2a2a;
+  --color-text:         #f0f0f0;
+  --color-text-muted:   #888888;
+  --color-accent:       var(--brand-magenta);
+
+  /* State colours */
+  --state-idle:         #333333;
+  --state-listening:    var(--brand-magenta);
+  --state-thinking:     #f59e0b;
+  --state-speaking:     #10b981;
+  --state-error:        #ef4444;
+  --state-reconnecting: #6366f1;
+
+  /* Typography */
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+
+  /* Spacing */
+  --gap:   1rem;
+  --gap-s: 0.5rem;
+  --gap-l: 1.5rem;
+
+  /* Panel */
+  --panel-radius: 12px;
+  --panel-pad:    1rem;
+}

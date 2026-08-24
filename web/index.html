@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Druckelite24 · JARVIS</title>
+</head>
+<body data-jarvis-state="idle">
+
+  <div class="app-shell">
+
+    <!-- Top bar -->
+    <header class="topbar">
+      <img
+        class="brand-logo"
+        src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252"
+        alt="Druckelite24"
+      >
+      <div class="brand-title">JARVIS · BUSINESS COMMAND CENTER</div>
+      <div class="clock">
+        <b id="clockTime">--:--:--</b>
+        <span id="clockDate">--.---.----</span>
+      </div>
+    </header>
+
+    <!-- Dashboard grid -->
+    <main class="dashboard">
+
+      <!-- Order wall panel -->
+      <article class="panel panel-orders" id="panelOrders">
+        <div class="panel-head">
+          <div>
+            <b>BESTELLUNGEN</b>
+            <span>LIVE · LETZTE 20</span>
+          </div>
+          <i class="live-dot" id="shopDot"></i>
+        </div>
+        <div class="panel-body" id="panelOrdersBody">Laden …</div>
+      </article>
+
+      <!-- Daily revenue panel -->
+      <article class="panel panel-revenue-daily" id="panelRevenueDaily">
+        <div class="panel-head">
+          <div>
+            <b>UMSATZ TÄGLICH</b>
+            <span>LETZTE 7 TAGE</span>
+          </div>
+        </div>
+        <div class="panel-body" id="panelRevenueDailyBody">Laden …</div>
+      </article>
+
+      <!-- Voice core -->
+      <section class="voice-core">
+        <span class="voice-sub">DEIN ASSISTENT</span>
+        <h1 class="voice-title">JARVIS</h1>
+
+        <!-- Orb — click to start/stop session -->
+        <button class="voice-orb" id="orbBtn" aria-label="JARVIS starten oder stoppen" type="button">
+        </button>
+
+        <div class="voice-state-label">BEREIT</div>
+        <div class="voice-state-detail"></div>
+
+        <!-- Tap-to-talk (primary on iOS) -->
+        <button class="tap-btn" id="tapBtn" type="button" disabled aria-pressed="false">
+          ?? SPRECHEN
+        </button>
+
+        <!-- Integration status -->
+        <div class="voice-integrations panel-system" id="panelSystem">
+          <div class="integrations-list"></div>
+        </div>
+      </section>
+
+      <!-- Revenue by product panel -->
+      <article class="panel panel-rev-product" id="panelRevProduct">
+        <div class="panel-head">
+          <div>
+            <b>TOP PRODUKTE</b>
+            <span>UMSATZ · 30 TAGE</span>
+          </div>
+        </div>
+        <div class="panel-body" id="panelRevProductBody">Laden …</div>
+      </article>
+
+    </main>
+  </div>
+
+  <!-- Remote audio — browser ? OpenAI direct WebRTC -->
+  <audio id="remoteAudio" autoplay playsinline></audio>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
+

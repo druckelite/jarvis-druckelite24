@@ -1,0 +1,389 @@
+/* web/src/styles/app.css
+   Main application styles. All colours via CSS custom properties from tokens.css.
+   No hardcoded hex values here.
+*/
+
+@import "./tokens.css";
+
+/* =========================================================
+   RESET & BASE
+   ========================================================= */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* =========================================================
+   APP SHELL — CSS GRID (named areas)
+   New panels can be added by adding one grid-area entry — no redesign needed.
+   ========================================================= */
+
+.app-shell {
+  display: grid;
+  height: 100vh;
+  grid-template-rows: 48px 1fr;
+  grid-template-areas:
+    "topbar"
+    "dashboard";
+  overflow: hidden;
+}
+
+.topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--gap-l);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  gap: var(--gap);
+}
+
+.topbar .brand-logo { height: 28px; }
+.topbar .brand-title { font-weight: 700; font-size: 1rem; letter-spacing: 0.1em; }
+.topbar .clock { font-family: var(--font-mono); font-size: 0.85rem; color: var(--color-text-muted); text-align: right; }
+.topbar .clock b { display: block; font-size: 1.1rem; color: var(--color-text); }
+
+/* =========================================================
+   DASHBOARD GRID
+   Four named panel areas + voice core. Extensible via grid-template-areas.
+   ========================================================= */
+
+.dashboard {
+  grid-area: dashboard;
+  display: grid;
+  grid-template-columns: 1fr 1fr 280px 1fr;
+  grid-template-rows: 1fr 1fr;
+  grid-template-areas:
+    "orders     revenue-daily   voice   system"
+    "orders     rev-product     voice   system";
+  gap: var(--gap-s);
+  padding: var(--gap-s);
+  overflow: hidden;
+}
+
+/* =========================================================
+   PANELS
+   ========================================================= */
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--panel-radius);
+  padding: var(--panel-pad);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--gap-s);
+  flex-shrink: 0;
+}
+
+.panel-head b { font-size: 0.75rem; letter-spacing: 0.12em; color: var(--color-accent); }
+.panel-head span { font-size: 0.65rem; color: var(--color-text-muted); display: block; }
+
+.panel-foot {
+  margin-top: auto;
+  padding-top: var(--gap-s);
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.panel-error { color: var(--state-error); font-size: 0.8rem; padding: var(--gap-s); }
+.empty-state { color: var(--color-text-muted); font-size: 0.8rem; padding: var(--gap-s); }
+
+/* Named grid areas for panels */
+.panel-orders       { grid-area: orders; }
+.panel-revenue-daily { grid-area: revenue-daily; }
+.panel-rev-product  { grid-area: rev-product; }
+.panel-system       { grid-area: system; }
+
+/* =========================================================
+   ORDER WALL PANEL
+   ========================================================= */
+
+.order-list { overflow-y: auto; flex: 1 1 0; }
+
+.order-row {
+  display: grid;
+  grid-template-columns: 60px 1fr 80px 80px 90px;
+  gap: var(--gap-s);
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.78rem;
+}
+
+.order-name  { font-family: var(--font-mono); color: var(--color-accent); font-weight: 700; }
+.order-total { text-align: right; font-family: var(--font-mono); }
+.order-time  { color: var(--color-text-muted); font-size: 0.7rem; }
+
+.order-status {
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.status-ok    { background: rgba(16,185,129,0.15); color: var(--state-speaking); }
+.status-open  { background: rgba(230,0,126,0.15);  color: var(--brand-magenta); }
+.status-other { background: rgba(255,255,255,0.05); color: var(--color-text-muted); }
+
+/* =========================================================
+   DAILY REVENUE PANEL — Bar chart
+   ========================================================= */
+
+.bar-chart {
+  display: flex;
+  gap: var(--gap-s);
+  align-items: flex-end;
+  height: 100%;
+  padding-top: var(--gap-s);
+}
+
+.bar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  gap: 4px;
+}
+
+.bar-col--today .bar { background: var(--brand-magenta); }
+
+.bar-label { font-size: 0.6rem; color: var(--color-text-muted); text-align: center; }
+.bar-date  { font-size: 0.65rem; color: var(--color-text-muted); }
+.bar-count { font-size: 0.6rem; color: var(--color-text-muted); }
+
+.bar {
+  width: 100%;
+  height: var(--pct, 10%);
+  background: var(--color-border);
+  border-radius: 4px 4px 0 0;
+  min-height: 4px;
+  transition: height 0.4s ease;
+}
+
+/* =========================================================
+   PRODUCT REVENUE PANEL
+   ========================================================= */
+
+.product-list { overflow-y: auto; flex: 1 1 0; }
+
+.product-row {
+  display: grid;
+  grid-template-columns: 24px 1fr 80px 70px 50px;
+  gap: var(--gap-s);
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.78rem;
+}
+
+.product-rank    { color: var(--color-text-muted); font-size: 0.7rem; text-align: center; }
+.product-title   { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.product-revenue { text-align: right; font-family: var(--font-mono); font-size: 0.75rem; }
+.product-qty     { text-align: right; color: var(--color-text-muted); font-size: 0.7rem; }
+
+.product-bar-wrap { height: 6px; background: var(--color-border); border-radius: 3px; overflow: hidden; }
+.product-bar      { height: 100%; width: var(--pct, 0%); background: var(--brand-magenta); border-radius: 3px; }
+
+/* =========================================================
+   SYSTEM STATE PANEL
+   ========================================================= */
+
+.int-row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-s);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.78rem;
+}
+
+.int-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.int-ok   .int-dot  { background: var(--state-speaking); }
+.int-fail .int-dot  { background: var(--state-error); }
+
+.int-name   { flex: 1; font-family: var(--font-mono); font-size: 0.7rem; }
+.int-status { font-size: 0.7rem; font-weight: 700; }
+.int-ok   .int-status { color: var(--state-speaking); }
+.int-fail .int-status { color: var(--state-error); }
+.int-detail { font-size: 0.65rem; color: var(--state-error); margin-top: 2px; }
+
+/* =========================================================
+   VOICE CORE PANEL
+   ========================================================= */
+
+.voice-core {
+  grid-area: voice;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--panel-radius);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap);
+  padding: var(--panel-pad);
+  position: relative;
+  overflow: hidden;
+}
+
+.voice-title { font-size: 2rem; font-weight: 900; letter-spacing: 0.2em; }
+.voice-sub   { font-size: 0.65rem; color: var(--color-text-muted); letter-spacing: 0.15em; }
+
+/* Orb — large visual state indicator (visible from 3 metres) */
+.voice-orb {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: var(--state-idle);
+  transition: background 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* State-specific orb treatments */
+[data-jarvis-state="idle"]        .voice-orb { background: var(--state-idle); }
+[data-jarvis-state="listening"]   .voice-orb {
+  background: var(--state-listening);
+  box-shadow: 0 0 40px 10px rgba(230,0,126,0.5);
+  animation: pulse-listening 1.2s ease-in-out infinite;
+}
+[data-jarvis-state="thinking"]    .voice-orb {
+  background: var(--state-thinking);
+  box-shadow: 0 0 30px 8px rgba(245,158,11,0.4);
+  animation: pulse-thinking 0.8s ease-in-out infinite;
+}
+[data-jarvis-state="speaking"]    .voice-orb {
+  background: var(--state-speaking);
+  box-shadow: 0 0 50px 15px rgba(16,185,129,0.5);
+  animation: pulse-speaking 0.5s ease-in-out infinite alternate;
+}
+[data-jarvis-state="error"]       .voice-orb { background: var(--state-error); }
+[data-jarvis-state="reconnecting"] .voice-orb { background: var(--state-reconnecting); animation: spin 1s linear infinite; }
+
+@keyframes pulse-listening {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.06); }
+}
+@keyframes pulse-thinking {
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50%       { transform: scale(1.03); opacity: 1; }
+}
+@keyframes pulse-speaking {
+  from { transform: scale(1); }
+  to   { transform: scale(1.08); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.voice-state-label {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--color-text);
+}
+
+.voice-state-detail {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  text-align: center;
+  min-height: 1em;
+}
+
+/* Tap-to-talk button */
+.tap-btn {
+  background: var(--color-surface-2);
+  border: 2px solid var(--color-border);
+  color: var(--color-text);
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  width: 100%;
+}
+
+.tap-btn[data-active="true"] {
+  border-color: var(--brand-magenta);
+  background: rgba(230,0,126,0.1);
+  color: var(--brand-magenta);
+}
+
+/* Status display inside voice panel */
+.voice-integrations {
+  width: 100%;
+  margin-top: var(--gap-s);
+}
+
+/* =========================================================
+   TOPBAR — CLOCK
+   ========================================================= */
+
+#clockTime { font-size: 1.1rem; font-weight: 700; font-family: var(--font-mono); }
+#clockDate { font-size: 0.7rem; color: var(--color-text-muted); }
+
+/* =========================================================
+   RESPONSIVE — iPhone (=430 px) and iPad (=1024 px)
+   ========================================================= */
+
+@media (max-width: 1024px) {
+  .dashboard {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto auto auto;
+    grid-template-areas:
+      "voice   voice"
+      "orders  orders"
+      "revenue-daily rev-product"
+      "system  system";
+    overflow-y: auto;
+    height: auto;
+  }
+  .app-shell { height: auto; min-height: 100vh; }
+}
+
+@media (max-width: 430px) {
+  .dashboard {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "voice"
+      "orders"
+      "revenue-daily"
+      "rev-product"
+      "system";
+  }
+  .order-row {
+    grid-template-columns: 50px 1fr 70px;
+    /* hide time and status on very small screens */
+  }
+  .order-time, .order-status { display: none; }
+}
