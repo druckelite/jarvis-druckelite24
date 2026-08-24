@@ -10,6 +10,7 @@
    ========================================================= */
 
 import express from "express";
+import crypto from "node:crypto";
 
 function timeoutSignal(ms) {
   try { return AbortSignal.timeout(ms); } catch { return undefined; }
@@ -27,7 +28,8 @@ function decodeBase64Url(value) {
 }
 
 function encodeBase64Url(value) {
-  return Buffer.from(String(value ?? ""), "utf8")
+  const buf = Buffer.isBuffer(value) ? value : Buffer.from(String(value ?? ""), "utf8");
+  return buf
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
@@ -119,6 +121,121 @@ function folderQuery(folder) {
       // ABSICHTLICH KEIN is:unread
       return "in:inbox";
   }
+}
+
+/* ---------- Anhänge: MIME-Aufbau für Gmail-Drafts ---------- */
+
+const MAX_ATTACHMENT_COUNT = 10;
+const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024; // Gmail-Limit pro Nachricht ~25 MB
+
+// Betreffzeilen mit Umlauten (z. B. "Re: Angebot für Müller GmbH") müssen als
+// MIME encoded-word kodiert werden, sonst zerlegt Gmail/andere Clients sie falsch.
+function encodeMimeHeaderValue(value) {
+  const str = clean(value);
+  if (/^[\x00-\x7F]*$/.test(str)) return str;
+  return "=?UTF-8?B?" + Buffer.from(str, "utf8").toString("base64") + "?=";
+}
+
+// ASCII-Fallback-Dateiname für ältere Mail-Clients, die filename* nicht lesen.
+function asciiFallbackFilename(name) {
+  const base = clean(name) || "anhang";
+  return base
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]/g, "_")
+    .replace(/"/g, "'");
+}
+
+// Content-Disposition mit RFC-2231-Variante (filename*) für korrekte Umlaute
+// (ä/ö/ü/ß in Dateinamen von Kundenangeboten, Techpacks etc.), plus ASCII-Fallback.
+function contentDispositionHeader(filename) {
+  const original = clean(filename) || "anhang";
+  const asciiName = asciiFallbackFilename(original);
+  const encoded = encodeURIComponent(original).replace(/'/g, "%27");
+  return `Content-Disposition: attachment; filename="${asciiName}"; filename*=UTF-8''${encoded}`;
+}
+
+// MIME verlangt Base64-Inhalte in Zeilen von max. 76 Zeichen.
+function wrapBase64(base64) {
+  const compact = String(base64 || "").replace(/\s+/g, "");
+  const lines = [];
+  for (let i = 0; i < compact.length; i += 76) lines.push(compact.slice(i, i + 76));
+  return lines.join("\r\n");
+}
+
+// Prüft/normalisiert die vom Mail Studio geschickten Anhänge (base64, ohne data:-Prefix).
+function sanitizeAttachments(list) {
+  if (!Array.isArray(list) || !list.length) return [];
+
+  if (list.length > MAX_ATTACHMENT_COUNT) {
+    throw new Error(`Zu viele Anhänge (max. ${MAX_ATTACHMENT_COUNT}).`);
+  }
+
+  let totalBytes = 0;
+  const result = list.map((item, idx) => {
+    const filename = clean(item?.filename) || `anhang-${idx + 1}`;
+    const mimeType = clean(item?.mimeType) || "application/octet-stream";
+    const data = String(item?.data || "").replace(/\s+/g, "");
+
+    if (!data) throw new Error(`Anhang "${filename}" hat keinen Inhalt.`);
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(data)) {
+      throw new Error(`Anhang "${filename}" ist kein gültiges Base64.`);
+    }
+
+    totalBytes += Math.floor((data.length * 3) / 4);
+    return { filename, mimeType, data };
+  });
+
+  if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+    throw new Error("Anhänge zusammen zu groß (Gmail-Limit liegt bei ca. 25 MB pro Mail).");
+  }
+
+  return result;
+}
+
+// Baut die rohe RFC-822-Nachricht. Ohne Anhänge: einfache text/plain-Mail wie bisher.
+// Mit Anhängen: multipart/mixed mit Text-Part + je einem base64-kodierten Attachment-Part.
+function buildRawMessage({ to, subject, body, attachments = [], inReplyTo, references }) {
+  const headers = [
+    `To: ${to}`,
+    `Subject: ${encodeMimeHeaderValue(subject)}`,
+    "MIME-Version: 1.0"
+  ];
+
+  if (inReplyTo) {
+    headers.push(`In-Reply-To: ${inReplyTo}`);
+    headers.push(`References: ${clean(`${references || ""} ${inReplyTo}`)}`);
+  }
+
+  if (!attachments.length) {
+    headers.push('Content-Type: text/plain; charset="UTF-8"');
+    headers.push("Content-Transfer-Encoding: 8bit");
+    return Buffer.from(`${headers.join("\r\n")}\r\n\r\n${body}`, "utf8");
+  }
+
+  const boundary = "de24_" + crypto.randomBytes(12).toString("hex");
+  headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+
+  const bodyPart =
+    `--${boundary}\r\n` +
+    'Content-Type: text/plain; charset="UTF-8"\r\n' +
+    "Content-Transfer-Encoding: 8bit\r\n\r\n" +
+    `${body}\r\n`;
+
+  const attachmentParts = attachments.map(att =>
+    `--${boundary}\r\n` +
+    `Content-Type: ${att.mimeType}; name="${asciiFallbackFilename(att.filename)}"\r\n` +
+    `${contentDispositionHeader(att.filename)}\r\n` +
+    "Content-Transfer-Encoding: base64\r\n\r\n" +
+    `${wrapBase64(att.data)}\r\n`
+  );
+
+  const closing = `--${boundary}--`;
+
+  return Buffer.concat([
+    Buffer.from(`${headers.join("\r\n")}\r\n\r\n`, "utf8"),
+    Buffer.from([bodyPart, ...attachmentParts, closing].join("\r\n"), "utf8")
+  ]);
 }
 
 export function createMailRouter({
@@ -272,21 +389,9 @@ export function createMailRouter({
     };
   }
 
-  async function createRawDraft({ to, subject, body, threadId, inReplyTo, references }) {
-    const headers = [
-      `To: ${to}`,
-      `Subject: ${subject}`,
-      "MIME-Version: 1.0",
-      'Content-Type: text/plain; charset="UTF-8"',
-      "Content-Transfer-Encoding: 8bit"
-    ];
-
-    if (inReplyTo) {
-      headers.push(`In-Reply-To: ${inReplyTo}`);
-      headers.push(`References: ${clean(`${references || ""} ${inReplyTo}`)}`);
-    }
-
-    const raw = encodeBase64Url(`${headers.join("\r\n")}\r\n\r\n${body}`);
+  async function createRawDraft({ to, subject, body, threadId, inReplyTo, references, attachments = [] }) {
+    const message = buildRawMessage({ to, subject, body, attachments, inReplyTo, references });
+    const raw = encodeBase64Url(message);
 
     const payload = {
       message: {
@@ -307,12 +412,13 @@ export function createMailRouter({
       to,
       subject,
       body,
+      attachmentCount: attachments.length,
       createdAt: new Date().toISOString(),
       sent: false
     };
   }
 
-  async function createReplyDraft(messageId, body) {
+  async function createReplyDraft(messageId, body, attachments = []) {
     const original = await getFullMessage(messageId);
     const to = extractEmailAddress(original.replyTo || original.from);
 
@@ -324,7 +430,8 @@ export function createMailRouter({
       body: clean(body),
       threadId: original.threadId,
       inReplyTo: original.messageIdHeader,
-      references: original.references
+      references: original.references,
+      attachments
     });
   }
 
@@ -634,10 +741,18 @@ export function createMailRouter({
         return res.status(400).json({ error: "Empfänger und Text erforderlich." });
       }
 
+      let attachments;
+      try {
+        attachments = sanitizeAttachments(req.body?.attachments);
+      } catch (attError) {
+        return res.status(400).json({ error: attError.message });
+      }
+
       const draft = await createRawDraft({
         to,
         subject: subject || "(kein Betreff)",
-        body
+        body,
+        attachments
       });
 
       res.json({ ok: true, draft });
@@ -656,7 +771,14 @@ export function createMailRouter({
         return res.status(400).json({ error: "Mail und Antworttext erforderlich." });
       }
 
-      const draft = await createReplyDraft(messageId, body);
+      let attachments;
+      try {
+        attachments = sanitizeAttachments(req.body?.attachments);
+      } catch (attError) {
+        return res.status(400).json({ error: attError.message });
+      }
+
+      const draft = await createReplyDraft(messageId, body, attachments);
 
       res.json({ ok: true, draft });
       emit("sync", { changed: true, draftCreated: true });
