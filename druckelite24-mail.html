@@ -1,0 +1,1562 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Druckelite Mail Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --pink:#ec0876;
+  --pink-dim:#c8065f;
+  --ink:#17131a;
+  --muted:#817981;
+  --line:#ebe7eb;
+  --soft:#fff1f8;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--ink);background:#f7f5f7}
+button,input,textarea,select{font:inherit}
+button{cursor:pointer;color:inherit}
+.app{height:100vh;min-height:640px;overflow:hidden;display:flex;flex-direction:column}
+
+/* ===== Top bar ===== */
+.top{height:74px;flex:0 0 auto;background:#171318;color:#fff;display:flex;align-items:center;gap:18px;padding:0 22px}
+.brand{width:290px;display:flex;align-items:center;gap:9px;white-space:nowrap;flex:0 0 auto}
+.brand img{height:26px;display:block}
+.brand em{font-size:9px;font-style:normal;letter-spacing:1.4px;padding:4px 6px;border-radius:5px;background:#342e34;color:#ccc}
+.search{height:43px;max-width:420px;flex:1;display:flex;align-items:center;gap:10px;background:#2a252a;border:1px solid #403940;border-radius:13px;padding:0 14px}
+.search svg{flex:0 0 auto;opacity:.6}
+.search input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:#fff;font-size:13px}
+.search input::placeholder{color:#a69ea5}
+.sync{display:flex;align-items:center;gap:9px;min-width:130px;flex:0 0 auto}
+.pulse{width:8px;height:8px;border-radius:50%;background:#8a8188;flex:0 0 auto}
+.pulse.ok{background:#55b978;box-shadow:0 0 0 4px #55b97824}
+.pulse.busy{background:#f5b840;box-shadow:0 0 0 4px #f5b84024;animation:blink 1s infinite}
+.pulse.err{background:#e6425a;box-shadow:0 0 0 4px #e6425a24}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+.sync div{display:flex;flex-direction:column}
+.sync b{font-size:11px}
+.sync small{font-size:9px;color:#aaa}
+.iconbtn-top{height:38px;width:38px;border:1px solid #4b444b;border-radius:10px;background:#282228;color:#fff;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.iconbtn-top:hover{background:#342e34}
+.avatar{width:37px;height:37px;border-radius:50%;background:linear-gradient(145deg,#ed0877,#8c0046);display:grid;place-items:center;font-weight:800;color:#fff;flex:0 0 auto;font-size:13px}
+
+/* ===== Grid ===== */
+.grid{flex:1;min-height:0;display:flex;overflow:hidden}
+
+/* ---- Sidebar ---- */
+.side{flex:0 0 238px;background:#201b20;color:#cbc4ca;padding:20px 14px 14px;display:flex;flex-direction:column;overflow-y:auto}
+.new{height:48px;border:0;border-radius:13px;background:var(--pink);color:#fff;font-weight:800;font-size:13px;box-shadow:0 8px 24px #ec087640;margin-bottom:20px;display:flex;align-items:center;justify-content:center;gap:6px}
+.new:hover{background:var(--pink-dim)}
+.nav{display:grid;gap:3px}
+.nav button{height:39px;width:100%;border:0;background:transparent;color:inherit;border-radius:9px;text-align:left;padding:0 12px;display:flex;align-items:center;gap:11px;font-size:12px}
+.nav button:hover{background:#342c33;color:#fff}
+.nav button.active{background:#342c33;color:#ff77b7;font-weight:800}
+.nav b{margin-left:auto;font-size:10px;font-weight:700}
+.ico{width:18px;text-align:center;flex:0 0 auto;display:flex;align-items:center;justify-content:center}
+.sep{height:1px;background:#3a3339;margin:17px 9px}
+.notesnav{height:39px;width:100%;border:1px dashed #4a424a;background:transparent;color:#cbc4ca;border-radius:9px;text-align:left;padding:0 12px;display:flex;align-items:center;gap:11px;font-size:12px;margin-top:9px}
+.notesnav:hover{background:#342c33;color:#fff;border-color:#666}
+.notesnav.active{background:#342c33;color:#ff77b7;font-weight:800;border-style:solid;border-color:var(--pink)}
+
+/* ---- Notizen & Bestellungen ---- */
+.notesview{flex:1;min-width:0;display:flex;background:#fff}
+.notescol{flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--line)}
+.notescol:last-child{border-right:0}
+.notescol-head{height:74px;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 22px;border-bottom:1px solid var(--line)}
+.notescol-head-title{display:flex;flex-direction:column;justify-content:center;min-width:0}
+.notescol-head h2{font-size:17px;margin:0;font-weight:700}
+.notescol-head small{font-size:10.5px;color:#999;font-weight:400;margin-top:2px}
+.print-btn{height:36px;width:36px;flex:0 0 auto;border:1px solid var(--line);background:#fff;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;color:#8d858c}
+.print-btn:hover{border-color:var(--pink);color:var(--pink)}
+.print-only-header{display:none}
+.notes-add{flex:0 0 auto;display:flex;gap:8px;padding:14px 22px;border-bottom:1px solid var(--line)}
+.notes-add input{flex:1;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:12px;outline:0}
+.notes-add input:focus{border-color:var(--pink)}
+.notes-add button{width:38px;flex:0 0 auto;border:0;background:var(--pink);color:#fff;border-radius:8px;font-size:16px;font-weight:700}
+.notes-add button:hover{background:var(--pink-dim)}
+.notes-list{flex:1;overflow-y:auto;padding:8px 14px}
+.notes-empty{padding:30px 10px;text-align:center;color:#999;font-size:12px}
+.note-item{display:flex;align-items:flex-start;gap:10px;padding:12px 8px;border-bottom:1px solid #f0ecef}
+.note-check{width:19px;height:19px;flex:0 0 auto;border:1.5px solid #d6d2d5;border-radius:6px;margin-top:1px;display:flex;align-items:center;justify-content:center;color:transparent;font-size:12px;font-weight:900}
+.note-check:hover{border-color:var(--pink)}
+.note-item.done .note-check{background:var(--pink);border-color:var(--pink);color:#fff}
+.note-item.done .note-text{text-decoration:line-through;color:#aaa}
+.note-body{flex:1;min-width:0}
+.note-text{font-size:13px;line-height:1.5;color:var(--ink)}
+.note-meta{font-size:10px;color:#999;margin-top:3px;display:flex;gap:8px;align-items:center}
+.note-amount{background:var(--soft);color:var(--pink-dim);font-weight:700;padding:1px 7px;border-radius:6px;font-size:10px}
+.note-del{border:0;background:transparent;color:#c4c0c3;font-size:15px;flex:0 0 auto;padding:2px 4px}
+.note-del:hover{color:#d9214b}
+.navtitle{font-size:9px;letter-spacing:1.3px;color:#796f77;font-weight:900;margin:0 12px 8px}
+.label{height:34px;width:100%;border:0;background:transparent;color:inherit;border-radius:9px;text-align:left;padding:0 12px;display:flex;align-items:center;gap:11px;font-size:12px}
+.label:hover,.label.active{background:#342c33;color:#fff}
+.dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+.labels-empty{font-size:10.5px;color:#726b73;padding:6px 12px;line-height:1.5}
+.rulebox{display:none;margin-top:auto;border:1px solid #3d353c;border-radius:12px;background:#292328;padding:12px;gap:9px}
+.rulebox>span{color:#ff4a9e;flex:0 0 auto}
+.rulebox div{display:flex;flex-direction:column;gap:4px}
+.rulebox b{font-size:11px;color:#fff}
+.rulebox small{font-size:9px;color:#9e959d;line-height:1.45}
+.profile{margin-top:auto;display:flex;align-items:center;gap:8px;padding:15px 7px 0}
+.profile .avatar{width:30px;height:30px;font-size:11px}
+.profile div:nth-child(2){display:flex;flex-direction:column;min-width:0}
+.profile b{font-size:10px;color:#fff}
+.profile small{font-size:8px;color:#817881}
+
+/* ---- shared columns ---- */
+.list,.message,.ai{min-width:0;background:#fff;border-right:1px solid var(--line)}
+.list{flex:0 0 390px;min-width:300px;display:flex;flex-direction:column;min-height:0}
+.head{height:74px;padding:0 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);flex:0 0 auto}
+.head h1{font-size:19px;margin:0;display:inline}
+.head small{font-size:9px;color:#999;margin-left:8px}
+.iconbtn{border:0;background:transparent;border-radius:8px;padding:8px;color:#8d858c;display:flex}
+.iconbtn:hover{background:#f4f1f3}
+.tabs{height:45px;flex:0 0 auto;display:flex;gap:19px;align-items:end;padding:0 14px;border-bottom:1px solid var(--line)}
+.tabs button{height:45px;border:0;background:transparent;color:#8c858b;font-size:10px;font-weight:700;position:relative}
+.tabs button.active{color:var(--pink)}
+.tabs button.active:after{content:"";position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--pink)}
+.rows{overflow-y:auto;flex:1}
+.mailrow{width:100%;min-height:90px;border:0;border-bottom:1px solid #f0ecef;background:#fff;padding:13px 14px 12px;display:flex;gap:11px;text-align:left;position:relative}
+.mailrow:hover{background:#fcf9fb}
+.mailrow.active{background:var(--soft)}
+.mailrow.active:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--pink)}
+.senderpic{width:34px;height:34px;flex:0 0 auto;border-radius:10px;color:#fff;display:grid;place-items:center;font-size:10px;font-weight:900}
+.mailcopy{min-width:0;display:flex;flex:1;flex-direction:column;gap:3px}
+.senderline{display:flex;justify-content:space-between;gap:5px}
+.senderline b{font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+.mailrow:not(.unread) .senderline b{font-weight:500;color:#59535a}
+.senderline time{font-size:8px;color:#999;flex:0 0 auto}
+.mailcopy strong{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+.mailrow:not(.unread) .mailcopy strong{font-weight:500}
+.mailcopy .preview{font-size:9px;color:#8d858b;line-height:1.45;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.rowtags{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.rowtag{font-size:8px;font-weight:800;padding:2px 6px;border-radius:5px;white-space:nowrap}
+.unreaddot{width:6px;height:6px;border-radius:50%;background:var(--pink);position:absolute;left:5px;top:18px}
+.empty{padding:40px 18px;text-align:center;font-size:12px;color:#999;line-height:1.6}
+
+/* ---- Message column: EIN durchgehender Scrollbereich (Mail + KI darunter) ---- */
+.message-col{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.actions{height:56px;flex:0 0 auto;display:flex;align-items:center;gap:3px;padding:0 18px;border-bottom:1px solid var(--line);background:#fff}
+.actions button{height:34px;border:0;background:transparent;border-radius:8px;color:#8c848a;font-size:14px;padding:0 9px;display:flex;align-items:center}
+.actions button:hover{background:#f5f1f4;color:var(--ink)}
+.actions i{flex:1}
+.actions .move{border:1px solid var(--line);font-size:11px;font-weight:700}
+.content-scroll{flex:1;min-height:0;overflow-y:auto}
+.mailbody{padding:26px 32px 0}
+.eyebrow{font-size:10px;letter-spacing:1.3px;text-transform:uppercase;color:var(--pink);font-weight:900}
+.mailbody h2{font-size:24px;line-height:1.25;margin:8px 0 6px}
+.foldertag{font-size:10px;border:1px solid var(--line);border-radius:5px;padding:3px 7px;color:#888}
+.from{display:flex;align-items:center;gap:12px;margin:26px 0 22px}
+.from .senderpic{width:42px;height:42px;border-radius:50%;font-size:13px}
+.from div{display:flex;flex-direction:column;min-width:0}
+.from b{font-size:13px}
+.from small{font-size:11px;color:#918990}
+.from time{margin-left:auto;align-self:flex-start;font-size:10px;color:#999;flex:0 0 auto}
+.text{font-size:14px;line-height:1.8;color:#39353a;white-space:pre-wrap}
+.text a,.quoted-text a{color:var(--pink-dim);text-decoration:underline;word-break:break-word}
+.text a:hover,.quoted-text a:hover{color:var(--pink)}
+.quoted{margin-top:20px;border:1px solid var(--line);border-radius:11px;background:#fbfafb;overflow:hidden}
+.quoted summary{cursor:pointer;padding:12px 16px;font-size:11px;font-weight:800;color:#8d858c;list-style:none;user-select:none}
+.quoted summary::-webkit-details-marker{display:none}
+.quoted summary:before{content:"▸ ";color:var(--pink)}
+.quoted[open] summary:before{content:"▾ ";color:var(--pink)}
+.quoted[open] summary{border-bottom:1px solid var(--line)}
+.quoted-text{padding:14px 16px;font-size:12px;line-height:1.7;color:#918990;white-space:pre-wrap;max-height:360px;overflow-y:auto}
+.attachments{display:flex;flex-direction:column;gap:8px;margin-top:0}
+.attach-head{font-size:11px;font-weight:900;color:var(--pink-dim);margin:24px 0 10px;display:flex;align-items:center;gap:6px}
+.attachment{width:260px;border:1px solid var(--line);border-radius:10px;background:#fbfafb;padding:10px;display:flex;align-items:center;gap:10px;text-align:left}
+.attachment:hover{border-color:var(--pink)}
+.pdf{width:38px;height:38px;border-radius:7px;background:#ffe6ec;color:#d9214b;display:grid;place-items:center;font-size:9px;font-weight:800;flex:0 0 auto}
+.attachment div{display:flex;flex-direction:column;min-width:0}
+.attachment b{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attachment small{font-size:9px;color:#999}
+.quick{display:flex;gap:8px;margin-top:26px}
+.quick button{height:38px;border:1px solid var(--line);background:#fff;border-radius:9px;padding:0 15px;font-size:11px;font-weight:700}
+.quick button:hover{border-color:var(--pink);color:var(--pink)}
+.message-empty{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#a49da2;font-size:13px;padding:40px}
+
+/* ---- AI: liegt jetzt IM SELBEN Scrollbereich, direkt unter der Mail ---- */
+.ai-divider{margin:34px 0 0;border-top:6px solid #f4f1f3}
+.ai{padding:24px 32px 40px;background:#fcfafb}
+.aihead{display:flex;gap:10px;align-items:center;padding-bottom:16px}
+.ailogo{width:34px;height:34px;border-radius:10px;background:#171317;color:#ff4298;display:grid;place-items:center;flex:0 0 auto;font-size:15px}
+.aihead div:nth-child(2){display:flex;flex-direction:column;min-width:0}
+.aihead h2{font-size:15px;margin:0}
+.aihead small{font-size:10px;color:#999}
+.aibadge{margin-left:auto;font-size:9px;font-weight:900;color:var(--pink);border:1px solid #f2b6d2;background:#fff0f7;padding:3px 6px;border-radius:5px;flex:0 0 auto}
+.insight{display:flex;gap:10px;padding:13px;margin-bottom:16px;background:#fff5fa;border:1px solid #f6cee1;border-radius:11px}
+.insight>span{width:20px;height:20px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;background:var(--pink);color:#fff;font-size:11px;font-weight:900}
+.insight div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.insight b{font-size:10px;color:#a00050}
+.insight p{font-size:11px;line-height:1.5;color:#745766;margin:0}
+.pickrow{display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.pickrow>span{font-size:10px;color:#888;margin-right:4px;flex:0 0 auto}
+.pickrow button{border:1px solid var(--line);background:#fff;border-radius:7px;padding:6px 10px;font-size:10px;font-weight:700}
+.pickrow button.active{background:#241e23;color:#fff;border-color:#241e23}
+.replylabel{display:flex;justify-content:space-between;font-size:10px;font-weight:800;margin-bottom:8px}
+.replylabel small{font-size:9px;color:#999;font-weight:400}
+.reply{width:100%;min-height:160px;resize:vertical;border:1px solid #ded7dc;border-radius:11px;padding:15px;font-size:12.5px;line-height:1.7;outline:0;font-family:inherit;color:var(--ink)}
+.reply:focus{border-color:#f164a7;box-shadow:0 0 0 3px #ec087612}
+.reply.loading{color:#b7b0b5;font-style:italic}
+.replybuttons{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;max-width:420px}
+.replybuttons button{height:40px;border:1px solid var(--line);background:#fff;border-radius:9px;font-size:11px;font-weight:800}
+.replybuttons button:disabled{opacity:.5}
+.replybuttons .send{background:var(--pink);border-color:var(--pink);color:#fff}
+.sendnow{width:100%;height:42px;border:0;border-radius:9px;background:#171317;color:#fff;font-weight:800;font-size:11.5px;margin-top:10px;display:flex;align-items:center;justify-content:center;gap:6px}
+.sendnow:hover{background:#312a31}
+.sendnow:disabled{opacity:.5;cursor:default}
+.own{border:1px solid var(--line);background:#fff;border-radius:11px;padding:12px;margin-top:16px;max-width:520px}
+.own label{font-size:10px;font-weight:800;color:#6c626a}
+.own textarea{width:100%;height:40px;border:0;outline:0;resize:none;padding:7px 0;font-size:10px;font-family:inherit}
+.own button{float:right;border:0;background:transparent;color:var(--pink);font-size:10px;font-weight:800}
+.knowledge{display:flex;gap:10px;margin-top:20px;padding-top:14px;border-top:1px solid var(--line);max-width:520px}
+.knowledge>span{width:19px;height:19px;border-radius:50%;display:grid;place-items:center;background:#e7f7ed;color:#21874d;font-size:10px;flex:0 0 auto}
+.knowledge div{display:flex;flex-direction:column}
+.knowledge b{font-size:10px}
+.knowledge small{font-size:9px;color:#999;line-height:1.4}
+
+/* ---- Move-Modal ---- */
+.movepick{border:1px solid var(--line);border-radius:9px;padding:10px 12px;display:flex;align-items:center;gap:9px;cursor:pointer;background:#fff;text-align:left;width:100%}
+.movepick:hover{border-color:var(--pink);background:var(--soft)}
+.movepick .dot{flex:0 0 auto}
+.movenew{display:flex;gap:8px;margin-top:6px}
+.movenew input{flex:1;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px}
+.movenew button{border:0;background:var(--pink);color:#fff;border-radius:8px;padding:0 14px;font-weight:800;font-size:11px}
+
+/* ===== Modals ===== */
+.backdrop{position:fixed;inset:0;background:#100b0f66;display:none;align-items:flex-end;justify-content:flex-end;padding:24px;z-index:40}
+.backdrop.open{display:flex}
+.backdrop.center{align-items:center;justify-content:center}
+.compose{width:560px;max-width:100%;height:560px;border-radius:16px;background:#fff;box-shadow:0 28px 80px #0006;display:flex;flex-direction:column;overflow:hidden}
+.compose header{height:47px;flex:0 0 auto;background:#211b20;color:#fff;display:flex;align-items:center;padding:0 15px;font-size:11px;font-weight:700}
+.compose header button{margin-left:auto;border:0;background:transparent;color:#aaa;font-size:14px}
+.compose label{height:45px;flex:0 0 auto;display:flex;align-items:center;padding:0 14px;border-bottom:1px solid var(--line);font-size:10px;color:#888}
+.compose input{flex:1;border:0;outline:0;padding-left:12px;font-size:12px}
+.compose>textarea{flex:1;border:0;outline:0;resize:none;padding:16px;font-size:12px;font-family:inherit}
+.compose footer{min-height:58px;flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 12px;border-top:1px solid var(--line)}
+.compose footer .send{height:36px;background:var(--pink);color:#fff;border:0;border-radius:8px;padding:0 18px;font-weight:800;font-size:11px}
+.compose footer .draft{height:36px;background:transparent;border:1px solid var(--line);border-radius:8px;padding:0 14px;font-size:10px;font-weight:700}
+.compose footer span{flex:1;font-size:9px;color:#999}
+.compose footer .close{border:0;background:transparent;color:#999;font-size:14px}
+.compose footer .sendnow-compose{height:36px;background:#171317;color:#fff;border:0;border-radius:8px;padding:0 16px;font-weight:800;font-size:11px}
+.compose footer .sendnow-compose:hover{background:#312a31}
+.compose footer .sendnow-compose:disabled{opacity:.5}
+.compose-attach{flex:0 0 auto;padding:10px 14px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.compose-attach-row{display:flex;align-items:center;gap:10px}
+.compose-attach-btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 12px;font-size:11px;font-weight:700;color:#59535a;display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.compose-attach-btn:hover{border-color:var(--pink);color:var(--pink)}
+.compose-attach-size{font-size:9.5px;color:#999}
+.compose-attach-size.warn{color:#b8860b;font-weight:700}
+.compose-attach-list{display:flex;flex-direction:column;gap:6px;max-height:96px;overflow-y:auto}
+.compose-attach-item{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:#fbfafb}
+.compose-attach-item span{flex:0 0 auto}
+.compose-attach-item b{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;font-weight:600}
+.compose-attach-item small{font-size:9px;color:#999;flex:0 0 auto}
+.compose-attach-item button{border:0;background:transparent;color:#c4c0c3;font-size:14px;flex:0 0 auto;padding:2px 4px}
+.compose-attach-item button:hover{color:#d9214b}
+
+.settings{width:420px;max-width:100%;border-radius:16px;background:#fff;box-shadow:0 28px 80px #0006;overflow:hidden}
+.settings header{height:47px;background:#211b20;color:#fff;display:flex;align-items:center;padding:0 15px;font-size:11px;font-weight:700}
+.settings header button{margin-left:auto;border:0;background:transparent;color:#aaa;font-size:14px}
+.settings-body{padding:18px;display:flex;flex-direction:column;gap:14px;max-height:70vh;overflow-y:auto}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:10.5px;font-weight:800;color:#4e484d}
+.field input,.field select{border:1px solid var(--line);border-radius:8px;padding:9px 10px;font-size:12px}
+.field .hint{font-size:9.5px;color:#999;line-height:1.5}
+.settings footer{padding:12px 18px;border-top:1px solid var(--line);display:flex;justify-content:flex-end}
+.settings footer button{height:38px;background:var(--pink);color:#fff;border:0;border-radius:9px;padding:0 18px;font-weight:800;font-size:11px}
+
+.toast{display:none;position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60;background:#211b20;color:#fff;border-radius:10px;padding:11px 16px;font-size:11px;box-shadow:0 12px 35px #0004;max-width:80vw}
+.toast.open{display:block}
+.toast b{color:#5dde87;margin-right:7px}
+
+@media(max-width:1250px){.side{flex-basis:200px}.list{flex-basis:320px}.brand{width:200px}.sync{display:none}}
+@media(max-width:950px){.list{flex-basis:320px}.message-col{display:none}.brand{width:180px}}
+@media(max-width:720px){.side,.list{display:none}.message-col{display:flex}.brand{width:auto}.brand em{display:none}.top>.avatar{display:none}.mailbody{padding:20px}.ai{padding:20px}}
+
+/* ===== Druckansicht: Notizen & Bestellungen ===== */
+@media print{
+  body *{visibility:hidden}
+  .top,.side,.list,.message-col,.toast,.backdrop{display:none !important}
+  .app,.grid{height:auto !important;min-height:0 !important;overflow:visible !important;display:block !important}
+  .notesview{display:block !important;visibility:visible !important}
+  .notesview *{visibility:visible}
+  .notescol{border-right:0 !important;height:auto !important;width:100% !important;page-break-inside:avoid}
+  .notes-add,.print-btn,.note-del{display:none !important}
+  .notescol-head{border-bottom:0 !important;height:auto !important;padding:0 0 8px}
+  .notes-list{overflow:visible !important;flex:none !important;height:auto !important;padding:0}
+  .note-item{border-bottom:1px solid #ddd !important;padding:8px 2px}
+  .note-check{color:#000 !important;border:1.5px solid #000 !important;background:#fff !important}
+  .note-item.done .note-text{color:#555 !important}
+  .note-amount{background:#fff !important;border:1px solid #000 !important;color:#000 !important}
+  .print-only-header{display:flex !important;align-items:center;gap:12px;padding:0 0 14px;margin-bottom:14px;border-bottom:2px solid #171318}
+  .print-only-header img{height:24px}
+  .print-only-header b{font-size:15px;display:block}
+  .print-only-header span{font-size:10px;color:#555}
+  body.printing-orders .notescol.notes-col{display:none !important}
+  body.printing-notes .notescol.orders-col{display:none !important}
+}
+</style>
+</head>
+<body>
+<main class="app">
+
+  <header class="top">
+    <div class="brand">
+      <img src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252" alt="Druckelite24">
+      <em>MAIL</em>
+    </div>
+    <label class="search">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="searchInput" placeholder="In E-Mails suchen …">
+    </label>
+    <div class="sync">
+      <span class="pulse" id="syncDot"></span>
+      <div><b id="syncText">Nicht verbunden</b><small id="syncSub">Einrichten in Einstellungen</small></div>
+    </div>
+    <button class="iconbtn-top" id="refreshNowBtn" title="Jetzt aktualisieren">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+    </button>
+    <button class="iconbtn-top" id="settingsBtn" title="Einstellungen">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+    <div class="avatar" title="Mattl">M</div>
+  </header>
+
+  <div class="grid">
+    <aside class="side">
+      <button class="new" id="composeBtn">＋ &nbsp; Neue E-Mail</button>
+      <nav class="nav" id="systemFolders"></nav>
+      <button class="notesnav" id="notesNavBtn">
+        <span class="ico">✎</span>Notizen &amp; Bestellungen
+      </button>
+      <div class="sep"></div>
+      <p class="navtitle">LABELS</p>
+      <div id="customFolders"></div>
+      <div class="rulebox">
+        <span>✦</span>
+        <div><b>KI-Regeln</b><small>Lieferzeit, Mengenrabatt und Druckvorschau-Ablauf sind hinterlegt und fließen automatisch in Antworten ein.</small></div>
+      </div>
+      <div class="profile">
+        <div class="avatar">M</div>
+        <div><b>Mattl</b><small>info@druckelite24.de</small></div>
+      </div>
+    </aside>
+
+    <section class="list" id="listSection">
+      <div class="head">
+        <div><h1 id="listTitle">Posteingang</h1><small id="listUnreadCount"></small></div>
+        <button class="iconbtn" id="listRefreshBtn" title="Aktualisieren">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        </button>
+      </div>
+      <div class="tabs">
+        <button class="active" data-filter="all">Alle</button>
+        <button data-filter="unread">Ungelesen <span id="unreadTabCount"></span></button>
+      </div>
+      <div class="rows" id="messageListEl"></div>
+    </section>
+
+    <div class="message-col" id="messageColSection">
+      <div class="actions">
+        <button id="archiveBtn" title="Archivieren">▣</button>
+        <button id="snoozeBtn" title="Zurückstellen">◷</button>
+        <button id="markUnreadBtn" title="Als ungelesen markieren">✉</button>
+        <button id="deleteBtn" title="Löschen">⌫</button>
+        <i></i>
+        <button class="move" id="moveBtn">▤ &nbsp; Verschieben</button>
+      </div>
+
+      <div id="messageEmpty" class="message-empty">Wähle eine E-Mail aus der Liste.</div>
+
+      <div class="content-scroll" id="contentScroll" style="display:none">
+        <article class="mailbody" id="messageContent">
+          <span class="eyebrow" id="detailTag">POSTEINGANG</span>
+          <h2 id="detailSubject"></h2>
+          <span class="foldertag" id="detailFolderTag"></span>
+          <div class="from">
+            <span class="senderpic" id="detailPic"></span>
+            <div><b id="detailSender"></b><small id="detailEmail"></small></div>
+            <time id="detailTime"></time>
+          </div>
+          <div class="text" id="detailBody"></div>
+          <div class="attach-head" id="attachmentsHead" style="display:none"></div>
+          <div class="attachments" id="attachmentsWrap"></div>
+          <details class="quoted" id="quotedWrap" style="display:none">
+            <summary>Verlauf / vorherige Nachricht anzeigen</summary>
+            <div class="quoted-text" id="quotedText"></div>
+          </details>
+          <div class="quick">
+            <button id="replyQuickBtn">↩ Antworten</button>
+            <button id="forwardBtn">➤ Weiterleiten</button>
+          </div>
+        </article>
+
+        <div class="ai-divider"></div>
+
+        <div class="ai">
+          <div class="aihead">
+            <div class="ailogo">✦</div>
+            <div><h2>Antwort-Assistent</h2><small>Von KI vorbereitet · immer bearbeitbar</small></div>
+            <span class="aibadge">KI</span>
+          </div>
+          <div class="insight">
+            <span>!</span>
+            <div><b>Erkanntes Anliegen</b><p id="insightText">…</p></div>
+          </div>
+          <div class="pickrow">
+            <span>Ton</span>
+            <button class="tone-btn" data-tone="kurz">Kurz</button>
+            <button class="tone-btn active" data-tone="freundlich-professionell">Freundlich</button>
+            <button class="tone-btn" data-tone="verkauf">Verkauf</button>
+          </div>
+          <div class="pickrow">
+            <span>Vorlage</span>
+            <button class="tpl-btn active" data-tpl="auto">Auto</button>
+            <button class="tpl-btn" data-tpl="allgemein">Allgemein</button>
+            <button class="tpl-btn" data-tpl="angebot">Angebot</button>
+            <button class="tpl-btn" data-tpl="druckvorschau">Druckvorschau</button>
+          </div>
+          <label class="replylabel">Antwortvorschlag <small>Wird als echter Gmail-Entwurf gespeichert</small></label>
+          <textarea class="reply" id="replyBox"></textarea>
+          <div class="compose-attach" style="padding:10px 0 0;border-top:0">
+            <input type="file" id="aiFileInput" multiple style="display:none">
+            <div class="compose-attach-row">
+              <button type="button" class="compose-attach-btn" id="aiAttachBtn">📎 &nbsp; Datei anhängen</button>
+              <span class="compose-attach-size" id="aiAttachSize"></span>
+            </div>
+            <div class="compose-attach-list" id="aiAttachList"></div>
+          </div>
+          <button class="sendnow" id="sendNowBtn">➤ &nbsp; Jetzt senden</button>
+          <div class="replybuttons">
+            <button class="send" id="sendDirectBtn">▤ &nbsp; Als Gmail-Entwurf speichern</button>
+            <button id="regenBtn">↻ &nbsp; Neu generieren</button>
+          </div>
+          <div class="own">
+            <label>✦ &nbsp; Eigene Vorgabe</label>
+            <textarea id="ownNote" placeholder="z. B. Frage nach 25 Stück und erwähne den Mengenrabatt …"></textarea>
+            <button id="applyNoteBtn">Vorgabe anwenden ›</button>
+            <div style="clear:both"></div>
+          </div>
+          <div class="knowledge">
+            <span>✓</span>
+            <div><b>Druckelite-Wissen aktiv</b><small>Lieferzeit 5–8 Werktage · Mengenrabatte 5–30% · kostenlose Design-Vorschau</small></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notesview" id="notesView" style="display:none">
+      <div class="notescol orders-col">
+        <div class="notescol-head">
+          <div class="notescol-head-title"><h2>Bestellungen <small>nicht über den Shop</small></h2></div>
+          <button class="print-btn" id="printOrdersBtn" title="Bestellungen drucken">🖨</button>
+        </div>
+        <div class="print-only-header" id="ordersPrintHeader"></div>
+        <div class="notes-add">
+          <input id="orderTextInput" placeholder="z. B. Peter Müller, 5x T-Shirt bedruckt, Abholung Freitag">
+          <input id="orderAmountInput" placeholder="€ (optional)" style="width:90px">
+          <button id="orderAddBtn">＋</button>
+        </div>
+        <div class="notes-list" id="ordersList"><div class="notes-empty">Lädt …</div></div>
+      </div>
+      <div class="notescol notes-col">
+        <div class="notescol-head">
+          <div class="notescol-head-title"><h2>Notizen <small>damit nichts vergessen wird</small></h2></div>
+          <button class="print-btn" id="printNotesBtn" title="Notizen drucken">🖨</button>
+        </div>
+        <div class="print-only-header" id="notesPrintHeader"></div>
+        <div class="notes-add">
+          <input id="noteTextInput" placeholder="Neue Notiz …" style="flex:1">
+          <button id="noteAddBtn">＋</button>
+        </div>
+        <div class="notes-list" id="notesList"><div class="notes-empty">Lädt …</div></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Compose -->
+<div class="backdrop" id="composeOverlay">
+  <section class="compose">
+    <header><b id="composeTitle">Neue E-Mail</b><button id="composeClose">✕</button></header>
+    <label>An <input id="fldTo" placeholder="empfaenger@beispiel.de"></label>
+    <label>Betreff <input id="fldSubject" placeholder="Betreff"></label>
+    <textarea id="fldBody" placeholder="Nachricht schreiben …"></textarea>
+    <div class="compose-attach">
+      <input type="file" id="composeFileInput" multiple style="display:none">
+      <div class="compose-attach-row">
+        <button type="button" class="compose-attach-btn" id="composeAttachBtn">📎 &nbsp; Datei anhängen</button>
+        <span class="compose-attach-size" id="composeAttachSize"></span>
+      </div>
+      <div class="compose-attach-list" id="composeAttachList"></div>
+    </div>
+    <footer>
+      <button class="sendnow-compose" id="composeSendNowBtn">➤ &nbsp; Jetzt senden</button>
+      <button class="send" id="sendBtn">▤ &nbsp; Als Gmail-Entwurf speichern</button>
+      <button class="draft" id="draftBtn">Entwurf speichern & schließen</button>
+      <span id="composeStatus"></span>
+      <button class="close" id="composeClose2">Schließen</button>
+    </footer>
+  </section>
+</div>
+
+<!-- Settings -->
+<div class="backdrop center" id="settingsOverlay">
+  <section class="settings">
+    <header><b>Einstellungen</b><button id="settingsClose">✕</button></header>
+    <div class="settings-body">
+      <div class="field">
+        <label>JARVIS Server-URL</label>
+        <input id="jarvisUrl" placeholder="https://euer-jarvis.onrender.com">
+        <div class="hint">Basis-URL eures JARVIS-Servers. Läuft 24/7 im Hintergrund, auch ohne offenen Tab.</div>
+      </div>
+      <div class="field">
+        <label>JARVIS API-Key</label>
+        <input id="jarvisKey" type="password" placeholder="MAIL_API_KEY aus eurer Render-Umgebung">
+      </div>
+      <div class="field">
+        <label>Standard-Ton für Antwortvorschläge</label>
+        <select id="toneSelect">
+          <option value="freundlich-professionell">Freundlich (Standard)</option>
+          <option value="kurz">Kurz</option>
+          <option value="verkauf">Verkauf</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Fallback-Intervall: <span id="intervalVal">5 Sek.</span></label>
+        <input type="range" id="intervalRange" min="5" max="60" step="5" value="5">
+        <div class="hint">Nur falls Live-Push (SSE) mal nicht verbindet.</div>
+      </div>
+    </div>
+    <footer><button id="settingsSaveBtn">Speichern</button></footer>
+  </section>
+</div>
+
+<!-- Verschieben -->
+<div class="backdrop center" id="moveOverlay">
+  <section class="settings">
+    <header><b>Verschieben nach</b><button id="moveClose">✕</button></header>
+    <div class="settings-body" id="moveList"></div>
+    <footer style="justify-content:flex-start; gap:8px">
+      <div class="movenew" style="width:100%">
+        <input id="moveNewLabel" placeholder="Neues Label anlegen …">
+        <button id="moveNewBtn">Anlegen &amp; verschieben</button>
+      </div>
+    </footer>
+  </section>
+</div>
+
+<div class="toast" id="toast"><b>✓</b><span id="toastMsg"></span></div>
+
+<script>
+/* ============================================================
+   Druckelite24 Mail Studio V12.5 – läuft komplett über JARVIS-
+   Server (Gmail-Sync + KI-Antwortvorschläge). Kein Claude.ai zur
+   Laufzeit nötig.
+   ============================================================ */
+
+let state = {
+  folder: "INBOX",
+  folderLabel: "Posteingang",
+  listFilter: "all",
+  messages: [],
+  labels: [],
+  activeMessageId: null,
+  activeMessage: null,
+  interval: 5,
+  jarvisUrl: "",
+  jarvisKey: "",
+  sseSource: null,
+  tone: "freundlich-professionell",
+  template: "auto",
+  timer: null,
+  replyMode: null // 'reply' | 'forward' | null
+};
+
+function el(id){ return document.getElementById(id); }
+function esc(s){ return (s||"").replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function linkify(text){
+  const escaped = esc(text);
+  const pattern = /(https?:\/\/[^\s<]+)|(\bwww\.[^\s<]+)|([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+  return escaped.replace(pattern, (match, url, wwwUrl, email) => {
+    if (email) return `<a href="mailto:${match}">${match}</a>`;
+    // Satzzeichen am Ende (Punkt, Komma, Klammer …) nicht mit in den Link ziehen
+    const trailMatch = match.match(/[.,;:!?)]+$/);
+    const trail = trailMatch ? trailMatch[0] : '';
+    const core = trail ? match.slice(0, -trail.length) : match;
+    const href = wwwUrl ? `https://${core}` : core;
+    return `<a href="${href}" target="_blank" rel="noopener noreferrer">${core}</a>${trail}`;
+  });
+}
+function toast(msg){
+  const t = el('toast'); el('toastMsg').textContent = msg; t.classList.add('open');
+  clearTimeout(toast._h); toast._h = setTimeout(()=>t.classList.remove('open'), 2800);
+}
+function initials(name){
+  return (name||'?').split(' ').filter(Boolean).slice(0,2).map(s=>s[0]?.toUpperCase()).join('') || '?';
+}
+function fmtDate(iso){
+  try{
+    const d = new Date(iso);
+    const today = new Date();
+    if (d.toDateString() === today.toDateString()) return d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+    return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'});
+  }catch(e){ return ''; }
+}
+function fmtSize(bytes){
+  if (!bytes) return '';
+  if (bytes < 1024*1024) return Math.round(bytes/1024) + ' KB';
+  return (bytes/1024/1024).toFixed(1) + ' MB';
+}
+const AVATAR_COLORS = ['#171317','#e7f0ff','#e8f7ee','#fff0da','#f6e6ff','#ffe6ec'];
+const AVATAR_TEXT   = ['#fff','#2161a9','#16884a','#a85d00','#8130a9','#d9214b'];
+function hashColor(str){
+  let h = 0;
+  for (let i=0;i<(str||'?').length;i++) h = (h*31 + str.charCodeAt(i)) % AVATAR_COLORS.length;
+  return { bg: AVATAR_COLORS[h], fg: AVATAR_TEXT[h] };
+}
+
+/* ---------- Storage (window.storage im Claude-Artifact, sonst localStorage) ---------- */
+async function storageGet(key){
+  if (window.storage && typeof window.storage.get === 'function'){
+    try { return await window.storage.get(key); } catch(e){}
+  }
+  try { const v = localStorage.getItem('de24mail_' + key); return v !== null ? { value: v } : null; }
+  catch(e){ return null; }
+}
+async function storageSet(key, value){
+  if (window.storage && typeof window.storage.set === 'function'){
+    try { const r = await window.storage.set(key, value); if (r) return r; } catch(e){}
+  }
+  try { localStorage.setItem('de24mail_' + key, value); return { value }; } catch(e){ return null; }
+}
+
+/* ---------- JARVIS backend calls ---------- */
+function jarvisReady(){ return !!state.jarvisUrl; }
+async function jarvisFetch(path, opts = {}){
+  if (!jarvisReady()) throw new Error('JARVIS Server-URL ist nicht konfiguriert (Einstellungen ⚙️).');
+  const url = state.jarvisUrl.replace(/\/$/, '') + '/api/mail' + path;
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+  if (state.jarvisKey) headers['x-jarvis-key'] = state.jarvisKey;
+  let res;
+  try { res = await fetch(url, Object.assign({}, opts, { headers })); }
+  catch (networkErr) { throw new Error('JARVIS nicht erreichbar: ' + networkErr.message); }
+  let data = null;
+  try { data = await res.json(); } catch(e) {}
+  if (!res.ok) throw new Error(data?.error || ('HTTP ' + res.status));
+  return data;
+}
+
+/* Für Endpunkte außerhalb von /api/mail (Notizen, Bestellungen) */
+async function jarvisRootFetch(path, opts = {}){
+  if (!jarvisReady()) throw new Error('JARVIS Server-URL ist nicht konfiguriert (Einstellungen ⚙️).');
+  const url = state.jarvisUrl.replace(/\/$/, '') + path;
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+  if (state.jarvisKey) headers['x-jarvis-key'] = state.jarvisKey;
+  let res;
+  try { res = await fetch(url, Object.assign({}, opts, { headers })); }
+  catch (networkErr) { throw new Error('JARVIS nicht erreichbar: ' + networkErr.message); }
+  let data = null;
+  try { data = await res.json(); } catch(e) {}
+  if (!res.ok || data?.ok === false) throw new Error(data?.error || ('HTTP ' + res.status));
+  return data;
+}
+
+/* ---------- Folder sidebar ---------- */
+const SYSTEM_FOLDERS = [
+  { id: "INBOX", label: "Posteingang", icon: "inbox" },
+  { id: "SNOOZED_LOCAL", label: "Zurückgestellt", icon: "clock" },
+  { id: "SENT", label: "Gesendet", icon: "send" },
+  { id: "DRAFT", label: "Entwürfe", icon: "draft" },
+  { id: "TRASH", label: "Papierkorb", icon: "trash" }
+];
+const ICONS = {
+  inbox: '▣', clock: '◷', send: '➤', draft: '▤', trash: '⌫'
+};
+const DOT_COLORS = ['#ef2c87','#f39934','#55b978','#3d62b0','#8130a9'];
+const TAG_BG_COLORS = ['#fdeaf3','#fff1de','#e9f8ef','#e8f0ff','#f6e9ff'];
+
+function getCustomLabels(){
+  return state.labels.filter(l => !['INBOX','SENT','DRAFT','TRASH','SPAM','UNREAD','IMPORTANT','STARRED'].includes((l.name||l.id||'').toUpperCase()) && !/^CATEGORY_/.test(l.id||''));
+}
+function labelBadgeMeta(labelId){
+  const custom = getCustomLabels();
+  const idx = custom.findIndex(l => l.id === labelId);
+  if (idx === -1) return null;
+  return { name: custom[idx].name, fg: DOT_COLORS[idx % DOT_COLORS.length], bg: TAG_BG_COLORS[idx % TAG_BG_COLORS.length] };
+}
+
+function renderSystemFolders(){
+  const wrap = el('systemFolders');
+  wrap.innerHTML = SYSTEM_FOLDERS.map(f => `
+    <button class="${state.folder===f.id?'active':''}" data-folder="${f.id}" data-label="${f.label}">
+      <span class="ico">${ICONS[f.icon]}</span>${f.label}
+    </button>`).join("");
+  wrap.querySelectorAll('button').forEach(node=>{
+    node.addEventListener('click', ()=> selectFolder(node.dataset.folder, node.dataset.label));
+  });
+}
+
+function renderCustomLabels(){
+  const wrap = el('customFolders');
+  const custom = getCustomLabels();
+  if (custom.length === 0){
+    wrap.innerHTML = `<div class="labels-empty">Noch keine eigenen Labels. Leg z. B. „Angebot offen", „Wartet auf Kunde" oder „Freigegeben" in Gmail an, um sie hier als Status zu nutzen.</div>`;
+    return;
+  }
+  wrap.innerHTML = custom.map((l,i) => `
+    <button class="label ${state.folder===l.id?'active':''}" data-folder="${l.id}" data-label="${esc(l.name)}">
+      <span class="dot" style="background:${DOT_COLORS[i % DOT_COLORS.length]}"></span>${esc(l.name)}
+    </button>`).join("");
+  wrap.querySelectorAll('button').forEach(node=>{
+    node.addEventListener('click', ()=> selectFolder(node.dataset.folder, node.dataset.label));
+  });
+}
+
+function selectFolder(id, label){
+  showMailView();
+  state.folder = id; state.folderLabel = label;
+  el('listTitle').textContent = label;
+  renderSystemFolders(); renderCustomLabels();
+  showEmptyDetail();
+  state.activeMessageId = null;
+  if (id === "SNOOZED_LOCAL") renderSnoozedList();
+  else loadMessages();
+}
+
+/* ---------- Notizen & Bestellungen (eigene Ansicht, ersetzt Liste+Lesebereich) ---------- */
+function showMailView(){
+  el('listSection').style.display = '';
+  el('messageColSection').style.display = '';
+  el('notesView').style.display = 'none';
+  el('notesNavBtn').classList.remove('active');
+}
+function showNotesView(){
+  el('listSection').style.display = 'none';
+  el('messageColSection').style.display = 'none';
+  el('notesView').style.display = 'flex';
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
+  el('notesNavBtn').classList.add('active');
+  loadOrders();
+  loadNotes();
+}
+el('notesNavBtn').addEventListener('click', showNotesView);
+
+function fmtNoteDate(iso){
+  try { return new Date(iso).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+  catch(e){ return ''; }
+}
+
+async function loadOrders(){
+  const wrap = el('ordersList');
+  if (!jarvisReady()){ wrap.innerHTML = '<div class="notes-empty">JARVIS nicht verbunden (Einstellungen ⚙️).</div>'; return; }
+  wrap.innerHTML = '<div class="notes-empty">Lädt …</div>';
+  try {
+    const data = await jarvisRootFetch('/api/manual-orders');
+    renderOrders(data.orders || []);
+  } catch(e){ wrap.innerHTML = `<div class="notes-empty">Fehler: ${esc(e.message)}</div>`; }
+}
+function renderOrders(items){
+  const wrap = el('ordersList');
+  if (!items.length){ wrap.innerHTML = '<div class="notes-empty">Noch keine Bestellungen erfasst.</div>'; return; }
+  wrap.innerHTML = items.map(o => `
+    <div class="note-item ${o.done?'done':''}" data-id="${esc(o.id)}">
+      <button class="note-check" data-action="toggle">${o.done?'✓':''}</button>
+      <div class="note-body">
+        <div class="note-text">${esc(o.text)}</div>
+        <div class="note-meta">${fmtNoteDate(o.created_at)}${o.amount!=null?` <span class="note-amount">${Number(o.amount).toFixed(2)} €</span>`:''}</div>
+      </div>
+      <button class="note-del" data-action="delete">✕</button>
+    </div>`).join('');
+  wrap.querySelectorAll('[data-action="toggle"]').forEach(b=>b.addEventListener('click', ()=>toggleOrder(b.closest('.note-item').dataset.id)));
+  wrap.querySelectorAll('[data-action="delete"]').forEach(b=>b.addEventListener('click', ()=>deleteOrder(b.closest('.note-item').dataset.id)));
+}
+async function toggleOrder(id){
+  try { await jarvisRootFetch(`/api/manual-orders/${encodeURIComponent(id)}/toggle`, {method:'POST'}); loadOrders(); }
+  catch(e){ toast('Fehler: ' + e.message); }
+}
+async function deleteOrder(id){
+  if (!confirm('Diesen Eintrag löschen?')) return;
+  try { await jarvisRootFetch(`/api/manual-orders/${encodeURIComponent(id)}`, {method:'DELETE'}); loadOrders(); }
+  catch(e){ toast('Fehler: ' + e.message); }
+}
+el('orderAddBtn').addEventListener('click', async ()=>{
+  const text = el('orderTextInput').value.trim();
+  if (!text){ toast('Bitte einen Text eingeben.'); return; }
+  const amount = el('orderAmountInput').value.trim();
+  try {
+    await jarvisRootFetch('/api/manual-orders', { method:'POST', body: JSON.stringify({ text, amount: amount || null }) });
+    el('orderTextInput').value=''; el('orderAmountInput').value='';
+    loadOrders();
+  } catch(e){ toast('Fehler: ' + e.message); }
+});
+el('orderTextInput').addEventListener('keydown', e=>{ if(e.key==='Enter') el('orderAddBtn').click(); });
+
+async function loadNotes(){
+  const wrap = el('notesList');
+  if (!jarvisReady()){ wrap.innerHTML = '<div class="notes-empty">JARVIS nicht verbunden (Einstellungen ⚙️).</div>'; return; }
+  wrap.innerHTML = '<div class="notes-empty">Lädt …</div>';
+  try {
+    const data = await jarvisRootFetch('/api/notes');
+    renderNotes(data.notes || []);
+  } catch(e){ wrap.innerHTML = `<div class="notes-empty">Fehler: ${esc(e.message)}</div>`; }
+}
+function renderNotes(items){
+  const wrap = el('notesList');
+  if (!items.length){ wrap.innerHTML = '<div class="notes-empty">Noch keine Notizen.</div>'; return; }
+  wrap.innerHTML = items.map(n => `
+    <div class="note-item ${n.done?'done':''}" data-id="${esc(n.id)}">
+      <button class="note-check" data-action="toggle">${n.done?'✓':''}</button>
+      <div class="note-body">
+        <div class="note-text">${esc(n.text)}</div>
+        <div class="note-meta">${fmtNoteDate(n.created_at)}</div>
+      </div>
+      <button class="note-del" data-action="delete">✕</button>
+    </div>`).join('');
+  wrap.querySelectorAll('[data-action="toggle"]').forEach(b=>b.addEventListener('click', ()=>toggleNote(b.closest('.note-item').dataset.id)));
+  wrap.querySelectorAll('[data-action="delete"]').forEach(b=>b.addEventListener('click', ()=>deleteNote(b.closest('.note-item').dataset.id)));
+}
+async function toggleNote(id){
+  try { await jarvisRootFetch(`/api/notes/${encodeURIComponent(id)}/toggle`, {method:'POST'}); loadNotes(); }
+  catch(e){ toast('Fehler: ' + e.message); }
+}
+async function deleteNote(id){
+  if (!confirm('Diese Notiz löschen?')) return;
+  try { await jarvisRootFetch(`/api/notes/${encodeURIComponent(id)}`, {method:'DELETE'}); loadNotes(); }
+  catch(e){ toast('Fehler: ' + e.message); }
+}
+el('noteAddBtn').addEventListener('click', async ()=>{
+  const text = el('noteTextInput').value.trim();
+  if (!text){ toast('Bitte einen Text eingeben.'); return; }
+  try {
+    await jarvisRootFetch('/api/notes', { method:'POST', body: JSON.stringify({ text }) });
+    el('noteTextInput').value='';
+    loadNotes();
+  } catch(e){ toast('Fehler: ' + e.message); }
+});
+el('noteTextInput').addEventListener('keydown', e=>{ if(e.key==='Enter') el('noteAddBtn').click(); });
+
+/* ---------- Drucken: Bestellungen / Notizen ---------- */
+function printNotesList(kind){
+  const isOrders = kind === 'orders';
+  const listEl = isOrders ? el('ordersList') : el('notesList');
+  if (!listEl.querySelector('.note-item')){ toast('Nichts zum Drucken vorhanden.'); return; }
+  const headerEl = el(isOrders ? 'ordersPrintHeader' : 'notesPrintHeader');
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('de-DE') + ', ' + now.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}) + ' Uhr';
+  headerEl.innerHTML = `
+    <img src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/schwarz_c61209f8-22e7-4c15-a82a-3ebe768af36e.png?v=1785752153" alt="Druckelite24">
+    <div><b>${isOrders ? 'Bestellungen (nicht über den Shop)' : 'Notizen'}</b><span>Gedruckt am ${dateStr}</span></div>`;
+  document.body.classList.remove('printing-orders','printing-notes');
+  document.body.classList.add(isOrders ? 'printing-orders' : 'printing-notes');
+  window.print();
+}
+el('printOrdersBtn').addEventListener('click', ()=>printNotesList('orders'));
+el('printNotesBtn').addEventListener('click', ()=>printNotesList('notes'));
+window.addEventListener('afterprint', ()=>{ document.body.classList.remove('printing-orders','printing-notes'); });
+
+/* ---------- Snooze (persistent auf JARVIS) ---------- */
+async function renderSnoozedList(){
+  const wrap = el('messageListEl');
+  wrap.innerHTML = '<div class="empty">Lade zurückgestellte Mails …</div>';
+  try {
+    const snoozed = await jarvisFetch('/snoozed');
+    const items = Object.entries(snoozed || {});
+    if (items.length === 0){
+      wrap.innerHTML = '<div class="empty">Keine zurückgestellten Mails.<br>Öffne eine Mail und klicke „Zurückstellen".</div>';
+      return;
+    }
+    wrap.innerHTML = items.map(([id, v]) => `
+      <div class="mailrow" style="cursor:default">
+        <span class="senderpic" style="background:#171317;color:#fff">${esc(initials(v.meta.from))}</span>
+        <span class="mailcopy">
+          <span class="senderline"><b>${esc(v.meta.from||'')}</b><time>bis ${new Date(v.until).toLocaleDateString('de-DE')}</time></span>
+          <strong>${esc(v.meta.subject||'')}</strong>
+        </span>
+      </div>`).join("");
+  } catch(e){
+    wrap.innerHTML = `<div class="empty">Konnte nicht laden.<br>(${esc(e.message)})</div>`;
+  }
+}
+
+/* ---------- Load messages ---------- */
+async function loadMessages(){
+  if (state.folder === 'SNOOZED_LOCAL') { renderSnoozedList(); return; }
+  if (!jarvisReady()){
+    el('messageListEl').innerHTML = '<div class="empty">JARVIS Server-URL fehlt.<br>Trag sie unter Einstellungen ⚙️ ein.</div>';
+    setSyncState('error');
+    return;
+  }
+  setSyncState('busy');
+  const listEl = el('messageListEl');
+  if (state.messages.length === 0) listEl.innerHTML = '<div class="empty">Lade E-Mails …</div>';
+  try {
+    const items = await jarvisFetch('/list?folder=' + encodeURIComponent(state.folder));
+    state.messages = Array.isArray(items) ? items : [];
+    renderMessageList();
+    setSyncState('ok');
+  } catch(e){
+    console.error(e);
+    listEl.innerHTML = `<div class="empty">Konnte Mails nicht laden.<br>(${esc(e.message)})<br><br>Prüfe JARVIS Server-URL &amp; API-Key.</div>`;
+    setSyncState('error');
+  }
+}
+
+async function loadLabels(){
+  if (!jarvisReady()) return;
+  try {
+    const items = await jarvisFetch('/labels');
+    state.labels = Array.isArray(items) ? items : [];
+    renderCustomLabels();
+  } catch(e){ console.warn('Labels konnten nicht geladen werden', e); }
+}
+
+function filteredMessages(){
+  if (state.listFilter === 'unread') return state.messages.filter(m => m.unread);
+  return state.messages;
+}
+
+function renderMessageList(){
+  const wrap = el('messageListEl');
+  const unread = state.messages.filter(m=>m.unread).length;
+  el('listUnreadCount').textContent = unread ? unread + ' ungelesen' : '';
+  el('unreadTabCount').textContent = unread || '';
+  const items = filteredMessages();
+  if (items.length === 0){
+    wrap.innerHTML = '<div class="empty">Keine E-Mails gefunden.</div>';
+    return;
+  }
+  wrap.innerHTML = items.map(m => {
+    const c = hashColor(m.fromEmail || m.from || '?');
+    const badges = (m.labelIds||[]).map(labelBadgeMeta).filter(Boolean);
+    return `
+    <button class="mailrow ${m.unread?'unread':''} ${state.activeMessageId===m.id?'active':''}" data-id="${esc(m.id)}">
+      ${m.unread ? '<span class="unreaddot"></span>' : ''}
+      <span class="senderpic" style="background:${c.bg};color:${c.fg}">${esc(initials(m.from||m.fromEmail))}</span>
+      <span class="mailcopy">
+        <span class="senderline"><b>${esc(m.from||m.fromEmail||'')}</b><time>${fmtDate(m.date)}</time></span>
+        <strong>${esc(m.subject||'(kein Betreff)')}</strong>
+        <span class="preview">${esc(m.snippet||'')}</span>
+        ${badges.length ? `<span class="rowtags">${badges.map(b=>`<span class="rowtag" style="background:${b.bg};color:${b.fg}">${esc(b.name)}</span>`).join("")}</span>` : ""}
+      </span>
+    </button>`;
+  }).join("");
+  wrap.querySelectorAll('.mailrow[data-id]').forEach(node => {
+    node.addEventListener('click', () => openMessage(node.dataset.id));
+  });
+}
+
+document.querySelectorAll('.tabs button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.listFilter = btn.dataset.filter;
+    renderMessageList();
+  });
+});
+
+/* ---------- Open message ---------- */
+function showEmptyDetail(){
+  el('messageEmpty').style.display = 'flex';
+  el('contentScroll').style.display = 'none';
+}
+
+async function openMessage(id){
+  state.activeMessageId = id;
+  renderMessageList();
+  el('messageEmpty').style.display = 'none';
+  el('contentScroll').style.display = 'block';
+  el('contentScroll').scrollTop = 0;
+  const listItem = state.messages.find(m => m.id === id) || {};
+  el('detailSubject').textContent = 'Lädt …';
+  el('detailBody').textContent = '';
+  try {
+    const msg = await jarvisFetch('/message/' + encodeURIComponent(id));
+    state.activeMessage = { id, ...listItem, ...msg };
+    renderMessageDetail();
+    renderAiPanel();
+    generateSuggestion(); // automatisch beim Öffnen vorschlagen, wie im Design vorgesehen
+  } catch(e){
+    console.error(e);
+    el('detailSubject').textContent = 'Nachricht konnte nicht geladen werden';
+    el('detailBody').textContent = e.message;
+  }
+}
+
+function renderMessageDetail(){
+  const m = state.activeMessage;
+  const c = hashColor(m.fromEmail || m.from || '?');
+  el('detailTag').textContent = state.folderLabel.toUpperCase();
+  el('detailSubject').textContent = m.subject || '(kein Betreff)';
+  el('detailFolderTag').textContent = state.folderLabel;
+  const pic = el('detailPic');
+  pic.textContent = initials(m.from);
+  pic.style.background = c.bg; pic.style.color = c.fg;
+  el('detailSender').textContent = m.from || '';
+  el('detailEmail').textContent = (m.fromEmail || '') + ' · an mich';
+  el('detailTime').textContent = fmtDate(m.date);
+  el('detailBody').innerHTML = linkify(m.bodyText || m.snippet || '');
+
+  const attWrap = el('attachmentsWrap');
+  const attHead = el('attachmentsHead');
+  const atts = m.attachments || [];
+  if (atts.length){
+    attHead.textContent = '📎 ' + atts.length + (atts.length === 1 ? ' Anhang vom Kunden' : ' Anhänge vom Kunden');
+    attHead.style.display = 'flex';
+  } else {
+    attHead.style.display = 'none';
+  }
+  attWrap.innerHTML = atts.map((a,i) => `
+    <button class="attachment" data-idx="${i}">
+      <span class="pdf">${esc((a.filename||'').split('.').pop().slice(0,4).toUpperCase() || 'DAT')}</span>
+      <div><b>${esc(a.filename)}</b><small>${fmtSize(a.size)}</small></div>
+    </button>`).join("");
+  attWrap.querySelectorAll('.attachment').forEach(btn=>{
+    btn.addEventListener('click', ()=> downloadAttachment(atts[Number(btn.dataset.idx)]));
+  });
+
+  const quoteWrap = el('quotedWrap');
+  const quoted = (m.quotedText || '').trim();
+  if (quoted){
+    el('quotedText').innerHTML = linkify(quoted);
+    quoteWrap.style.display = 'block';
+    quoteWrap.open = false;
+  } else {
+    quoteWrap.style.display = 'none';
+  }
+}
+
+function blobDownload(base64, mimeType, filename){
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mimeType || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename || 'anhang';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+}
+
+async function downloadAttachment(att){
+  if (!att) return;
+  if (att.inlineDataBase64){
+    blobDownload(att.inlineDataBase64, att.mimeType, att.filename);
+    return;
+  }
+  toast('Lade Anhang …');
+  try {
+    const res = await jarvisFetch(`/attachment/${encodeURIComponent(state.activeMessage.id)}/${encodeURIComponent(att.attachmentId)}`);
+    blobDownload(res.dataBase64, att.mimeType, att.filename);
+  } catch(e){
+    toast('Anhang konnte nicht geladen werden: ' + e.message);
+  }
+}
+
+function renderAiPanel(){
+  el('insightText').textContent = '…';
+  el('replyBox').value = '';
+  state.template = 'auto';
+  aiReplyAttachments = [];
+  renderAiAttachments();
+  document.querySelectorAll('.tone-btn').forEach(b=>b.classList.toggle('active', b.dataset.tone === state.tone));
+  document.querySelectorAll('.tpl-btn').forEach(b=>b.classList.toggle('active', b.dataset.tpl === state.template));
+}
+
+/* ---------- Anhänge im KI-Antwort-Assistenten ---------- */
+let aiReplyAttachments = []; // { name, type, size, data(base64) } — eigener State, unabhängig vom Compose-Fenster
+
+function renderAiAttachments(){
+  const wrap = el('aiAttachList');
+  wrap.innerHTML = aiReplyAttachments.map((a,i) => `
+    <div class="compose-attach-item">
+      <span>📄</span>
+      <b>${esc(a.name)}</b>
+      <small>${fmtSize(a.size)}</small>
+      <button type="button" data-idx="${i}" title="Entfernen">✕</button>
+    </div>`).join('');
+  wrap.querySelectorAll('button[data-idx]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      aiReplyAttachments.splice(Number(btn.dataset.idx), 1);
+      renderAiAttachments();
+    });
+  });
+  const totalBytes = aiReplyAttachments.reduce((sum,a)=> sum + (a.size||0), 0);
+  const sizeEl = el('aiAttachSize');
+  if (!totalBytes){ sizeEl.textContent = ''; sizeEl.classList.remove('warn'); return; }
+  sizeEl.textContent = fmtSize(totalBytes) + ' gesamt';
+  sizeEl.classList.toggle('warn', totalBytes > 20*1024*1024);
+  if (totalBytes > 20*1024*1024) sizeEl.textContent += ' · evtl. zu groß für Gmail (25 MB Limit)';
+}
+
+el('aiAttachBtn').addEventListener('click', ()=> el('aiFileInput').click());
+el('aiFileInput').addEventListener('change', async (e)=>{
+  const files = Array.from(e.target.files || []);
+  for (const file of files){
+    try {
+      const data = await fileToBase64(file);
+      aiReplyAttachments.push({ name: file.name, type: file.type || 'application/octet-stream', size: file.size, data });
+    } catch(err){ toast('Konnte "' + file.name + '" nicht anhängen.'); }
+  }
+  e.target.value = '';
+  renderAiAttachments();
+});
+
+/* ---------- AI reply suggestion ---------- */
+document.querySelectorAll('.tone-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tone-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.tone = btn.dataset.tone;
+    generateSuggestion();
+  });
+});
+document.querySelectorAll('.tpl-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tpl-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.template = btn.dataset.tpl;
+    generateSuggestion();
+  });
+});
+
+async function generateSuggestion(){
+  const box = el('replyBox');
+  const m = state.activeMessage;
+  if (!m) return;
+  box.classList.add('loading'); box.value = 'Formuliere Antwort …';
+  el('sendDirectBtn').disabled = true; el('regenBtn').disabled = true;
+  try {
+    const instr = el('ownNote').value.trim();
+    const result = await jarvisFetch('/suggest', {
+      method: 'POST',
+      body: JSON.stringify({
+        instruction: instr,
+        tone: state.tone,
+        template: state.template === 'auto' ? undefined : state.template,
+        from: m.from || '',
+        subject: m.subject || '',
+        bodyText: m.bodyText || m.snippet || ''
+      })
+    });
+    box.classList.remove('loading');
+    box.value = (result.text || '').trim();
+    el('insightText').textContent = result.insight || 'Kein besonderes Anliegen erkannt.';
+    el('detailTag').textContent = (result.category || state.folderLabel).toUpperCase();
+  } catch(e){
+    console.error(e);
+    box.classList.remove('loading');
+    box.value = '';
+    el('insightText').textContent = 'Konnte nicht ermittelt werden.';
+    toast('Vorschlag konnte nicht erzeugt werden: ' + e.message);
+  } finally {
+    el('sendDirectBtn').disabled = false; el('regenBtn').disabled = false;
+  }
+}
+el('regenBtn').addEventListener('click', generateSuggestion);
+el('applyNoteBtn').addEventListener('click', generateSuggestion);
+
+async function sendDraftNow(draftId){
+  return jarvisFetch('/send-draft', {
+    method: 'POST',
+    body: JSON.stringify({ draftId, confirmation_text: 'ja senden' })
+  });
+}
+
+async function sendSuggestionDirect(){
+  const text = el('replyBox').value.trim();
+  if (!text){ toast('Erst einen Vorschlag generieren.'); return; }
+  const m = state.activeMessage;
+  const attachments = aiReplyAttachments.map(a => ({ filename: a.name, mimeType: a.type, data: a.data }));
+  try {
+    const result = await jarvisFetch('/reply-draft', {
+      method: 'POST',
+      body: JSON.stringify({ messageId: m.id, body: text, attachments })
+    });
+    toast('Gmail-Entwurf gespeichert. JARVIS erinnert dich, falls er liegen bleibt.');
+    loadMessages();
+  } catch(e){ toast('Entwurf konnte nicht gespeichert werden: ' + e.message); }
+}
+el('sendDirectBtn').addEventListener('click', sendSuggestionDirect);
+
+async function sendSuggestionNow(){
+  const text = el('replyBox').value.trim();
+  if (!text){ toast('Erst einen Vorschlag generieren.'); return; }
+  const m = state.activeMessage;
+  if (!m) return;
+  const recipient = m.fromEmail || m.from || 'den Kunden';
+  if (!confirm(`Antwort jetzt wirklich an ${recipient} senden?\n\nDas geht sofort raus – kein Entwurf mehr, keine weitere Kontrolle.`)) return;
+  const attachments = aiReplyAttachments.map(a => ({ filename: a.name, mimeType: a.type, data: a.data }));
+  const btn = el('sendNowBtn');
+  btn.disabled = true; btn.textContent = 'Sende …';
+  try {
+    const draftResult = await jarvisFetch('/reply-draft', {
+      method: 'POST',
+      body: JSON.stringify({ messageId: m.id, body: text, attachments })
+    });
+    await sendDraftNow(draftResult.draft.draftId);
+    toast('Gesendet an ' + recipient + '.');
+    loadMessages();
+  } catch(e){ toast('Senden fehlgeschlagen: ' + e.message); }
+  finally { btn.disabled = false; btn.innerHTML = '➤ &nbsp; Jetzt senden'; }
+}
+el('sendNowBtn').addEventListener('click', sendSuggestionNow);
+
+/* ---------- Compose ---------- */
+let composeAttachments = []; // { name, type, size, data(base64, ohne data:-Prefix) }
+
+function renderComposeAttachments(){
+  const wrap = el('composeAttachList');
+  wrap.innerHTML = composeAttachments.map((a,i) => `
+    <div class="compose-attach-item">
+      <span>📄</span>
+      <b>${esc(a.name)}</b>
+      <small>${fmtSize(a.size)}</small>
+      <button type="button" data-idx="${i}" title="Entfernen">✕</button>
+    </div>`).join('');
+  wrap.querySelectorAll('button[data-idx]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      composeAttachments.splice(Number(btn.dataset.idx), 1);
+      renderComposeAttachments();
+    });
+  });
+  const totalBytes = composeAttachments.reduce((sum,a)=> sum + (a.size||0), 0);
+  const sizeEl = el('composeAttachSize');
+  if (!totalBytes){ sizeEl.textContent = ''; sizeEl.classList.remove('warn'); return; }
+  sizeEl.textContent = fmtSize(totalBytes) + ' gesamt';
+  sizeEl.classList.toggle('warn', totalBytes > 20*1024*1024);
+  if (totalBytes > 20*1024*1024) sizeEl.textContent += ' · evtl. zu groß für Gmail (25 MB Limit)';
+}
+
+function fileToBase64(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+el('composeAttachBtn').addEventListener('click', ()=> el('composeFileInput').click());
+el('composeFileInput').addEventListener('change', async (e)=>{
+  const files = Array.from(e.target.files || []);
+  for (const file of files){
+    try {
+      const data = await fileToBase64(file);
+      composeAttachments.push({ name: file.name, type: file.type || 'application/octet-stream', size: file.size, data });
+    } catch(err){ toast('Konnte "' + file.name + '" nicht anhängen.'); }
+  }
+  e.target.value = '';
+  renderComposeAttachments();
+});
+
+function openCompose(mode){
+  state.replyMode = mode;
+  const m = state.activeMessage;
+  if (mode === 'reply'){
+    el('composeTitle').textContent = 'Antwort';
+    el('fldTo').value = m?.fromEmail || '';
+    el('fldSubject').value = 'Re: ' + (m?.subject || '');
+    el('fldBody').value = el('replyBox') ? el('replyBox').value : '';
+  } else if (mode === 'forward'){
+    el('composeTitle').textContent = 'Weiterleiten';
+    el('fldTo').value = '';
+    el('fldSubject').value = 'Fwd: ' + (m?.subject || '');
+    el('fldBody').value = `\n\n---------- Weitergeleitete Nachricht ----------\nVon: ${m?.from||''} <${m?.fromEmail||''}>\nBetreff: ${m?.subject||''}\n\n${m?.bodyText||''}`;
+  } else {
+    el('composeTitle').textContent = 'Neue E-Mail';
+    el('fldTo').value = ''; el('fldSubject').value = ''; el('fldBody').value = '';
+  }
+  composeAttachments = [];
+  renderComposeAttachments();
+  el('composeStatus').textContent = '';
+  el('composeOverlay').classList.add('open');
+}
+function closeCompose(){ el('composeOverlay').classList.remove('open'); }
+el('composeBtn').addEventListener('click', ()=>openCompose(null));
+el('composeClose').addEventListener('click', closeCompose);
+el('composeClose2').addEventListener('click', closeCompose);
+el('replyQuickBtn').addEventListener('click', ()=>openCompose('reply'));
+el('forwardBtn').addEventListener('click', ()=>openCompose('forward'));
+
+el('composeSendNowBtn').addEventListener('click', async ()=>{
+  const to = el('fldTo').value.trim(), subj = el('fldSubject').value.trim(), body = el('fldBody').value.trim();
+  if (!to || !body){ toast('Empfänger und Text erforderlich.'); return; }
+  if (!confirm(`Diese Mail jetzt wirklich an ${to} senden?\n\nDas geht sofort raus – kein Entwurf mehr, keine weitere Kontrolle.`)) return;
+  const attachments = composeAttachments.map(a => ({ filename: a.name, mimeType: a.type, data: a.data }));
+  const btn = el('composeSendNowBtn');
+  btn.disabled = true;
+  el('composeStatus').textContent = 'Sende …';
+  try {
+    let draftResult;
+    if (state.replyMode === 'reply' && state.activeMessage){
+      draftResult = await jarvisFetch('/reply-draft', {
+        method: 'POST',
+        body: JSON.stringify({ messageId: state.activeMessage.id, body, attachments })
+      });
+    } else {
+      draftResult = await jarvisFetch('/draft', {
+        method: 'POST',
+        body: JSON.stringify({ to, subject: subj, body, attachments })
+      });
+    }
+    await sendDraftNow(draftResult.draft.draftId);
+    toast('Gesendet an ' + to + '.');
+    closeCompose();
+    loadMessages();
+  } catch(e){ el('composeStatus').textContent = 'Fehler: ' + e.message; }
+  finally { btn.disabled = false; }
+});
+
+el('sendBtn').addEventListener('click', async ()=>{
+  const to = el('fldTo').value.trim(), subj = el('fldSubject').value.trim(), body = el('fldBody').value.trim();
+  if (!to || !body){ toast('Empfänger und Text erforderlich.'); return; }
+  el('composeStatus').textContent = composeAttachments.length ? 'Speichere Gmail-Entwurf mit Anhang …' : 'Speichere Gmail-Entwurf …';
+  const attachments = composeAttachments.map(a => ({ filename: a.name, mimeType: a.type, data: a.data }));
+  try {
+    if (state.replyMode === 'reply' && state.activeMessage){
+      await jarvisFetch('/reply-draft', {
+        method: 'POST',
+        body: JSON.stringify({ messageId: state.activeMessage.id, body, attachments })
+      });
+    } else {
+      await jarvisFetch('/draft', {
+        method: 'POST',
+        body: JSON.stringify({ to, subject: subj, body, attachments })
+      });
+    }
+    toast('Gmail-Entwurf gespeichert. Noch nicht gesendet.');
+    closeCompose();
+    loadMessages();
+  } catch(e){ el('composeStatus').textContent = 'Fehler: ' + e.message; }
+});
+
+el('draftBtn').addEventListener('click', async ()=>{
+  const to = el('fldTo').value.trim(), subj = el('fldSubject').value.trim(), body = el('fldBody').value.trim();
+  el('composeStatus').textContent = composeAttachments.length ? 'Speichere Entwurf mit Anhang …' : 'Speichere Entwurf …';
+  const attachments = composeAttachments.map(a => ({ filename: a.name, mimeType: a.type, data: a.data }));
+  try {
+    if (state.replyMode === 'reply' && state.activeMessage){
+      await jarvisFetch('/reply-draft', {
+        method: 'POST',
+        body: JSON.stringify({ messageId: state.activeMessage.id, body, attachments })
+      });
+    } else {
+      await jarvisFetch('/draft', {
+        method: 'POST',
+        body: JSON.stringify({ to, subject: subj, body, attachments })
+      });
+    }
+    toast('Entwurf gespeichert. Noch nicht gesendet.');
+    closeCompose();
+  } catch(e){ el('composeStatus').textContent = 'Fehler: ' + e.message; }
+});
+
+/* ---------- Move / Snooze / Archive / Delete / Mark unread ---------- */
+const SYSTEM_MOVE_TARGETS = [
+  { id: 'INBOX', name: 'Posteingang' },
+  { id: 'TRASH', name: 'Papierkorb' }
+];
+
+function openMovePicker(){
+  if (!state.activeMessage){ toast('Erst eine Mail öffnen.'); return; }
+  const wrap = el('moveList');
+  const custom = getCustomLabels();
+  const all = [...SYSTEM_MOVE_TARGETS, ...custom];
+  wrap.innerHTML = all.map((l,i) => `
+    <button class="movepick" data-id="${esc(l.id)}" data-name="${esc(l.name)}">
+      <span class="dot" style="background:${l.id==='INBOX'?'#3d62b0':l.id==='TRASH'?'#8c848a':DOT_COLORS[(i-SYSTEM_MOVE_TARGETS.length) % DOT_COLORS.length]}"></span>${esc(l.name)}
+    </button>`).join("");
+  wrap.querySelectorAll('.movepick').forEach(btn=>{
+    btn.addEventListener('click', ()=> moveToLabel(btn.dataset.id, btn.dataset.name));
+  });
+  el('moveNewLabel').value = '';
+  el('moveOverlay').classList.add('open');
+}
+el('moveBtn').addEventListener('click', openMovePicker);
+el('moveClose').addEventListener('click', ()=>el('moveOverlay').classList.remove('open'));
+
+async function moveToLabel(labelId, labelName){
+  const m = state.activeMessage;
+  try {
+    const remove = state.folder === 'INBOX' && labelId !== 'INBOX' ? ['INBOX'] : [];
+    if (labelId === 'TRASH'){
+      await jarvisFetch('/trash', { method: 'POST', body: JSON.stringify({ messageId: m.id }) });
+    } else {
+      await jarvisFetch('/label', { method: 'POST', body: JSON.stringify({ messageId: m.id, add: [labelId], remove }) });
+    }
+    toast('Nach „' + labelName + '" verschoben.');
+    el('moveOverlay').classList.remove('open');
+    loadMessages();
+    showEmptyDetail();
+  } catch(e){ toast('Verschieben fehlgeschlagen: ' + e.message); }
+}
+
+el('moveNewBtn').addEventListener('click', async ()=>{
+  const name = el('moveNewLabel').value.trim();
+  if (!name){ toast('Bitte einen Namen eingeben.'); return; }
+  try {
+    const created = await jarvisFetch('/label/create', { method: 'POST', body: JSON.stringify({ name }) });
+    await loadLabels();
+    await moveToLabel(created.id, created.name);
+  } catch(e){ toast('Anlegen fehlgeschlagen: ' + e.message); }
+});
+
+el('snoozeBtn').addEventListener('click', async ()=>{
+  const m = state.activeMessage;
+  if (!m){ toast('Erst eine Mail öffnen.'); return; }
+  const choice = prompt('Zurückstellen für wie viele Stunden? (z.B. 3, 24, 72)', '24');
+  const hours = parseFloat(choice);
+  if (!hours || hours <= 0) return;
+  try {
+    await jarvisFetch('/snooze', { method: 'POST', body: JSON.stringify({ messageId: m.id, hours, subject: m.subject, from: m.from }) });
+    toast('Zurückgestellt für ' + hours + ' Std.');
+    loadMessages();
+  } catch(e){ toast('Zurückstellen fehlgeschlagen: ' + e.message); }
+});
+
+el('archiveBtn').addEventListener('click', async ()=>{
+  const m = state.activeMessage;
+  if (!m){ toast('Erst eine Mail öffnen.'); return; }
+  try {
+    await jarvisFetch('/archive', { method: 'POST', body: JSON.stringify({ messageId: m.id }) });
+    toast('Archiviert.'); loadMessages(); showEmptyDetail();
+  } catch(e){ toast('Archivieren fehlgeschlagen: ' + e.message); }
+});
+
+el('deleteBtn').addEventListener('click', async ()=>{
+  const m = state.activeMessage;
+  if (!m){ toast('Erst eine Mail öffnen.'); return; }
+  if (!confirm('Diese Mail wirklich löschen?')) return;
+  try {
+    await jarvisFetch('/trash', { method: 'POST', body: JSON.stringify({ messageId: m.id }) });
+    toast('In den Papierkorb verschoben.'); loadMessages(); showEmptyDetail();
+  } catch(e){ toast('Löschen fehlgeschlagen: ' + e.message); }
+});
+
+el('markUnreadBtn').addEventListener('click', async ()=>{
+  const m = state.activeMessage;
+  if (!m){ toast('Erst eine Mail öffnen.'); return; }
+  try {
+    await jarvisFetch('/mark-unread', { method: 'POST', body: JSON.stringify({ messageId: m.id }) });
+    toast('Als ungelesen markiert.'); loadMessages();
+  } catch(e){ toast('Fehlgeschlagen: ' + e.message); }
+});
+
+/* ---------- Sync status / SSE live push + Fallback-Polling ---------- */
+function setSyncState(s){
+  const dot = el('syncDot'), text = el('syncText'), sub = el('syncSub');
+  dot.className = 'pulse ' + (s==='busy'?'busy':s==='error'?'err':'ok');
+  text.textContent = s==='busy' ? 'Synchronisiere' : s==='error' ? 'Fehler' : 'Live verbunden';
+  sub.textContent = s==='busy' ? 'einen Moment …' : s==='error' ? 'JARVIS prüfen' : (state.sseSource ? 'Push aktiv' : 'Intervall-Abruf');
+}
+
+function startFallbackPolling(){
+  if (state.timer) clearInterval(state.timer);
+  state.timer = setInterval(()=>{ if (state.folder !== 'SNOOZED_LOCAL') loadMessages(); }, state.interval * 1000);
+}
+
+function connectLiveSync(){
+  if (state.sseSource){ state.sseSource.close(); state.sseSource = null; }
+  if (!jarvisReady()) { startFallbackPolling(); return; }
+  try {
+    const url = state.jarvisUrl.replace(/\/$/, '') + '/api/mail/stream' + (state.jarvisKey ? ('?key=' + encodeURIComponent(state.jarvisKey)) : '');
+    const src = new EventSource(url);
+    src.addEventListener('sync', ()=>{ if (state.folder !== 'SNOOZED_LOCAL') loadMessages(); });
+    src.addEventListener('unsnoozed', (e)=>{
+      try { const d = JSON.parse(e.data); toast('„' + (d.subject||'Mail') + '" ist wieder im Posteingang.'); } catch(err){}
+      if (state.folder === 'INBOX') loadMessages();
+    });
+    src.addEventListener('hello', ()=>{ setSyncState('ok'); });
+    src.onerror = ()=>{ src.close(); state.sseSource = null; startFallbackPolling(); };
+    state.sseSource = src;
+    clearInterval(state.timer);
+  } catch(e){ startFallbackPolling(); }
+}
+
+el('refreshNowBtn').addEventListener('click', loadMessages);
+el('listRefreshBtn').addEventListener('click', loadMessages);
+
+/* ---------- Settings ---------- */
+async function loadSettings(){
+  try {
+    const url = await storageGet('jarvisUrl');
+    const key = await storageGet('jarvisKey');
+    const interval = await storageGet('pollInterval');
+    const tone = await storageGet('aiTone');
+    if (url) state.jarvisUrl = url.value;
+    if (key) state.jarvisKey = key.value;
+    if (interval) state.interval = parseInt(interval.value, 10) || 5;
+    if (tone) state.tone = tone.value;
+  } catch(e){}
+  // Läuft die Seite direkt vom JARVIS-Server aus (statt als lokale Datei),
+  // die Server-URL automatisch vorausfüllen — spart Tippen z. B. am iPhone.
+  if (!state.jarvisUrl && /^https?:$/.test(location.protocol)){
+    state.jarvisUrl = location.origin;
+  }
+  el('jarvisUrl').value = state.jarvisUrl;
+  el('jarvisKey').value = state.jarvisKey;
+  el('intervalRange').value = state.interval;
+  el('intervalVal').textContent = state.interval + ' Sek.';
+  el('toneSelect').value = state.tone;
+}
+
+el('settingsBtn').addEventListener('click', ()=>el('settingsOverlay').classList.add('open'));
+el('settingsClose').addEventListener('click', ()=>el('settingsOverlay').classList.remove('open'));
+el('intervalRange').addEventListener('input', (e)=>{ el('intervalVal').textContent = e.target.value + ' Sek.'; });
+
+el('settingsSaveBtn').addEventListener('click', async ()=>{
+  state.jarvisUrl = el('jarvisUrl').value.trim();
+  state.jarvisKey = el('jarvisKey').value.trim();
+  state.interval = parseInt(el('intervalRange').value, 10);
+  state.tone = el('toneSelect').value;
+  try {
+    await storageSet('jarvisUrl', state.jarvisUrl);
+    await storageSet('jarvisKey', state.jarvisKey);
+    await storageSet('pollInterval', String(state.interval));
+    await storageSet('aiTone', state.tone);
+  } catch(e){ console.warn('Konnte Einstellungen nicht speichern', e); }
+  el('settingsOverlay').classList.remove('open');
+  toast('Einstellungen gespeichert.');
+  connectLiveSync();
+  await loadLabels();
+  await loadMessages();
+});
+
+/* ---------- Suche ---------- */
+el('searchInput').addEventListener('keydown', async (e)=>{
+  if (e.key !== 'Enter') return;
+  const q = e.target.value.trim();
+  if (!q) return;
+  if (!jarvisReady()){ toast('Erst JARVIS Server-URL in den Einstellungen eintragen.'); return; }
+  setSyncState('busy');
+  try {
+    state.messages = await jarvisFetch('/search?q=' + encodeURIComponent(q));
+    el('listTitle').textContent = 'Suche: „' + q + '"';
+    renderMessageList();
+    setSyncState('ok');
+  } catch(err){ toast('Suche fehlgeschlagen: ' + err.message); setSyncState('error'); }
+});
+
+/* ---------- Init ---------- */
+async function init(){
+  renderSystemFolders();
+  showEmptyDetail();
+  await loadSettings();
+  if (jarvisReady()){
+    await loadLabels();
+    await loadMessages();
+    connectLiveSync();
+  } else {
+    el('messageListEl').innerHTML = '<div class="empty">Noch nicht verbunden.<br>Trag unter Einstellungen ⚙️ eure JARVIS Server-URL und den API-Key ein.</div>';
+    setSyncState('error');
+  }
+}
+init();
+</script>
+</body>
+</html>
