@@ -29,7 +29,8 @@ const PUBLIC_FILES =
     "app.js",
     "styles.css",
     "Intro.mp3",
-    "launcher.html"
+    "launcher.html",
+    "druckelite24-mail.html"
   ]);
 
 
