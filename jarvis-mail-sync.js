@@ -305,6 +305,7 @@ export function createMailRouter({
   const sseClients = new Set();
   let lastInboxFingerprint = "";
   let pollTimer = null;
+  let snoozeLabelId = null; // Cache für das sichtbare "Zurückgestellt"-Label in Gmail
 
   function cors(req, res, next) {
     res.header("Access-Control-Allow-Origin", "*");
@@ -531,6 +532,33 @@ export function createMailRouter({
     await writeStore("mail_snoozed", value);
   }
 
+  const SNOOZE_LABEL_NAME = "Zurückgestellt (JARVIS)";
+
+  // Gmails eigenes "Snoozed" ist eine private Funktion ohne öffentliche API —
+  // wir bilden das stattdessen über ein echtes Gmail-Label nach, damit man in
+  // der Gmail-App/-Web sieht, welche Mails gerade zurückgestellt sind.
+  async function ensureSnoozeLabelId() {
+    if (snoozeLabelId) return snoozeLabelId;
+
+    const data = await gmail("/labels");
+    const existing = (data.labels || []).find(l => l.name === SNOOZE_LABEL_NAME);
+    if (existing) {
+      snoozeLabelId = existing.id;
+      return snoozeLabelId;
+    }
+
+    const created = await gmail("/labels", {
+      method: "POST",
+      body: JSON.stringify({
+        name: SNOOZE_LABEL_NAME,
+        labelListVisibility: "labelShow",
+        messageListVisibility: "show"
+      })
+    });
+    snoozeLabelId = created.id;
+    return snoozeLabelId;
+  }
+
   async function unsnoozeDue() {
     const snoozed = await getSnoozed();
     const now = Date.now();
@@ -539,11 +567,14 @@ export function createMailRouter({
     for (const [id, entry] of Object.entries(snoozed)) {
       if (new Date(entry.until).getTime() <= now) {
         try {
+          let labelId = null;
+          try { labelId = await ensureSnoozeLabelId(); } catch {}
+
           await gmail(`/messages/${encodeURIComponent(id)}/modify`, {
             method: "POST",
             body: JSON.stringify({
               addLabelIds: ["INBOX"],
-              removeLabelIds: []
+              removeLabelIds: labelId ? [labelId] : []
             })
           });
           emit("unsnoozed", {
@@ -767,9 +798,15 @@ export function createMailRouter({
 
       await setSnoozed(snoozed);
 
+      let labelId = null;
+      try { labelId = await ensureSnoozeLabelId(); } catch {}
+
       await gmail(`/messages/${encodeURIComponent(id)}/modify`, {
         method: "POST",
-        body: JSON.stringify({ removeLabelIds: ["INBOX"] })
+        body: JSON.stringify({
+          removeLabelIds: ["INBOX"],
+          addLabelIds: labelId ? [labelId] : []
+        })
       });
 
       res.json({ ok: true, ...snoozed[id] });
