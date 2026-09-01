@@ -1,4 +1,4 @@
-﻿// server/routes/health.js
+// server/routes/health.js
 // GET /api/health  — liveness check (200 when process is alive)
 // GET /api/status  — per-integration readiness check
 
@@ -49,6 +49,10 @@ router.get("/status", async (_req, res) => {
   }
 
   // Shopify probe — lightweight introspection query
+  // Shopify probe - skip if credentials not configured yet
+  if (!config.SHOPIFY_ADMIN_TOKEN || !config.SHOPIFY_STORE_DOMAIN) {
+    results.shopify.detail = "Not configured — add SHOPIFY_ADMIN_TOKEN and SHOPIFY_STORE_DOMAIN in Render";
+  } else
   try {
     const resp = await fetch(
       `https://${config.SHOPIFY_STORE_DOMAIN}/admin/api/${config.SHOPIFY_API_VERSION}/graphql.json`,

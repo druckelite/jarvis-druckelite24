@@ -1,4 +1,4 @@
-﻿// server/config.js
+// server/config.js
 // Central configuration. ALL process.env access lives here and nowhere else.
 // Validated with zod — exits with a named error message on any failure.
 
@@ -12,8 +12,8 @@ const schema = z.object({
   OPENAI_VOICE: z.string().default("alloy"),
 
   // Shopify
-  SHOPIFY_STORE_DOMAIN: z.string().min(1, "SHOPIFY_STORE_DOMAIN is required"),
-  SHOPIFY_ADMIN_TOKEN: z.string().min(1, "SHOPIFY_ADMIN_TOKEN is required"),
+  SHOPIFY_STORE_DOMAIN: z.string().default(""),
+  SHOPIFY_ADMIN_TOKEN: z.string().default(""),
   SHOPIFY_API_VERSION: z.string().default("2025-07"),
 
   // JARVIS behaviour
@@ -43,3 +43,4 @@ try {
 }
 
 export default config;
+
