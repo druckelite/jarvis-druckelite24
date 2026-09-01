@@ -333,3 +333,38 @@ body{display:grid;grid-template-rows:42px 1fr 48px;height:100vh}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 ::-webkit-scrollbar-thumb:hover{background:var(--magenta)}
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIL PANEL — styles matching druckelite24-mail.html
+   ═══════════════════════════════════════════════════════════════ */
+.mail-item{
+  display:grid;grid-template-columns:32px 1fr auto;gap:7px;
+  align-items:flex-start;padding:7px 4px;
+  border-bottom:1px solid var(--border);
+  transition:background .15s;cursor:pointer;position:relative;
+}
+.mail-item:hover{background:var(--surface-2)}
+.mail-item.unread{background:rgba(236,8,118,.04)}
+.mail-av{
+  width:30px;height:30px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.62rem;font-weight:900;letter-spacing:.02em;
+}
+.mail-body{overflow:hidden;min-width:0}
+.mail-sender-row{display:flex;justify-content:space-between;align-items:center;gap:4px}
+.mail-sender{font-size:.72rem;font-weight:500;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mail-item.unread .mail-sender{font-weight:700;color:var(--text)}
+.mail-time{font-size:.58rem;color:var(--text-dim);flex-shrink:0}
+.mail-subject{font-size:.68rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.mail-subject.bold,.mail-item.unread .mail-subject{font-weight:700;color:var(--text)}
+.mail-preview{font-size:.6rem;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;line-height:1.4}
+.unread-pip{width:6px;height:6px;border-radius:50%;background:#ec0876;flex-shrink:0;margin-top:4px}
+
+/* Mail Studio launch button */
+.mail-studio-btn{
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  text-decoration:none;color:var(--magenta);
+  border-color:var(--magenta-glow-s);
+  font-size:.65rem;font-weight:700;letter-spacing:.06em;
+}
+.mail-studio-btn:hover{background:var(--magenta);color:#fff;text-shadow:none}

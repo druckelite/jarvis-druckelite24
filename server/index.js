@@ -55,6 +55,10 @@ const distPath = join(__dirname, "..", "web", "dist");
 
 if (config.NODE_ENV === "production") {
   app.use(express.static(distPath));
+  // Mail Studio — serve dedicated HTML at /mail
+  app.get("/mail", (_req, res) => {
+    res.sendFile(join(__dirname, "..", "druckelite24-mail.html"));
+  });
   // SPA fallback — serve index.html for any non-API route.
   app.get("*", (req, res, next) => {
     if (req.path.startsWith("/api")) return next();

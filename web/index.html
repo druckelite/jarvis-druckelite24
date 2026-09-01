@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8">
@@ -76,51 +76,53 @@
       <section class="panel mail-panel">
         <div class="panel-head">
           <b>MAIL EINGANG</b>
-          <span class="panel-meta" id="mailMeta">Aktualisierung 1h</span>
+          <span class="live-badge"><i class="live-dot-anim" style="background:#ec0876"></i> Sync</span>
         </div>
         <div class="mail-list" id="mailList">
-          <div class="mail-item">
-            <div class="mail-av" style="background:#E6007E22;color:#E6007E">TS</div>
+          <div class="mail-item unread">
+            <div class="mail-av" style="background:#171317;color:#fff;border-radius:10px">TS</div>
             <div class="mail-body">
-              <div class="mail-sender">Tobias Schneider</div>
-              <div class="mail-subject">Angebotsanfrage – 150 Hoodies</div>
+              <div class="mail-sender-row"><span class="mail-sender">Tobias Schneider</span><time class="mail-time">09:41</time></div>
+              <div class="mail-subject bold">Angebotsanfrage – 150 Hoodies</div>
+              <div class="mail-preview">Guten Tag, wir würden gerne ein Angebot …</div>
             </div>
-            <div class="mail-amt">2.712,—</div>
+            <span class="unread-pip"></span>
+          </div>
+          <div class="mail-item unread">
+            <div class="mail-av" style="background:#e8f7ee;color:#16884a;border-radius:10px">MK</div>
+            <div class="mail-body">
+              <div class="mail-sender-row"><span class="mail-sender">Marietta König</span><time class="mail-time">08:22</time></div>
+              <div class="mail-subject bold">Lieferschein für Bestellung #7321</div>
+              <div class="mail-preview">Anbei der Lieferschein als PDF …</div>
+            </div>
+            <span class="unread-pip"></span>
           </div>
           <div class="mail-item">
-            <div class="mail-av" style="background:#7c3aed22;color:#a78bfa">MK</div>
+            <div class="mail-av" style="background:#e8f0ff;color:#2161a9;border-radius:10px">JP</div>
             <div class="mail-body">
-              <div class="mail-sender">Marietta König</div>
-              <div class="mail-subject">Lieferschein für Bestellung #7321</div>
-            </div>
-            <div class="mail-amt">871,—</div>
-          </div>
-          <div class="mail-item">
-            <div class="mail-av" style="background:#06408122;color:#38bdf8">JP</div>
-            <div class="mail-body">
-              <div class="mail-sender">Julia Petersen</div>
+              <div class="mail-sender-row"><span class="mail-sender">Julia Petersen</span><time class="mail-time">Gestern</time></div>
               <div class="mail-subject">Logo-Datei in Vektordatei</div>
+              <div class="mail-preview">Könnten Sie mir bitte die Logo-Datei …</div>
             </div>
-            <div class="mail-amt">—</div>
           </div>
           <div class="mail-item">
-            <div class="mail-av" style="background:#E6007E22;color:#E6007E">AC</div>
+            <div class="mail-av" style="background:#fdeaf3;color:#d9214b;border-radius:10px">AC</div>
             <div class="mail-body">
-              <div class="mail-sender">Andreas Costa</div>
+              <div class="mail-sender-row"><span class="mail-sender">Andreas Costa</span><time class="mail-time">Gestern</time></div>
               <div class="mail-subject">Rückfrage zum Druck auf Caps</div>
+              <div class="mail-preview">Ich hätte eine Frage bezüglich …</div>
             </div>
-            <div class="mail-amt">3.218,—</div>
           </div>
           <div class="mail-item">
-            <div class="mail-av" style="background:#19875422;color:#34d399">LH</div>
+            <div class="mail-av" style="background:#f6e9ff;color:#8130a9;border-radius:10px">LH</div>
             <div class="mail-body">
-              <div class="mail-sender">Lena Hoffmann</div>
+              <div class="mail-sender-row"><span class="mail-sender">Lena Hoffmann</span><time class="mail-time">Mo.</time></div>
               <div class="mail-subject">Stornierung #7842 – Rückerstattung</div>
+              <div class="mail-preview">Bitte stornieren Sie die Bestellung …</div>
             </div>
-            <div class="mail-amt red">−290,—</div>
           </div>
         </div>
-        <button class="ghost-btn" id="mailboxBtn">Zur Mailbox &rarr;</button>
+        <a class="ghost-btn mail-studio-btn" href="/mail" target="_blank">✦ Mail Studio öffnen &rarr;</a>
       </section>
 
     </div><!-- /left-col -->
