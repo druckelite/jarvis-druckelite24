@@ -1,4 +1,4 @@
-﻿// server/index.js
+// server/index.js
 // Express 4 application bootstrap.
 // Mounts all routes, adds pino-http request logging.
 // Serves the Vite-built frontend from web/dist in production.
@@ -27,8 +27,8 @@ app.use(
     // Redact any token-shaped values from log output.
     redact: ["req.headers.authorization", "req.headers['x-shopify-access-token']"],
     // Don't log health checks at info level — too noisy.
-    customLogLevel(res, err) {
-      if (res.statusCode < 400 && res.req.url === "/api/health") return "trace";
+    customLogLevel(req, res, err) {
+      if (res.statusCode < 400 && req?.url === "/api/health") return "trace";
       if (res.statusCode >= 500 || err) return "error";
       if (res.statusCode >= 400) return "warn";
       return "info";
