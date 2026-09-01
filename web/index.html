@@ -1,98 +1,312 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0a0a0a">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Druckelite24 � JARVIS</title>
+  <meta name="theme-color" content="#000000">
+  <title>JARVIS · Druckelite24</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body data-jarvis-state="idle">
 
-  <div class="app-shell">
-
-    <!-- Top bar -->
-    <header class="topbar">
-      <img
-        class="brand-logo"
-        src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252"
-        alt="Druckelite24"
-      >
-      <div class="brand-title">JARVIS � BUSINESS COMMAND CENTER</div>
-      <div class="clock">
-        <b id="clockTime">--:--:--</b>
-        <span id="clockDate">--.---.----</span>
+  <!-- TOP BAR -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="menu-btn" aria-label="Menu">&#9776;</button>
+      <img class="brand-logo" src="https://cdn.shopify.com/s/files/1/0816/3210/0696/files/Druckelite_Logo_26_rein_weiss_b20f1b18-f3a0-4583-af25-166c2b1f796d.png?v=1785610252" alt="Druckelite24" onerror="this.style.display='none'">
+      <span class="brand-name">Druckelite24</span>
+    </div>
+    <div class="topbar-center">
+      <div class="jarvis-wordmark">JARVIS</div>
+      <div class="jarvis-tagline">KI-ASSISTENT &amp; BUSINESS-ZENTRALE</div>
+    </div>
+    <div class="topbar-right">
+      <div class="status-dots">
+        <span class="sdot active"></span>
+        <span class="sdot active"></span>
+        <span class="sdot"></span>
       </div>
-    </header>
+      <button class="icon-btn" id="clockBtn" title="Uhr">&#8212;</button>
+      <button class="icon-btn connect-btn" id="connectBtn" aria-label="Verbinden" title="JARVIS starten">&#9711;</button>
+    </div>
+  </header>
 
-    <!-- Dashboard grid -->
-    <main class="dashboard">
+  <!-- DASHBOARD -->
+  <main class="dashboard">
 
-      <!-- Order wall panel -->
-      <article class="panel panel-orders" id="panelOrders">
+    <!-- ═══ LEFT COLUMN ═══ -->
+    <div class="left-col">
+
+      <!-- SHOPIFY LIVE ÜBERSICHT -->
+      <section class="panel shopify-panel">
         <div class="panel-head">
-          <div>
-            <b>BESTELLUNGEN</b>
-            <span>LIVE � LETZTE 20</span>
-          </div>
-          <i class="live-dot" id="shopDot"></i>
+          <b>SHOPIFY LIVE ÜBERSICHT</b>
+          <span class="live-badge"><i class="live-dot-anim"></i> Live</span>
         </div>
-        <div class="panel-body" id="panelOrdersBody">Laden �</div>
-      </article>
-
-      <!-- Daily revenue panel -->
-      <article class="panel panel-revenue-daily" id="panelRevenueDaily">
-        <div class="panel-head">
-          <div>
-            <b>UMSATZ T�GLICH</b>
-            <span>LETZTE 7 TAGE</span>
+        <div class="shopify-stats">
+          <div class="stats-row">
+            <div class="stat-block">
+              <span class="stat-lbl">UMSATZ HEUTE</span>
+              <strong class="stat-val magenta" id="statRevToday">—</strong>
+              <span class="stat-sub" id="statRevSub">—</span>
+            </div>
+            <div class="stat-block">
+              <span class="stat-lbl">BESTELLUNGEN HEUTE</span>
+              <strong class="stat-val" id="statOrdToday">—</strong>
+              <span class="stat-sub" id="statOrdSub">—</span>
+            </div>
           </div>
-        </div>
-        <div class="panel-body" id="panelRevenueDailyBody">Laden �</div>
-      </article>
-
-      <!-- Voice core -->
-      <section class="voice-core">
-        <span class="voice-sub">DEIN ASSISTENT</span>
-        <h1 class="voice-title">JARVIS</h1>
-
-        <!-- Orb � click to start/stop session -->
-        <button class="voice-orb" id="orbBtn" aria-label="JARVIS starten oder stoppen" type="button">
-        </button>
-
-        <div class="voice-state-label">BEREIT</div>
-        <div class="voice-state-detail"></div>
-
-        <!-- Tap-to-talk (primary on iOS) -->
-        <button class="tap-btn" id="tapBtn" type="button" disabled aria-pressed="false">
-          ?? SPRECHEN
-        </button>
-
-        <!-- Integration status -->
-        <div class="voice-integrations panel-system" id="panelSystem">
-          <div class="integrations-list"></div>
+          <div class="mini-bars" id="revBars"></div>
+          <div class="stats-row mt8">
+            <div class="stat-block">
+              <span class="stat-lbl">GESTELLERT</span>
+              <strong class="stat-val" id="statFulfilled">—</strong>
+            </div>
+            <div class="stat-block">
+              <span class="stat-lbl">OFFENE BESTELLUNGEN</span>
+              <strong class="stat-val magenta" id="statOpen">—</strong>
+            </div>
+          </div>
+          <div class="mini-line" id="ordLine"></div>
         </div>
       </section>
 
-      <!-- Revenue by product panel -->
-      <article class="panel panel-rev-product" id="panelRevProduct">
+      <!-- MAIL EINGANG -->
+      <section class="panel mail-panel">
         <div class="panel-head">
-          <div>
-            <b>TOP PRODUKTE</b>
-            <span>UMSATZ � 30 TAGE</span>
+          <b>MAIL EINGANG</b>
+          <span class="panel-meta" id="mailMeta">Aktualisierung 1h</span>
+        </div>
+        <div class="mail-list" id="mailList">
+          <div class="mail-item">
+            <div class="mail-av" style="background:#E6007E22;color:#E6007E">TS</div>
+            <div class="mail-body">
+              <div class="mail-sender">Tobias Schneider</div>
+              <div class="mail-subject">Angebotsanfrage – 150 Hoodies</div>
+            </div>
+            <div class="mail-amt">2.712,—</div>
+          </div>
+          <div class="mail-item">
+            <div class="mail-av" style="background:#7c3aed22;color:#a78bfa">MK</div>
+            <div class="mail-body">
+              <div class="mail-sender">Marietta König</div>
+              <div class="mail-subject">Lieferschein für Bestellung #7321</div>
+            </div>
+            <div class="mail-amt">871,—</div>
+          </div>
+          <div class="mail-item">
+            <div class="mail-av" style="background:#06408122;color:#38bdf8">JP</div>
+            <div class="mail-body">
+              <div class="mail-sender">Julia Petersen</div>
+              <div class="mail-subject">Logo-Datei in Vektordatei</div>
+            </div>
+            <div class="mail-amt">—</div>
+          </div>
+          <div class="mail-item">
+            <div class="mail-av" style="background:#E6007E22;color:#E6007E">AC</div>
+            <div class="mail-body">
+              <div class="mail-sender">Andreas Costa</div>
+              <div class="mail-subject">Rückfrage zum Druck auf Caps</div>
+            </div>
+            <div class="mail-amt">3.218,—</div>
+          </div>
+          <div class="mail-item">
+            <div class="mail-av" style="background:#19875422;color:#34d399">LH</div>
+            <div class="mail-body">
+              <div class="mail-sender">Lena Hoffmann</div>
+              <div class="mail-subject">Stornierung #7842 – Rückerstattung</div>
+            </div>
+            <div class="mail-amt red">−290,—</div>
           </div>
         </div>
-        <div class="panel-body" id="panelRevProductBody">Laden �</div>
-      </article>
+        <button class="ghost-btn" id="mailboxBtn">Zur Mailbox &rarr;</button>
+      </section>
 
-    </main>
-  </div>
+    </div><!-- /left-col -->
 
-  <!-- Remote audio � browser ? OpenAI direct WebRTC -->
+    <!-- ═══ CENTER COLUMN ═══ -->
+    <div class="center-col">
+
+      <div class="hologram-wrap">
+        <!-- Outer decorative rings -->
+        <div class="holo-ring ring-1"></div>
+        <div class="holo-ring ring-2"></div>
+        <div class="holo-ring ring-3"></div>
+
+        <!-- Particle canvas -->
+        <canvas id="particleCanvas" class="particle-canvas"></canvas>
+
+        <!-- The shirt -->
+        <div class="holo-shirt" id="holoShirt">
+          <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" class="shirt-svg">
+            <defs>
+              <linearGradient id="shirtGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#ff0099;stop-opacity:0.9"/>
+                <stop offset="50%" style="stop-color:#E6007E;stop-opacity:1"/>
+                <stop offset="100%" style="stop-color:#cc0066;stop-opacity:0.8"/>
+              </linearGradient>
+              <filter id="glow">
+                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+              <filter id="strongGlow">
+                <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+                <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            <!-- T-shirt body -->
+            <path d="M 60 40 C 60 40 50 30 40 28 L 10 50 L 30 65 L 30 170 L 170 170 L 170 65 L 190 50 L 160 28 C 150 30 140 40 140 40 C 140 40 130 25 100 25 C 70 25 60 40 60 40 Z"
+                  fill="url(#shirtGrad)" stroke="#ff66cc" stroke-width="1.5" filter="url(#glow)" opacity="0.95"/>
+            <!-- Shirt highlight lines -->
+            <path d="M 65 45 L 35 62" stroke="#ff99dd" stroke-width="0.8" opacity="0.6"/>
+            <path d="M 135 45 L 165 62" stroke="#ff99dd" stroke-width="0.8" opacity="0.6"/>
+            <!-- Druckelite24 brand text on shirt -->
+            <text x="100" y="110" text-anchor="middle" font-family="Orbitron,sans-serif" font-size="11" font-weight="700" fill="#ffffff" filter="url(#glow)" opacity="0.95">Druckelite24</text>
+            <!-- Shirt scan lines -->
+            <line x1="30" y1="80" x2="170" y2="80" stroke="#ff00aa" stroke-width="0.3" opacity="0.3"/>
+            <line x1="30" y1="100" x2="170" y2="100" stroke="#ff00aa" stroke-width="0.3" opacity="0.3"/>
+            <line x1="30" y1="120" x2="170" y2="120" stroke="#ff00aa" stroke-width="0.3" opacity="0.3"/>
+            <line x1="30" y1="140" x2="170" y2="140" stroke="#ff00aa" stroke-width="0.3" opacity="0.3"/>
+            <line x1="30" y1="160" x2="170" y2="160" stroke="#ff00aa" stroke-width="0.3" opacity="0.3"/>
+          </svg>
+        </div>
+
+        <!-- Platform glow -->
+        <div class="holo-platform">
+          <div class="platform-ring"></div>
+          <div class="platform-glow"></div>
+        </div>
+      </div>
+
+      <!-- JARVIS STATUS BAR -->
+      <div class="jarvis-status-area">
+        <div class="audio-viz" id="audioViz">
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <div class="status-label-row">
+          <span class="status-lbl">JARVIS STATUS</span>
+          <span class="status-online" id="onlineLabel">&#9679; ONLINE</span>
+        </div>
+        <div class="status-detail" id="statusDetail">BEREIT FÜR IHRE ANWEISUNGEN</div>
+      </div>
+
+    </div><!-- /center-col -->
+
+    <!-- ═══ RIGHT COLUMN ═══ -->
+    <div class="right-col">
+
+      <!-- NACHRICHTEN -->
+      <section class="panel news-panel">
+        <div class="panel-head">
+          <b>NACHRICHTEN</b>
+          <span class="panel-meta">Aktuell</span>
+        </div>
+        <div class="news-list" id="newsList">
+          <div class="news-item">
+            <div class="news-img" style="background:linear-gradient(135deg,#E6007E33,#33002211)">📦</div>
+            <div class="news-body">
+              <div class="news-title">Druckelite24 – Produktion</div>
+              <div class="news-sub">Neue Bestellungen verarbeitet</div>
+            </div>
+          </div>
+          <div class="news-item">
+            <div class="news-img" style="background:linear-gradient(135deg,#7c3aed33,#0a001a11)">📈</div>
+            <div class="news-body">
+              <div class="news-title">Shopify Trend Report</div>
+              <div class="news-sub">Umsatzsteigerung diese Woche</div>
+            </div>
+          </div>
+          <div class="news-item">
+            <div class="news-img" style="background:linear-gradient(135deg,#06408133,#001a2211)">🎨</div>
+            <div class="news-body">
+              <div class="news-title">Neues Design Technologie</div>
+              <div class="news-sub">DTF-Druck Update verfügbar</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STATUS GRID -->
+      <section class="panel status-grid-panel">
+        <div class="sgrid" id="sgrid">
+          <div class="sg-item">
+            <span class="sg-dot ok"></span>
+            <div class="sg-info"><span class="sg-name">MITTEL-GUT</span><span class="sg-sub">In Optimierung</span></div>
+          </div>
+          <div class="sg-item">
+            <span class="sg-dot warn"></span>
+            <div class="sg-info"><span class="sg-name">STRENG</span><span class="sg-sub">In Optimierung</span></div>
+          </div>
+          <div class="sg-item">
+            <span class="sg-dot ok"></span>
+            <div class="sg-info"><span class="sg-name">TAX CHAIN</span><span class="sg-sub">Aktiv</span></div>
+          </div>
+          <div class="sg-item">
+            <span class="sg-dot ok"></span>
+            <div class="sg-info"><span class="sg-name">SHOPIFY LINKS</span><span class="sg-sub">Verbunden</span></div>
+          </div>
+          <div class="sg-item">
+            <span class="sg-dot warn"></span>
+            <div class="sg-info"><span class="sg-name">AUFGABEN</span><span class="sg-sub">5 in Bearbeitung</span></div>
+          </div>
+          <div class="sg-item">
+            <span class="sg-dot ok"></span>
+            <div class="sg-info"><span class="sg-name">PERFORMANCE</span><span class="sg-sub">Tagesplan 70%</span></div>
+          </div>
+          <div class="sg-item">
+            <span class="sg-dot ok"></span>
+            <div class="sg-info"><span class="sg-name">PRODUCTION COUNT</span><span class="sg-sub">Current Qualität</span></div>
+          </div>
+          <div class="sg-item" id="sgOpenAI">
+            <span class="sg-dot" id="sgOpenAIDot"></span>
+            <div class="sg-info"><span class="sg-name">OPENAI</span><span class="sg-sub" id="sgOpenAISub">Prüfe...</span></div>
+          </div>
+          <div class="sg-item" id="sgShopify">
+            <span class="sg-dot" id="sgShopifyDot"></span>
+            <div class="sg-info"><span class="sg-name">SHOPIFY API</span><span class="sg-sub" id="sgShopifySub">Prüfe...</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- WETTER -->
+      <section class="panel weather-panel">
+        <div class="panel-head">
+          <b>WETTER</b>
+          <span class="panel-meta" id="wxCity">Ludwigshafen</span>
+        </div>
+        <div class="weather-main">
+          <div class="wx-temp-wrap">
+            <span class="wx-icon" id="wxIcon">🌤</span>
+            <strong class="wx-temp" id="wxTemp">—°</strong>
+          </div>
+          <div class="wx-desc" id="wxDesc">Laden…</div>
+        </div>
+        <div class="wx-grid">
+          <div class="wx-cell"><span>Max</span><b id="wxMax">—°</b></div>
+          <div class="wx-cell"><span>Min</span><b id="wxMin">—°</b></div>
+          <div class="wx-cell"><span>Regen</span><b id="wxRain">—%</b></div>
+          <div class="wx-cell"><span>Wind</span><b id="wxWind">— km/h</b></div>
+        </div>
+      </section>
+
+    </div><!-- /right-col -->
+
+  </main><!-- /dashboard -->
+
+  <!-- QUICK ACTIONS BAR -->
+  <footer class="quick-bar">
+    <button class="quick-chip icon-chip"><span>&#9889;</span> SCHNELLTASTE</button>
+    <button class="quick-chip" data-cmd="Zeig mir heute Mails">Zeig mir heute Mails</button>
+    <button class="quick-chip" data-cmd="Wie ist der Druckelite Plan?">Wie ist der Druckelite Plan?</button>
+    <button class="mic-fab" id="micFab" aria-label="Sprechen">&#127908;</button>
+    <button class="quick-chip" data-cmd="Gib mir dein Briefing">Gib mir dein Briefing</button>
+    <button class="quick-chip" data-cmd="Erstelle eine Antwort">Erstelle eine Antwort</button>
+  </footer>
+
   <audio id="remoteAudio" autoplay playsinline></audio>
-
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
-
